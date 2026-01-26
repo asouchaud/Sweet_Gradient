@@ -1,6 +1,8 @@
-# Import necessary python libraries
+# Import interface libraries
 import argparse
 from pathlib import Path
+
+# Import computational libraries
 import torch
 import torch.nn.functional as F
 
@@ -31,6 +33,9 @@ from scripts.train.train import Train
 
 # Import custom loss functions
 from scripts.setup.helpers import l3_loss
+
+# Import saving functions
+from scripts.saving.save_results import save_results
 
 
 def main(args):
@@ -65,7 +70,7 @@ def main(args):
 ## Initialize model
 
     # Initialize sound propagation module
-    stereo_prop = stereo_anechoic(stim=stim, lstn_pos=lstn_pos_conf[0], spk_pos=spk_pos, fs=fs, sofa_file_path=args.sofa_path) # Load stereo anechoic propagation module
+    stereo_prop = stereo_anechoic(stim=stim, lstn_pos=lstn_pos_conf[args.lstn_pos_conf], spk_pos=spk_pos, fs=fs, sofa_file_path=args.sofa_path) # Load stereo anechoic propagation module
 
     # Initiate perceptual models
     loc_model = llado2025(hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # Llado et al. 2025 model
@@ -80,8 +85,8 @@ def main(args):
     unc_target = 0
     col_target = 0
 
-    perceptual_dict = {'localisation': [loc_model, loc_target, loc_loss]} # Fill with model, target, loss function
-                        #'uncertainty': [unc_model, unc_target, unc_loss]}#,
+    perceptual_dict = {'localisation': [loc_model, loc_target, loc_loss], # Fill with model, target, loss function
+                        'uncertainty': [unc_model, unc_target, unc_loss]}#,
                         # 'coloration': [col_model, col_target, col_loss]}
 
     # Initialise neural network
@@ -112,9 +117,9 @@ def main(args):
     # Plot estimated filters (time and frequency domain)
     graph_plot(est_filters, fs)
 
-    
-
 ## Save results
+
+    save_results(args, estimation_dict, est_filters, fs, lstn_pos_conf[args.lstn_pos_conf], spk_pos)
 
 
 if __name__ == "__main__":
@@ -128,6 +133,7 @@ if __name__ == "__main__":
     parser.add_argument("--target_angle", type=float, default=15.0)
     parser.add_argument("--stimulus", type=str, default="female_speech")
     parser.add_argument("--sofa_path", type=str, default=str(default_sofa_path))
+    parser.add_argument("--lstn_pos_conf", type=int, default=0, help="Listener position configuration index (0: 1 pos, 1: 3 pos, 2: 5 pos, 3: 9 pos)")
     parser.add_argument("--lr", type=float, default=0.01)
     parser.add_argument("--init", type=int, default=0, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
     parser.add_argument("--reg", type=int, default=0, help="If 1, use first moment or 2 for second moment regularisation during training")
