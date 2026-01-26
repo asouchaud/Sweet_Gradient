@@ -66,7 +66,7 @@ def main(args):
     # Initiate perceptual models
     loc_model = llado2025(hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # Llado et al. 2025 model
     unc_model = desena2020(hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # De Sena et al. 2020 model
-    col_model = spectral_matching(stim=stim, hrirs=hrirs, target_angle=0, fs=fs).to(device=device, dtype=dtype) # Spectral Matching model
+    col_model = spectral_matching(stim=stim, hrirs=hrirs, target_angle=args.target_angle, fs=fs).to(device=device, dtype=dtype) # Spectral Matching model
 
     loc_loss = F.mse_loss
     unc_loss = F.mse_loss
@@ -77,11 +77,11 @@ def main(args):
     col_target = 0
 
     perceptual_dict = {'localisation': [loc_model, loc_target, loc_loss]} # Fill with model, target, loss function
-                        #'uncertainty': [unc_model, unc_target, unc_loss],
-                        #'coloration': [col_model, col_target, col_loss]}
+                        # 'uncertainty': [unc_model, unc_target, unc_loss],
+                        # 'coloration': [col_model, col_target, col_loss]}
 
     # Initialise neural network
-    nn_model = load_NN(n_samples=args.n_samples, device=device, dtype=dtype, reg = args.init) # Load neural network ICLD or FIR
+    nn_model = load_NN(n_samples=args.n_samples, device=device, dtype=dtype, init = args.init) # Load neural network ICLD or FIR
     nn_optimiser = load_optimiser(nn_model, lr=args.lr) # Load optimiser for neural network
     
 ## Training loop
@@ -91,15 +91,19 @@ def main(args):
                     nn=nn_model,
                     prop=stereo_prop,
                     perceptual_dict=perceptual_dict,
-                    optimiser=nn_optimiser)
+                    optimiser=nn_optimiser,
+                    reg = args.reg) # Initialize training class
     
     trainer.train()
 
-## Plot results
+## Print and Plot results
 
     # Evaluate final neural network FIRs
-    
-    est_filters = trainer.evaluate()
+    est_filters, estimation_dict = trainer.evaluate()
+
+    # Print estimated perceptual metrics
+    for key, value in estimation_dict.items():
+        print(f"Estimated {key}: {value}")
 
     # Plot estimated filters (time and frequency domain)
     graph_plot(est_filters, fs)
@@ -113,11 +117,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--n_samples", type=int, default=128)
-    parser.add_argument("--target_angle", type=float, default=0.0)
+    parser.add_argument("--target_angle", type=float, default=15.0)
     parser.add_argument("--stimulus", type=str, default="female_speech")
     parser.add_argument("--sofa_path", type=str, default="C:\\Users\\as06521\\OneDrive - University of Surrey\\Documents\\Research\\Code\\Python\\Sweet_Gradient\\data\\impulses\\SOFA\\D1_48K_24bit_256tap_FIR_SOFA.sofa")
     parser.add_argument("--lr", type=float, default=0.01)
     parser.add_argument("--init", type=int, default=0, help="If 1, initialize NN with delta-like impulse responses")
+    parser.add_argument("--reg", type=int, default=0, help="If 1, use first moment or 2 for second moment regularisation during training")
     parser.add_argument("--seed", type=int, default = None, help="Random seed for reproducibility")
     args = parser.parse_args()
 

@@ -4,13 +4,14 @@ from scripts.optimisation.curriculum import curriculum_weights
 from scripts.optimisation.regularisation import second_moment_regularisation
 
 class Train:
-    def __init__(self, n_epoch, nn, prop, perceptual_dict, optimiser):
+    def __init__(self, n_epoch, nn, prop, perceptual_dict, optimiser, reg=0):
 
         self.n_epoch = n_epoch
         self.device = nn[0].weight.device
         self.dtype = nn[0].weight.dtype
         self.optimiser = optimiser
         self.n_samples = nn[-1].weight.shape[0] // 2
+        self.reg = reg
         
         self.nn = nn
         self.prop = prop
@@ -18,7 +19,6 @@ class Train:
         self.regularisation = second_moment_regularisation(n_samples=self.n_samples, device=self.device, dtype=self.dtype)
 
     def train(self):
-
         for epoch in range(self.n_epoch):
         
             # Estimate FIRs 
@@ -42,19 +42,23 @@ class Train:
                 loss_dict[entry[0]] = loss / model.loss_norm # Store loss in dictionary
             
             # Compute regularisation loss
-            loss_dict['regularisation_l'] = self.regularisation.compute_loss(h_l) / self.regularisation.loss_norm
-            loss_dict['regularisation_r'] = self.regularisation.compute_loss(h_r) / self.regularisation.loss_norm
+            if self.reg:
+                loss_dict['regularisation_l'] = self.regularisation.compute_loss(h_l) / self.regularisation.loss_norm
+                loss_dict['regularisation_r'] = self.regularisation.compute_loss(h_r) / self.regularisation.loss_norm
 
             # # Get curriculum weighted loss
             # weights, _ = curriculum_weights(epoch, self.n_epoch, self.optimiser, h_l, h_r, loss_dict['localization'], loss_dict['uncertainty'], loss_dict['coloration'])
-            weights = {'localization': 1.0, 'uncertainty': 1.0, 'coloration': 1.0, 'regularisation_l': 1.0, 'regularisation_r': 1.0} # Temporary fixed weights
+            weights = {'localisation': 1.0, 'uncertainty': 1.0, 'coloration': 1.0}#, 'regularisation_l': 1.0, 'regularisation_r': 1.0} # Temporary fixed weights
+
+            if self.reg:
+                weights = {'localisation': 1.0, 'uncertainty': 1.0, 'coloration': 1.0, 'regularisation_l': 1.0, 'regularisation_r': 1.0} # Temporary fixed weights
 
             # Compute full loss
             full_loss = 0
             for key in loss_dict.keys():
                 full_loss += weights.get(key, 0) * loss_dict[key]
 
-           # Optimize
+        # Optimize
             self.optimiser.zero_grad()
             full_loss.backward()
             self.optimiser.step()
@@ -80,4 +84,15 @@ class Train:
             h_r = h[:,self.n_samples:].unsqueeze(1)
             h_full = torch.cat([h_l,h_r], dim=1)
 
-        return torch.flip(h_full, dims= (2,)).squeeze().detach().cpu().numpy()      
+            # Propagate sound from speakers
+            bin_stim = self.prop(h_full)
+
+            estimation_dict = {}
+            # Get perceptual estimations and compute losses
+            for entry in self.perceptual_dict.items():
+                model = entry[1][0] # Get model
+
+                model_estimation = model(bin_stim) # Get model estimation
+                estimation_dict[entry[0]] = model_estimation.squeeze().detach().cpu().numpy() # Store estimation in dictionary
+
+        return h_full.squeeze().detach().cpu().numpy(), estimation_dict

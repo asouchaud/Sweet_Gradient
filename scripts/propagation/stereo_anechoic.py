@@ -6,6 +6,8 @@ import torch.nn.functional as F
 import sofar as sf
 import numpy as np
 
+from scripts.setup.helpers import math_conv1d 
+
 ## Stereo anechoic class definition
 
 class stereo_anechoic(nn.Module):
@@ -35,6 +37,7 @@ class stereo_anechoic(nn.Module):
 
         # Get HRIRs of corresponding speakers to listeners
         self.hrirs = self.get_IRs(left_spk_idx,right_spk_idx).to(dtype=self.dtype, device=self.device)
+        self.hrirs = torch.concat((self.hrirs, torch.zeros_like(self.hrirs)), dim=-1)  # Pad HRIRs to match stimulus length
 
         # Calculate time-delay between left/right speaker to listener
         tau_l_spk = torch.linalg.vector_norm(left_vec.float(), dim=-1) / 343
@@ -99,12 +102,11 @@ class stereo_anechoic(nn.Module):
         L_spk_filter = spk_filters[:, 0:1, :]
         R_spk_filter = spk_filters[:, 1:2, :]
 
-        L_spk_signal = F.conv1d(self.stim,L_spk_filter, padding = 'same').permute(1, 0, 2)
-        R_spk_signal = F.conv1d(self.stim, R_spk_filter, padding = 'same').permute(1, 0, 2)
+        L_spk_signal = math_conv1d(self.stim,L_spk_filter, padding = 'same').permute(1, 0, 2)
+        R_spk_signal = math_conv1d(self.stim,R_spk_filter, padding = 'same').permute(1, 0, 2)
 
-        L_ear_signals = F.conv1d(L_spk_signal, torch.flip(self.hrirs[:, 0, 0:1, :],dims=(2,)), padding = 'same') + F.conv1d(R_spk_signal, torch.flip(self.hrirs[:, 1, 0:1, :], dims=(2,)), padding = 'same')
-        R_ear_signals = F.conv1d(L_spk_signal, torch.flip(self.hrirs[:, 0, 1:2, :],dims=(2,)), padding = 'same') + F.conv1d(R_spk_signal, torch.flip(self.hrirs[:, 1, 1:2, :],dims=(2,)), padding = 'same')
-
+        L_ear_signals = math_conv1d(L_spk_signal, self.hrirs[:, 0, 0:1, :], padding = 'same') + math_conv1d(R_spk_signal, self.hrirs[:, 1, 0:1, :], padding = 'same')
+        R_ear_signals = math_conv1d(L_spk_signal, self.hrirs[:, 0, 1:2, :], padding = 'same') + math_conv1d(R_spk_signal, self.hrirs[:, 1, 1:2, :], padding = 'same')
         bin_stim = torch.cat([L_ear_signals.unsqueeze(2), R_ear_signals.unsqueeze(2)], dim=2)
 
         return bin_stim
