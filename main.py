@@ -1,5 +1,6 @@
 # Import necessary python libraries
 import argparse
+from pathlib import Path
 import torch
 import torch.nn.functional as F
 
@@ -114,12 +115,16 @@ def main(args):
 
 
 if __name__ == "__main__":
+    # Default paths relative to this repository (portable across machines/OSes)
+    repo_root = Path(__file__).resolve().parent
+    default_sofa_path = repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"
+    
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--n_samples", type=int, default=128)
     parser.add_argument("--target_angle", type=float, default=15.0)
     parser.add_argument("--stimulus", type=str, default="female_speech")
-    parser.add_argument("--sofa_path", type=str, default="C:\\Users\\as06521\\OneDrive - University of Surrey\\Documents\\Research\\Code\\Python\\Sweet_Gradient\\data\\impulses\\SOFA\\D1_48K_24bit_256tap_FIR_SOFA.sofa")
+    parser.add_argument("--sofa_path", type=str, default=str(default_sofa_path))
     parser.add_argument("--lr", type=float, default=0.01)
     parser.add_argument("--init", type=int, default=0, help="If 1, initialize NN with delta-like impulse responses")
     parser.add_argument("--reg", type=int, default=0, help="If 1, use first moment or 2 for second moment regularisation during training")
