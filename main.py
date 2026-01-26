@@ -29,6 +29,9 @@ from scripts.optimisation.nn_init import load_optimiser
 # Import training script
 from scripts.train.train import Train
 
+# Import custom loss functions
+from scripts.setup.helpers import l3_loss
+
 
 def main(args):
     
@@ -78,7 +81,7 @@ def main(args):
     col_target = 0
 
     perceptual_dict = {'localisation': [loc_model, loc_target, loc_loss]} # Fill with model, target, loss function
-                        # 'uncertainty': [unc_model, unc_target, unc_loss],
+                        #'uncertainty': [unc_model, unc_target, unc_loss]}#,
                         # 'coloration': [col_model, col_target, col_loss]}
 
     # Initialise neural network
@@ -126,7 +129,7 @@ if __name__ == "__main__":
     parser.add_argument("--stimulus", type=str, default="female_speech")
     parser.add_argument("--sofa_path", type=str, default=str(default_sofa_path))
     parser.add_argument("--lr", type=float, default=0.01)
-    parser.add_argument("--init", type=int, default=0, help="If 1, initialize NN with delta-like impulse responses")
+    parser.add_argument("--init", type=int, default=0, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
     parser.add_argument("--reg", type=int, default=0, help="If 1, use first moment or 2 for second moment regularisation during training")
     parser.add_argument("--seed", type=int, default = None, help="Random seed for reproducibility")
     args = parser.parse_args()

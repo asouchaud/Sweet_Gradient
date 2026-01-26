@@ -19,10 +19,15 @@ def load_NN(n_samples = 128, device = 'cuda', dtype = torch.float, init = 1):
             nn.Linear(1,2*n_samples, bias=False) # Initialise NN with 2 times filter taps for both loudspeakers
         ).to(device=device, dtype=dtype)
 
-        if init: # Initialisation scheme
+        if init==1: # Initialisation scheme
             with torch.no_grad():
                 NN[0].weight.fill_(0.0)
                 NN[0].weight[0, 0] = 1.0
                 NN[0].weight[n_samples, 0] = 1.0
+
+        if init==2: # Initialisation scheme
+            with torch.no_grad():
+                NN[0].weight.fill_(0.0)
+                NN[0].weight[0, 0] = 1.0
 
     return NN
