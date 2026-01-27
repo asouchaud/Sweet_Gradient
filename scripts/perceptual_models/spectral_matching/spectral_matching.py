@@ -10,7 +10,7 @@ import torchaudio.functional as TF
 
 
 class spectral_matching(nn.Module):
-    def __init__(self, stim, hrirs, target_angle, fs, n_fft=4096, sofa_path = os.path.join('data', 'impulses', 'SOFA', 'D1_48K_24bit_256tap_FIR_SOFA.sofa')):
+    def __init__(self, loss, target, stim, hrirs, target_angle, fs, n_fft=4096, sofa_path = os.path.join('data', 'impulses', 'SOFA', 'D1_48K_24bit_256tap_FIR_SOFA.sofa')):
         super(spectral_matching, self).__init__()
         
         self.dtype = hrirs.dtype
@@ -29,6 +29,9 @@ class spectral_matching(nn.Module):
 
         low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
         low_fft = 20*torch.log(torch.abs(torch.fft.rfft(low_stim, n=n_fft, dim = -1))).permute(1,0,2)
+
+        self.target = target
+        self.loss = loss
         self.loss_norm = torch.nn.functional.mse_loss(self.reference_fft, low_fft) # Maximum possible loss for normalization
 
     def sofa_find(self, spk_angle):

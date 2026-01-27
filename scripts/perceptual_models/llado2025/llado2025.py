@@ -6,7 +6,7 @@ from scripts.perceptual_models.llado2025.llado2025_distance import llado2025_dis
 from scripts.perceptual_models.llado2025.llado2025_estimatelocalisation import llado2025_estimatelocalisation_torch
 
 class llado2025(nn.Module):
-    def __init__(self, hrirs, fs, gtfb, tau_IACC=0.01, tau_L=1):
+    def __init__(self, loss, target, hrirs, fs, gtfb, tau_IACC=0.01, tau_L=1):
         super(llado2025, self).__init__()
         
         self.dtype = hrirs.dtype
@@ -22,7 +22,9 @@ class llado2025(nn.Module):
         self.template['ild'] = self.template['ild'].squeeze()
         self.template['itd'] = self.template['itd'].squeeze()
 
-        self.loss_norm = torch.nn.functional.mse_loss(torch.tensor([30.0], device=self.device, dtype=self.dtype), torch.tensor([-30.0], device=self.device, dtype=self.dtype)) # Maximum possible loss for normalization THIS IS FOR A STEREO WITH SPANNING ANGLE OF 60 DEGREE
+        self.target = target
+        self.loss = loss
+        self.loss_norm = self.loss(torch.tensor([30.0], device=self.device, dtype=self.dtype), torch.tensor([-30.0], device=self.device, dtype=self.dtype)) # Maximum possible loss for normalization THIS IS FOR A STEREO WITH SPANNING ANGLE OF 60 DEGREE
 
     def forward(self, bin_stim):
         # Estimate Interaural Cues

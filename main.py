@@ -73,10 +73,6 @@ def main(args):
     stereo_prop = stereo_anechoic(stim=stim, lstn_pos=lstn_pos_conf[args.lstn_pos_conf], spk_pos=spk_pos, fs=fs, sofa_file_path=args.sofa_path) # Load stereo anechoic propagation module
 
     # Initiate perceptual models
-    loc_model = llado2025(hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # Llado et al. 2025 model
-    unc_model = desena2020(hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # De Sena et al. 2020 model
-    col_model = spectral_matching(stim=stim, hrirs=hrirs, target_angle=args.target_angle, fs=fs).to(device=device, dtype=dtype) # Spectral Matching model
-
     loc_loss = F.mse_loss
     unc_loss = F.mse_loss
     col_loss = F.l1_loss
@@ -85,9 +81,13 @@ def main(args):
     unc_target = 0
     col_target = 0
 
-    perceptual_dict = {'localisation': [loc_model, loc_target, loc_loss], # Fill with model, target, loss function
-                        'uncertainty': [unc_model, unc_target, unc_loss]}#,
-                        # 'coloration': [col_model, col_target, col_loss]}
+    loc_model = llado2025(loss = loc_loss, target = loc_target, hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # Llado et al. 2025 model
+    unc_model = desena2020(loss = unc_loss, target = unc_target, hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # De Sena et al. 2020 model
+    col_model = spectral_matching(loss = col_loss, target = col_target, stim=stim, hrirs=hrirs, target_angle=args.target_angle, fs=fs).to(device=device, dtype=dtype) # Spectral Matching model
+
+    perceptual_dict = {'localisation': loc_model, 
+                        'uncertainty': unc_model, 
+                        'coloration': col_model}
 
     # Initialise neural network
     nn_model = load_NN(n_samples=args.n_samples, device=device, dtype=dtype, init = args.init) # Load neural network ICLD or FIR
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     parser.add_argument("--target_angle", type=float, default=15.0)
     parser.add_argument("--stimulus", type=str, default="female_speech")
     parser.add_argument("--sofa_path", type=str, default=str(default_sofa_path))
-    parser.add_argument("--lstn_pos_conf", type=int, default=0, help="Listener position configuration index (0: 1 pos, 1: 3 pos, 2: 5 pos, 3: 9 pos)")
+    parser.add_argument("--lstn_pos_conf", type=int, default=3, help="Listener position configuration index (0: 1 pos, 1: 3 pos, 2: 5 pos, 3: 9 pos)")
     parser.add_argument("--lr", type=float, default=0.01)
     parser.add_argument("--init", type=int, default=0, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
     parser.add_argument("--reg", type=int, default=0, help="If 1, use first moment or 2 for second moment regularisation during training")

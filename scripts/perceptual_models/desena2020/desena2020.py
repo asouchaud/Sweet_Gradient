@@ -8,7 +8,7 @@ from scripts.perceptual_models.desena2020.desena2020_estimateuncertainty import 
 
 
 class desena2020(nn.Module):
-    def __init__(self, hrirs, fs, gtfb, tau_IACC=0.01):
+    def __init__(self, loss, target, hrirs, fs, gtfb, tau_IACC=0.01):
         super(desena2020, self).__init__()
         
         self.dtype = hrirs.dtype
@@ -23,6 +23,8 @@ class desena2020(nn.Module):
         self.template['ild'] = self.template['ild'].squeeze()
         self.template['itd'] = self.template['itd'].squeeze()
 
+        self.target = target
+        self.loss = loss
         self.loss_norm = 1.0 # No normalization needed for uncertainty as it is already between 0 and 1
         
     def forward(self, bin_stim):

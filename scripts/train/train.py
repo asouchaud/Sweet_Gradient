@@ -33,9 +33,9 @@ class Train:
             # Get perceptual estimations and compute losses
             loss_dict = {}
             for entry in self.perceptual_dict.items():
-                model = entry[1][0] # Get model
-                model_target = entry[1][1] # Get target
-                model_loss = entry[1][2] # Get loss function
+                model = entry[1] # Get model
+                model_target = model.target # Get target
+                model_loss = model.loss # Get loss function
 
                 model_estimation = model(bin_stim) # Get model estimation
                 loss = model_loss(model_estimation, torch.tensor([model_target], device=self.device, dtype=self.dtype).expand_as(model_estimation)) # Calculate loss
@@ -90,7 +90,7 @@ class Train:
             estimation_dict = {}
             # Get perceptual estimations and compute losses
             for entry in self.perceptual_dict.items():
-                model = entry[1][0] # Get model
+                model = entry[1] # Get model
 
                 model_estimation = model(bin_stim) # Get model estimation
                 estimation_dict[entry[0]] = model_estimation.squeeze().detach().cpu().numpy() # Store estimation in dictionary
