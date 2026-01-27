@@ -1,7 +1,7 @@
 import torch
 
 from scripts.optimisation.curriculum import curriculum_weights
-from scripts.optimisation.regularisation import second_moment_regularisation
+from scripts.optimisation.regularisation import select_regularistion
 
 class Train:
     def __init__(self, n_epoch, nn, prop, perceptual_dict, optimiser, reg=0):
@@ -16,7 +16,7 @@ class Train:
         self.nn = nn
         self.prop = prop
         self.perceptual_dict = perceptual_dict
-        self.regularisation = second_moment_regularisation(n_samples=self.n_samples, device=self.device, dtype=self.dtype)
+        self.regularisation = select_regularistion(reg, n_samples=self.n_samples, device=self.device, dtype=self.dtype)
 
     def train(self):
         for epoch in range(self.n_epoch):
@@ -58,7 +58,7 @@ class Train:
             for key in loss_dict.keys():
                 full_loss += weights.get(key, 0) * loss_dict[key]
 
-        # Optimize
+            # Optimize
             self.optimiser.zero_grad()
             full_loss.backward()
             self.optimiser.step()

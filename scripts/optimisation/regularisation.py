@@ -1,6 +1,17 @@
 import torch
 
+def select_regularistion(reg: str, n_samples: int, device='cuda', dtype=torch.float32):
 
+    if reg == 'none':
+        return None
+    elif reg == 1:
+        return first_moment_regularisation(n_samples=n_samples, device=device, dtype=dtype)
+    elif reg == 2:
+        return second_moment_regularisation(n_samples=n_samples, device=device, dtype=dtype)
+    else:
+        return None
+
+    
 
 class first_moment_regularisation:
     """

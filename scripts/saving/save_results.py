@@ -32,10 +32,8 @@ def save_results(args, estimation_dict, est_filters, fs, lstn_pos, spk_pos):
 
     # Subfolders
     artifacts_dir = run_dir / "artifacts"
-    checkpoints_dir = run_dir / "checkpoints"
 
     artifacts_dir.mkdir(parents=True)
-    checkpoints_dir.mkdir()
 
     # ---------- Save artifacts ----------
     np.save(artifacts_dir / "est_filters.npy",
