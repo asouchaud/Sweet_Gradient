@@ -1,8 +1,11 @@
+import torch
+import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
 
 class TensorboardLogger:
-    def __init__(self, log_dir="runs/train", h_log_interval=50):
+    def __init__(self, log_dir="runs/train", h_log_interval=50, fs = 48000):
+        self.fs = fs
         self.writer = SummaryWriter(log_dir=log_dir)
         self.h_log_interval = h_log_interval
 
@@ -31,7 +34,23 @@ class TensorboardLogger:
         ax[1].plot(h[1])
         ax[1].set_title("Right FIR")
 
-        self.writer.add_figure("h_full", fig, epoch)
+        self.writer.add_figure("h_full (Time Domain)", fig, epoch)
+        plt.close(fig)
+
+        freqs = np.fft.rfftfreq(h.shape[1], 1/self.fs)
+        h_ft = 20*np.log10(np.abs(np.fft.rfft(h, n = 4096, axis= -1)))
+
+        fig, ax = plt.subplots(2, 1, sharex=True, figsize=(10, 5))
+        ax[0].set_ylim(-60,20)
+        ax[1].set_ylim(-60,20)
+        ax[0].grid()
+        ax[1].grid()
+        ax[0].semilogx(h_ft[0])
+        ax[0].set_title("Left FIR")
+        ax[1].semilogx(h_ft[1])
+        ax[1].set_title("Right FIR")
+
+        self.writer.add_figure("h_full (Frequency Domain)", fig, epoch)
         plt.close(fig)
 
     def close(self):
