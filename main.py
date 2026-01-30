@@ -34,8 +34,8 @@ from scripts.train.train import Train
 # Import custom loss functions
 from scripts.setup.helpers import l3_loss
 
-# Import saving functions
-from scripts.saving.save_results import save_results
+# Import saving class
+from scripts.saving.save_results import saver
 
 
 def main(args):
@@ -92,6 +92,11 @@ def main(args):
     # Initialise neural network
     nn_model = load_NN(n_samples=args.n_samples, device=device, dtype=dtype, init = args.init) # Load neural network ICLD or FIR
     nn_optimiser = load_optimiser(nn_model, lr=args.lr) # Load optimiser for neural network
+
+## Initliase saving folder and logger 
+
+    saver_obj = saver(perceptual_dict, lstn_pos_conf[args.lstn_pos_conf])
+    logger = saver_obj if args.log else None
     
 ## Training loop
 
@@ -101,7 +106,8 @@ def main(args):
                     prop=stereo_prop,
                     perceptual_dict=perceptual_dict,
                     optimiser=nn_optimiser,
-                    reg = args.reg) # Initialize training class
+                    reg = args.reg,
+                    logger = logger) # Initialize training class
     
     trainer.train()
 
@@ -119,8 +125,7 @@ def main(args):
 
 ## Save results
 
-    save_results(args, estimation_dict, est_filters, fs, lstn_pos_conf[args.lstn_pos_conf], spk_pos)
-
+    saver_obj.save_results(args, estimation_dict, est_filters, fs, lstn_pos_conf[args.lstn_pos_conf], spk_pos)
 
 if __name__ == "__main__":
     # Default paths relative to this repository (portable across machines/OSes)
@@ -138,6 +143,7 @@ if __name__ == "__main__":
     parser.add_argument("--init", type=int, default=1, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
     parser.add_argument("--reg", type=int, default=1, help="If 1, use first moment or 2 for second moment regularisation during training")
     parser.add_argument("--seed", type=int, default = None, help="Random seed for reproducibility")
+    parser.add_argument("--log", type=int, default=1, help="If 1, will log the training in Tensorboard, to view run in terminal | tensorboard --logdir runs | ")
     args = parser.parse_args()
 
     main(args)

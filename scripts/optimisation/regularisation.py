@@ -55,7 +55,7 @@ class first_moment_regularisation:
 
         mu = torch.sum((self.reg_idx*filter.abs()**2), dim = -1)
 
-        return(mu.item())
+        return(mu.squeeze())
 
 class second_moment_regularisation:
     """
@@ -87,6 +87,6 @@ class second_moment_regularisation:
 
         sig = torch.sum((self.reg_idx - mu[..., None])**2 * filter.abs()**2, dim = -1)/E
 
-        return(sig.item())
+        return(sig.squeeze())
     
 

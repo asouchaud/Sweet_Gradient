@@ -5,8 +5,10 @@ from scripts.optimisation.regularisation import select_regularistion
 from scripts.optimisation.regularisation import rms_normalisation
 from scripts.optimisation.regularisation import energy_normalisation
 
+from scripts.plotting.tensorboard_updates import TensorboardLogger
+
 class Train:
-    def __init__(self, n_epoch, nn, prop, perceptual_dict, optimiser, reg=0):
+    def __init__(self, n_epoch, nn, prop, perceptual_dict, optimiser, reg=0, logger=None):
 
         self.n_epoch = n_epoch
         self.device = nn[0].weight.device
@@ -19,6 +21,11 @@ class Train:
         self.prop = prop
         self.perceptual_dict = perceptual_dict
         self.regularisation = select_regularistion(reg, n_samples=self.n_samples, device=self.device, dtype=self.dtype)
+
+        if logger is not None:
+            self.logger = TensorboardLogger(logger.run_dir / 'tensorboard')
+        else:
+            self.logger = None
 
     def train(self):
         for epoch in range(self.n_epoch):
@@ -44,6 +51,7 @@ class Train:
                 model_estimation = model(bin_stim) # Get model estimation
                 loss = model_loss(model_estimation, torch.tensor([model_target], device=self.device, dtype=self.dtype).expand_as(model_estimation)) # Calculate loss
                 loss_dict[entry[0]] = loss / model.loss_norm # Store loss in dictionary
+
             
             # Compute regularisation loss
             if self.reg:
@@ -62,6 +70,11 @@ class Train:
             for key in loss_dict.keys():
                 full_loss += weights.get(key, 0) * loss_dict[key]
 
+            # Log training in Tensorboard
+            if self.logger is not None:
+                self.logger.log_losses(loss_dict, full_loss, epoch)
+                self.logger.log_h_full(h_l, h_r, h_full, epoch)
+
             # Optimize
             self.optimiser.zero_grad()
             full_loss.backward()
@@ -79,6 +92,10 @@ class Train:
             flush=True
             )
             print()
+
+        if self.logger is not None:
+            self.logger.close()
+
 
     def evaluate(self):
         # Evaluate final FIRs
