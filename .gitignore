@@ -219,3 +219,12 @@ __marimo__/
 
 # Results folder
 results/
+
+# battery folder
+battery/
+
+# MMSP folder
+MMSP2026/ 
+
+
+scripts/plotting/tensoboard_updates.py

@@ -2,6 +2,8 @@ import torch
 
 from scripts.optimisation.curriculum import curriculum_weights
 from scripts.optimisation.regularisation import select_regularistion
+from scripts.optimisation.regularisation import rms_normalisation
+from scripts.optimisation.regularisation import energy_normalisation
 
 class Train:
     def __init__(self, n_epoch, nn, prop, perceptual_dict, optimiser, reg=0):
@@ -26,6 +28,8 @@ class Train:
             h_l = h[:,:self.n_samples].unsqueeze(1)
             h_r = h[:,self.n_samples:].unsqueeze(1)
             h_full = torch.cat([h_l,h_r], dim=1)
+            # h_full_normalised = energy_normalisation(h_full)
+
 
             # Propagate sound from speakers
             bin_stim = self.prop(h_full)
