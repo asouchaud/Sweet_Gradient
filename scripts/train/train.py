@@ -8,7 +8,7 @@ from scripts.optimisation.regularisation import energy_normalisation
 from scripts.plotting.tensorboard_updates import TensorboardLogger
 
 class Train:
-    def __init__(self, n_epoch, nn, prop, perceptual_dict, optimiser, reg=0, logger=None):
+    def __init__(self, n_epoch, nn, prop, perceptual_dict, optimiser, reg=0, loggers=None):
 
         self.n_epoch = n_epoch
         self.device = nn[0].weight.device
@@ -22,8 +22,13 @@ class Train:
         self.perceptual_dict = perceptual_dict
         self.regularisation = select_regularistion(reg, n_samples=self.n_samples, device=self.device, dtype=self.dtype)
 
+        logger, saver = loggers[0], loggers[1]
+
         if logger is not None:
-            self.logger = TensorboardLogger(logger.run_dir / 'tensorboard')
+            if saver is not None:
+                self.logger = TensorboardLogger(logger.run_dir / 'tensorboard' / saver.file_name[:-4])
+            else: 
+                self.logger = TensorboardLogger(logger.run_dir / 'tensorboard' )
         else:
             self.logger = None
 
@@ -94,6 +99,8 @@ class Train:
             print()
 
         if self.logger is not None:
+            self.logger.log_losses(loss_dict, full_loss, epoch+1)
+            self.logger.log_h_full(h_l, h_r, h_full, epoch+1)
             self.logger.close()
 
 

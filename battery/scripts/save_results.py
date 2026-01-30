@@ -1,0 +1,118 @@
+from pathlib import Path
+import numpy as np 
+import json
+from datetime import datetime
+import scipy.io.wavfile as wav
+
+class saver():
+    def __init__(self, current_date, current_time, reg_idx, init_idx, n_samples, angle_idx, lstn_idx, curr_idx):
+
+            # ---------- Index mappings ----------
+
+        reg_map = {
+            0: "0", # No regularisation
+            1: "1", # First moment regularisation
+            2: "2", # Second moment regularisation
+        }
+
+        init_map = {
+            0: "n", # Random noise initialisation
+            1: "2", # Impulses at both loudspeakers initialisation
+            2: "1" # Impulse at only left loudspeaker and silent right loudspeaker initialisation
+        }
+
+        lstn_map = {
+            0: "1_pos",
+            1: "3_pos",
+            2: "9_pos",
+        }
+
+        angle_map = {
+            0: "000_deg",
+            1: "010_deg",
+            2: "340_deg",
+        }
+
+        curr_map = {
+            0: ("lxx.npy", "lxx.json", "lxx.wav"),  # Localisation 
+            1: ("xux.npy", "xux.json", "xux.wav"),  # Uncertainty 
+            2: ("xxc.npy", "xxc.json", "xxc.wav"),  # Colouration
+            3: ("lux.npy", "lux.json", "lux.wav"),  # Localisation and Uncertainty
+            4: ("lxc.npy", "lxc.json", "lxc.wav"),  # Localisation and Colouration
+            5: ("xuc.npy", "xuc.json", "xuc.wav"),  # Uncertainty and Colouration
+            6: ("luc.npy", "luc.json", "luc.wav"),  # Localisation, Uncertainty and Colouration
+        }
+
+            # ---------- Resolve folders / filenames ----------
+        try:
+            reg_id = reg_map[reg_idx]
+        except KeyError:
+            raise ValueError(f"Invalid reg_idx: {reg_idx}")
+        
+        try:
+            init_id = init_map[init_idx]
+        except KeyError:
+            raise ValueError(f"Invalid init_idx:{init_idx}")
+
+        try:
+            pos_folder = lstn_map[lstn_idx]
+        except KeyError:
+            raise ValueError(f"Invalid lstn_idx: {lstn_idx}")
+
+        try:
+            angle_folder = angle_map[angle_idx]
+        except KeyError:
+            raise ValueError(f"Invalid angle_idx: {angle_idx}")
+
+        try:
+            file_name, json_name, wav_name = curr_map[curr_idx]
+        except KeyError:
+            raise ValueError(f"Invalid curr_idx: {curr_idx}")
+
+        folder_name = f"r{reg_id}_i{init_id}_n{n_samples}_{current_date}_{current_time}"
+        
+        # ---------- Base path ----------
+        # ---------- Resolve base directory (battery/) ----------
+        BASE_DIR = Path(__file__).resolve().parent.parent
+        folder_path = BASE_DIR / "results" / folder_name
+        run_dir = folder_path / pos_folder / angle_folder
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        self.folder_path = folder_path
+        self.run_dir = run_dir
+
+        self.file_name = file_name
+        self.json_name = json_name
+        self.wav_name = wav_name
+
+        (self.run_dir / "wav_files").mkdir(exist_ok=True)
+        (self.run_dir / "np_files").mkdir(exist_ok=True)
+        (self.run_dir / "json_files").mkdir(exist_ok=True)
+
+
+
+    def save_results(self, estimation_dict, est_filters):    
+
+        # ---------- Save wav file ---------------
+        maxval = np.max(np.abs(est_filters))
+        if maxval > 0:
+            est_filters = np.flip(est_filters, axis=-1) / maxval
+
+        wav_path = self.run_dir / "wav_files" / self.wav_name
+        wav.write(wav_path, 48000, (est_filters.T * 32767).astype(np.int16))
+
+        # ---------- Save artifacts ----------
+        np.save(self.run_dir / "np_files" / self.file_name, est_filters)
+
+        # ---------- Results (small, queryable numbers only) ----------
+        results = {}
+        for key, value in estimation_dict.items():
+            try:
+                results[key] = np.asarray(value).tolist()
+            except Exception as e:
+                results[key] = str(value)
+
+        with open(self.run_dir / "json_files" / self.json_name, "w") as f:
+            json.dump(results, f, indent=4)
+
+        print(f"\n✅ Results saved to {self.run_dir / 'json_files' / self.json_name}")

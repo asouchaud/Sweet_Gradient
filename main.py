@@ -85,9 +85,9 @@ def main(args):
     unc_model = desena2020(loss = unc_loss, target = unc_target, hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # De Sena et al. 2020 model
     col_model = spectral_matching(loss = col_loss, target = col_target, stim=stim, hrirs=hrirs, target_angle=args.target_angle, fs=fs).to(device=device, dtype=dtype) # Spectral Matching model
 
-    perceptual_dict = {'localisation': loc_model}#, 
+    perceptual_dict = {#'localisation': loc_model}#, 
                         # 'uncertainty': unc_model, 
-                         #'coloration': col_model}
+                         'coloration': col_model}
 
     # Initialise neural network
     nn_model = load_NN(n_samples=args.n_samples, device=device, dtype=dtype, init = args.init) # Load neural network ICLD or FIR
@@ -107,7 +107,7 @@ def main(args):
                     perceptual_dict=perceptual_dict,
                     optimiser=nn_optimiser,
                     reg = args.reg,
-                    logger = logger) # Initialize training class
+                    loggers = [logger, None]) # Initialize training class
     
     trainer.train()
 
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     default_sofa_path = repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=1000)
+    parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--n_samples", type=int, default=128)
     parser.add_argument("--target_angle", type=float, default=15.0)
     parser.add_argument("--stimulus", type=str, default="random")

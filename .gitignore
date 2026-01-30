@@ -221,7 +221,7 @@ __marimo__/
 results/
 
 # battery folder
-battery/
+battery/results
 
 # MMSP folder
 MMSP2026/ 
