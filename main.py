@@ -39,9 +39,9 @@ from scripts.saving.save_results import saver
 
 
 def main(args):
-    
+
 ## Initial setup
-    
+
     # Set data type, device and sampling frequency
     dtype = torch.float32
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -62,10 +62,10 @@ def main(args):
     spk_pos = [[1,1], [1,-1]]
 
 ## Load data
-    
+
     gtfb = load_gtfb(fs=fs, device=device, dtype=dtype)  # Load Gamma Tone Filter Bank
     stim = load_stim(fs=fs, device=device, dtype=dtype, selected_stim=args.stimulus)  # Load stimulus
-    hrirs = load_hrirs(dtype=dtype, device=device) # Load HRIRs using specific location from SOFA file 
+    hrirs = load_hrirs(dtype=dtype, device=device) # Load HRIRs using specific location from SOFA file
 
 ## Initialize model
 
@@ -85,19 +85,19 @@ def main(args):
     unc_model = desena2020(loss = unc_loss, target = unc_target, hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # De Sena et al. 2020 model
     col_model = spectral_matching(loss = col_loss, target = col_target, stim=stim, hrirs=hrirs, target_angle=args.target_angle, fs=fs).to(device=device, dtype=dtype) # Spectral Matching model
 
-    perceptual_dict = {#'localisation': loc_model}#, 
-                        # 'uncertainty': unc_model, 
+    perceptual_dict = {#'localisation': loc_model}#,
+                        # 'uncertainty': unc_model,
                          'coloration': col_model}
 
     # Initialise neural network
     nn_model = load_NN(n_samples=args.n_samples, device=device, dtype=dtype, init = args.init) # Load neural network ICLD or FIR
     nn_optimiser = load_optimiser(nn_model, lr=args.lr) # Load optimiser for neural network
 
-## Initliase saving folder and logger 
+## Initliase saving folder and logger
 
     saver_obj = saver(perceptual_dict, lstn_pos_conf[args.lstn_pos_conf])
     logger = saver_obj if args.log else None
-    
+
 ## Training loop
 
     # Train the neural network
@@ -108,7 +108,7 @@ def main(args):
                     optimiser=nn_optimiser,
                     reg = args.reg,
                     loggers = [logger, None]) # Initialize training class
-    
+
     trainer.train()
 
 ## Print and Plot results
@@ -131,7 +131,7 @@ if __name__ == "__main__":
     # Default paths relative to this repository (portable across machines/OSes)
     repo_root = Path(__file__).resolve().parent
     default_sofa_path = repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"
-    
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--n_samples", type=int, default=128)
