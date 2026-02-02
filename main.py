@@ -44,7 +44,11 @@ def main(args):
 
     # Set data type, device and sampling frequency
     dtype = torch.float32
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if args.device:
+        device = torch.device(args.device)
+    else:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
     fs = 48000
 
     # Set random seed for reproducibility
@@ -144,6 +148,7 @@ if __name__ == "__main__":
     parser.add_argument("--reg", type=int, default=1, help="If 1, use first moment or 2 for second moment regularisation during training")
     parser.add_argument("--seed", type=int, default = None, help="Random seed for reproducibility")
     parser.add_argument("--log", type=int, default=1, help="If 1, will log the training in Tensorboard, to view run in terminal | tensorboard --logdir runs | ")
+    parser.add_argument("--device", type=str, default=None, help="Device to use for computation (e.g., 'cpu', 'cuda', or 'mps'). If None, will use CUDA if available.")
     args = parser.parse_args()
 
     main(args)
