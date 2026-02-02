@@ -37,7 +37,7 @@ class stereo_anechoic(nn.Module):
 
         # Get HRIRs of corresponding speakers to listeners
         self.hrirs = self.get_IRs(left_spk_idx,right_spk_idx).to(dtype=self.dtype, device=self.device)
-        self.hrirs = torch.concat((self.hrirs, torch.zeros_like(self.hrirs)), dim=-1)  # Pad HRIRs to match stimulus length
+        self.hrirs = torch.concat((self.hrirs, torch.zeros_like(self.hrirs, dtype = self.dtype)), dim=-1)  # Pad HRIRs to match stimulus length
 
         # Calculate time-delay between left/right speaker to listener
         tau_l_spk = torch.linalg.vector_norm(left_vec.float(), dim=-1) / 343
@@ -53,8 +53,8 @@ class stereo_anechoic(nn.Module):
 
     def sofa_find(self, spk_angle):
         # Take out distance coordinate from SOFA source position and add elv = 0 to speaker angles
-        pos = torch.tensor(self.sofaile.SourcePosition[:,:2],device=self.device)
-        spk_angle = torch.concat((spk_angle, torch.zeros_like(spk_angle)), dim=1).to(self.device)
+        pos = torch.tensor(self.sofaile.SourcePosition[:,:2],device=self.device, dtype = torch.float32)
+        spk_angle = torch.concat((spk_angle, torch.zeros_like(spk_angle)), dim=1).to(self.device, dtype = torch.float32)
 
         # Calculate vector between speaker angles and source position angles
         diff = spk_angle[:,None,:] - pos[None,:,:]
@@ -80,13 +80,13 @@ class stereo_anechoic(nn.Module):
     def get_IRs(self, left_spk_idx, right_spk_idx):
         
         # Get left speaker to left ear IR
-        left_spk_left_ear_IR = torch.tensor(self.sofaile.Data_IR[left_spk_idx.cpu().numpy(), 0], device=self.device)
+        left_spk_left_ear_IR = torch.tensor(self.sofaile.Data_IR[left_spk_idx.cpu().numpy(), 0], device=self.device, dtype = torch.float32)
         # Get left speaker to right ear IR
-        left_spk_right_ear_IR = torch.tensor(self.sofaile.Data_IR[left_spk_idx.cpu().numpy(), 1], device=self.device)
+        left_spk_right_ear_IR = torch.tensor(self.sofaile.Data_IR[left_spk_idx.cpu().numpy(), 1], device=self.device, dtype = torch.float32)
         # Get right speaker to left ear IR
-        right_spk_left_ear_IR = torch.tensor(self.sofaile.Data_IR[right_spk_idx.cpu().numpy(), 0], device=self.device)
-        # Get right speaker to right ear IR 
-        right_spk_right_ear_IR = torch.tensor(self.sofaile.Data_IR[right_spk_idx.cpu().numpy(), 1], device=self.device)
+        right_spk_left_ear_IR = torch.tensor(self.sofaile.Data_IR[right_spk_idx.cpu().numpy(), 0], device=self.device, dtype = torch.float32)
+        # Get right speaker to right ear IR
+        right_spk_right_ear_IR = torch.tensor(self.sofaile.Data_IR[right_spk_idx.cpu().numpy(), 1], device=self.device, dtype = torch.float32)
 
         # Concatenate over left/right ear
         left_spk_IR = torch.stack((left_spk_left_ear_IR, left_spk_right_ear_IR), dim=1)

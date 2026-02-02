@@ -36,9 +36,9 @@ class spectral_matching(nn.Module):
 
     def sofa_find(self, spk_angle):
         # Take out distance coordinate from SOFA source position and add elv = 0 to speaker angles
-        spk_angle = torch.tensor(spk_angle, device=self.device).view(-1,1)
-        pos = torch.tensor(self.sofaile.SourcePosition[:,:2],device=self.device)
-        spk_angle = torch.concat((spk_angle, torch.zeros_like(spk_angle)), dim=1).to(self.device)
+        spk_angle = torch.tensor(spk_angle, device=self.device, dtype = self.dtype).view(-1,1)
+        pos = torch.tensor(self.sofaile.SourcePosition[:,:2],device=self.device, dtype = self.dtype)
+        spk_angle = torch.concat((spk_angle, torch.zeros_like(spk_angle)), dim=1).to(self.device).to(self.dtype)
 
         # Calculate vector between speaker angles and source position angles
         diff = spk_angle[:,None,:] - pos[None,:,:]
@@ -53,7 +53,7 @@ class spectral_matching(nn.Module):
 
     def get_IR(self, spk_idx):
         # Get hrir
-        hrir = torch.tensor(self.sofaile.Data_IR[spk_idx.cpu().numpy()], device=self.device)
+        hrir = torch.tensor(self.sofaile.Data_IR[spk_idx.cpu().numpy()], device=self.device, dtype = self.dtype)
 
         return hrir
 
