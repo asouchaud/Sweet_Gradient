@@ -39,8 +39,8 @@ class first_moment_regularisation:
         self.n_samples = n_samples
         self.reg_idx = ((torch.arange(n_samples, device=device, dtype=dtype))).view(1,1,-1)
 
-        # self.loss_norm = self.compute_loss(torch.randn(1,1,self.n_samples, device=device, dtype=dtype))
-        self.loss_norm = 1
+        self.loss_norm = self.compute_loss(torch.randn(1,1,self.n_samples, device=device, dtype=dtype))
+        # self.loss_norm = 1
 
     def compute_loss(self, filter: torch.Tensor) -> torch.Tensor:
         """
