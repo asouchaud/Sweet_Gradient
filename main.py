@@ -14,7 +14,6 @@ from scripts.setup.setup import set_seed
 from scripts.setup.setup import load_gtfb
 from scripts.setup.setup import load_stim
 from scripts.setup.setup import load_hrirs
-from scripts.setup.setup import load_template
 
 # Import sound propagation module
 from scripts.propagation.stereo_anechoic import stereo_anechoic
@@ -30,9 +29,6 @@ from scripts.optimisation.nn_init import load_optimiser
 
 # Import training script
 from scripts.train.train import Train
-
-# Import custom loss functions
-from scripts.setup.helpers import l3_loss
 
 # Import saving class
 from scripts.saving.save_results import saver
@@ -144,7 +140,7 @@ if __name__ == "__main__":
     parser.add_argument("--sofa_path", type=str, default=str(default_sofa_path))
     parser.add_argument("--lstn_pos_conf", type=int, default=0, help="Listener position configuration index (0: 1 pos, 1: 3 pos, 2: 5 pos, 3: 9 pos)")
     parser.add_argument("--lr", type=float, default=0.01)
-    parser.add_argument("--init", type=int, default=1, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
+    parser.add_argument("--init", type=int, default=2, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
     parser.add_argument("--reg", type=int, default=1, help="If 1, use first moment or 2 for second moment regularisation during training")
     parser.add_argument("--seed", type=int, default = None, help="Random seed for reproducibility")
     parser.add_argument("--log", type=int, default=1, help="If 1, will log the training in Tensorboard, to view run in terminal | tensorboard --logdir runs | ")
