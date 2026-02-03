@@ -1,3 +1,7 @@
+# Enable MPS fallback for PyTorch on macOS
+import os
+os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+
 # Import interface libraries
 import argparse
 from pathlib import Path
