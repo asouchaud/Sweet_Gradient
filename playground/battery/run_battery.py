@@ -9,9 +9,9 @@ import torch.nn.functional as F
 # Import libraries for plotting
 
 # Import setup functions
-from battery.scripts.setup import setup
-from battery.scripts.setup import get_all_subsets
-from battery.scripts.setup import init_perc_model
+from playground.battery.scripts.setup.setup import setup
+from playground.battery.scripts.setup.setup import get_all_subsets
+from playground.battery.scripts.setup.setup import init_perc_model
 
 # Import sound propagation module
 from scripts.propagation.stereo_anechoic import stereo_anechoic
@@ -29,7 +29,7 @@ from scripts.optimisation.nn_init import load_optimiser
 from scripts.train.train import Train
 
 # Import saving functions
-from battery.scripts.save_results import saver
+from playground.battery.scripts.saving.save_results import saver
 
 from datetime import datetime
 
@@ -40,7 +40,7 @@ def run_battery(args):
     now = datetime.now()
 
     # Extract date and time separately
-    current_date = now.strftime("%Y%m%d") # YYYYMMDD
+    current_date = now.strftime("%y%m%d") # YYMMDD
     current_time = now.strftime("%H%M%S")  # HHMMSS
 
     print("Date:", current_date)
@@ -50,7 +50,7 @@ def run_battery(args):
     dtype, device, fs, target_angle, lstn_pos_conf, spk_pos, gtfb, stim, hrirs = setup(args)
 
     repo_root = Path(__file__).resolve().parent
-    default_sofa_path = repo_root / ".." /"data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"
+    default_sofa_path = repo_root / ".."/ ".." /"data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"
 
     n_ta = target_angle.shape[0]
     n_lstn_pos_conf = len(lstn_pos_conf)
@@ -108,7 +108,7 @@ repo_root = Path(__file__).resolve().parent.parent
 default_sofa_path = repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--epochs", type=int, default=1000)
+parser.add_argument("--epochs", type=int, default=500)
 parser.add_argument("--n_samples", type=int, default=128)
 parser.add_argument("--stimulus", type=str, default="random")
 parser.add_argument("--sofa_path", type=str, default=str(default_sofa_path))

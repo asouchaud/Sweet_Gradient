@@ -1,0 +1,153 @@
+# Enable MPS fallback for PyTorch on macOS
+import os
+os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+
+# Import interface libraries
+import argparse
+from pathlib import Path
+
+# Import computational libraries
+import torch
+import torch.nn.functional as F
+
+# Import libraries for plotting
+from playground.ICLD_ICTD.scripts.plotting.graph_IC import graph_IC
+
+# Import setup functions
+from scripts.setup.setup import set_seed
+from scripts.setup.setup import load_gtfb
+from scripts.setup.setup import load_stim
+from scripts.setup.setup import load_hrirs
+
+# Import sound propagation module
+from playground.ICLD_ICTD.scripts.propagation.stereo_anechoic_ICLD_ICTD import stereo_anechoic_ICLD_ICTD
+
+# Import perceptual models
+from scripts.perceptual_models.llado2025.llado2025 import llado2025
+from scripts.perceptual_models.desena2020.desena2020 import desena2020
+from scripts.perceptual_models.spectral_matching.spectral_matching import spectral_matching
+
+# Import neural network related scripts
+from scripts.optimisation.nn_init import load_NN
+from scripts.optimisation.nn_init import load_optimiser
+
+# Import training script
+from playground.ICLD_ICTD.scripts.train.train_ICLD_ICTD import Train
+
+# Import saving class
+from playground.ICLD_ICTD.scripts.saving.save_results_ICLD_ICTD import saver
+
+
+def main(args):
+
+## Initial setup
+
+    # Set data type, device and sampling frequency
+    dtype = torch.float32
+    if args.device:
+        device = torch.device(args.device)
+    else:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+    fs = 48000
+
+    # Set random seed for reproducibility
+    if args.seed:
+        set_seed(seed=args.seed)
+
+    # Training parameters
+    epochs = args.epochs # Number of training epochs
+
+    # Loudspkeaker and listener positions
+    lstn_pos_conf = [[[-0.732, 0]],  # 1 listner position
+                [[-0.732, 0], [-0.732, 0.5], [-0.732, -0.5]], # 3 listener positions
+                [[-0.732, 0], [-0.732, 0.5], [-0.732, -0.5], [-0.232, 0], [-1.232, 0]], # 5 listener positions
+                [[-0.732, 0], [-0.732, 0.5], [-0.732, -0.5], [-0.232, 0], [-1.232, 0], [-0.232, 0.5], [-0.232, -0.5], [-1.232, 0.5], [-1.232, -0.5]]] # 9 listener positions
+    spk_pos = [[1,1], [1,-1]]
+
+## Load data
+
+    gtfb = load_gtfb(fs=fs, device=device, dtype=dtype)  # Load Gamma Tone Filter Bank
+    stim = load_stim(fs=fs, device=device, dtype=dtype, selected_stim=args.stimulus)  # Load stimulus
+    hrirs = load_hrirs(dtype=dtype, device=device) # Load HRIRs using specific location from SOFA file
+
+## Initialize model
+
+    # Initialize sound propagation module
+    stereo_prop = stereo_anechoic_ICLD_ICTD(stim=stim, lstn_pos=lstn_pos_conf[args.lstn_pos_conf], spk_pos=spk_pos, fs=fs, sofa_file_path=args.sofa_path) # Load stereo anechoic propagation module
+
+    # Initiate perceptual models
+    loc_loss = F.mse_loss
+    unc_loss = F.mse_loss
+    col_loss = F.l1_loss
+
+    loc_target = args.target_angle
+    unc_target = 0
+    col_target = 0
+
+    loc_model = llado2025(loss = loc_loss, target = loc_target, hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # Llado et al. 2025 model
+    unc_model = desena2020(loss = unc_loss, target = unc_target, hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # De Sena et al. 2020 model
+    col_model = spectral_matching(loss = col_loss, target = col_target, stim=stim, hrirs=hrirs, target_angle=args.target_angle, fs=fs).to(device=device, dtype=dtype) # Spectral Matching model
+
+    perceptual_dict = {'localisation': loc_model}#,
+                        # 'uncertainty': unc_model,
+                         #'coloration': col_model}
+
+    # Initialise neural network
+    nn_model = load_NN(n_samples=30, device=device, dtype=dtype, init = args.init) # Load neural network ICLD or FIR
+    nn_optimiser = load_optimiser(nn_model, lr=args.lr) # Load optimiser for neural network
+
+## Initliase saving folder and logger
+
+    saver_obj = saver(perceptual_dict, lstn_pos_conf[args.lstn_pos_conf])
+    logger = saver_obj if args.log else None
+
+## Training loop
+
+    # Train the neural network
+    trainer = Train(n_epoch=epochs,
+                    nn=nn_model,
+                    prop=stereo_prop,
+                    perceptual_dict=perceptual_dict,
+                    optimiser=nn_optimiser,
+                    reg = 0,
+                    loggers = [logger, None]) # Initialize training class
+
+    trainer.train()
+
+## Print and Plot results
+
+    # Evaluate final neural network FIRs
+    est_IC, estimation_dict = trainer.evaluate()
+
+    # Print estimated perceptual metrics
+    for key, value in estimation_dict.items():
+        print(f"Estimated {key}: {value}")
+
+    # Plot estimated filters (time and frequency domain)
+    graph_IC(est_IC)
+
+## Save results
+
+    saver_obj.save_results(args, estimation_dict, est_IC, fs, lstn_pos_conf[args.lstn_pos_conf], spk_pos)
+
+if __name__ == "__main__":
+    # Default paths relative to this repository (portable across machines/OSes)
+    repo_root = Path(__file__).resolve().parent
+    default_sofa_path = repo_root  / ".."/ ".."/ "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--epochs", type=int, default=1000)
+    parser.add_argument("--target_angle", type=float, default=15.0)
+    parser.add_argument("--stimulus", type=str, default="random")
+    parser.add_argument("--sofa_path", type=str, default=str(default_sofa_path))
+    parser.add_argument("--lstn_pos_conf", type=int, default=0, help="Listener position configuration index (0: 1 pos, 1: 3 pos, 2: 5 pos, 3: 9 pos)")
+    parser.add_argument("--lr", type=float, default=10)
+    parser.add_argument("--init", type=int, default=0, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
+    parser.add_argument("--reg", type=int, default=0, help="If 1, use first moment or 2 for second moment regularisation during training")
+    parser.add_argument("--seed", type=int, default = None, help="Random seed for reproducibility")
+    parser.add_argument("--log", type=int, default=1, help="If 1, will log the training in Tensorboard, to view run in terminal | tensorboard --logdir runs | ")
+    parser.add_argument("--device", type=str, default=None, help="Device to use for computation (e.g., 'cpu', 'cuda', or 'mps'). If None, will use CUDA if available.")
+    args = parser.parse_args()
+
+    main(args)

@@ -228,3 +228,11 @@ MMSP2026/
 
 
 scripts/plotting/tensoboard_updates.py
+
+requirements.txt
+
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
