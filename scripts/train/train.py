@@ -80,6 +80,9 @@ class Train:
                 self.logger.log_losses(loss_dict, full_loss, epoch)
                 self.logger.log_h_full(h_l, h_r, h_full, epoch)
 
+                if 'localisation' in self.perceptual_dict or 'uncertainty' in self.perceptual_dict:
+                    self.logger.log_bin_cues(bin_stim, epoch)
+
             # Optimize
             self.optimiser.zero_grad()
             full_loss.backward()
@@ -101,6 +104,8 @@ class Train:
         if self.logger is not None:
             self.logger.log_losses(loss_dict, full_loss, epoch+1)
             self.logger.log_h_full(h_l, h_r, h_full, epoch+1)
+            if 'localisation' in self.perceptual_dict or 'uncertainty' in self.perceptual_dict:
+                    self.logger.log_bin_cues(bin_stim, epoch+1)
             self.logger.close()
 
 

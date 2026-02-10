@@ -3,11 +3,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
 
+from scripts.perceptual_models.llado2025.llado2025_estimateinterauralcues import llado2025_estimateinterauralcues
+from scripts.setup.setup import load_gtfb
+
 class TensorboardLogger:
     def __init__(self, log_dir="runs/train", h_log_interval=50, fs = 48000):
         self.fs = fs
         self.writer = SummaryWriter(log_dir=log_dir)
         self.h_log_interval = h_log_interval
+
+        self.gtfb = load_gtfb(fs, 'cuda', torch.float32)
+
 
     def log_losses(self, loss_dict, full_loss, epoch):
         for key, value in loss_dict.items():
@@ -54,5 +60,54 @@ class TensorboardLogger:
         self.writer.add_figure("h_full (Frequency Domain)", fig, epoch)
         plt.close(fig)
 
+    def log_bin_cues(self, bin_stim, epoch):
+        if epoch % self.h_log_interval != 0:
+            return
+
+        interaural_cues = llado2025_estimateinterauralcues(bin_stim=bin_stim, fs = self.fs, gtfb=self.gtfb)
+        
+        ild_np = interaural_cues['ild'].detach().cpu().numpy()
+        itd_np = interaural_cues['itd'].detach().cpu().numpy()
+
+        colors = np.arange(len(ild_np[0,0]))
+        
+        n_plots = ild_np.shape[1]
+
+        cols = int(np.ceil(np.sqrt(n_plots)))
+        rows = int(np.ceil(n_plots / cols))
+
+        fig, axes = plt.subplots(rows, cols, figsize=(cols*5, rows*4))
+
+        axes = np.array(axes).flatten() if n_plots > 1 else np.array([axes])
+        fig.suptitle(f'ILD/ITD pairs at epoch:{epoch}')
+        fig.tight_layout(rect=[0, 0, 1, 0.95]) 
+        for i, ax in enumerate(axes):
+            if i < n_plots:
+                sc = ax.scatter(
+                    itd_np[0,i] * 1e3,
+                    ild_np[0,i],
+                    c=colors,
+                    cmap='viridis',
+                )
+
+                if i % cols == cols-1:
+                    fig.colorbar(sc, ax=ax, label='Gammatone filter bank index')
+                ax.set_title(f'Listener {i+1}')
+                if i % cols == 0:
+                    ax.set_ylabel('ILD [dB]')
+                if i // cols == rows-1:
+                    ax.set_xlabel('ITD [ms]')
+                ax.set_ylim(-20, 20)
+                ax.set_xlim(-1.5, 1.5)
+                ax.grid(True)
+            else:
+                ax.set_visible(False)
+
+        # now this works
+        self.writer.add_figure("ILD_ITD", fig, global_step=epoch)
+        plt.close(fig)
+        pass
+
     def close(self):
         self.writer.close()
+

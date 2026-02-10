@@ -25,7 +25,7 @@ def setup(args):
     set_seed(seed=args.seed)
 
     # Training angles 
-    target_angle = torch.tensor([0,10,-20], device=device, dtype=dtype)  # Target angle in degrees
+    target_angle = torch.tensor([0,10,-10, 20, -20], device=device, dtype=dtype)  # Target angle in degrees
 
     # Loudspeaker and listener positions
     lstn_pos_conf = [[[-0.732, 0]],  # 1 listener position

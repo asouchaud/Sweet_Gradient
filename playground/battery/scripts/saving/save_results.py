@@ -5,7 +5,7 @@ from datetime import datetime
 import scipy.io.wavfile as wav
 
 class saver():
-    def __init__(self, current_date, current_time, reg_idx, init_idx, n_samples, angle_idx, lstn_idx, curr_idx):
+    def __init__(self, current_date, current_time, reg_idx, init_idx, n_samples, angle, lstn_idx, curr_idx):
 
             # ---------- Index mappings ----------
 
@@ -27,12 +27,6 @@ class saver():
             2: "9_pos",
         }
 
-        angle_map = {
-            0: "000_deg",
-            1: "010_deg",
-            2: "340_deg",
-        }
-
         curr_map = {
             0: ("lxx.npy", "lxx.json", "lxx.wav"),  # Localisation 
             1: ("xux.npy", "xux.json", "xux.wav"),  # Uncertainty 
@@ -42,6 +36,8 @@ class saver():
             5: ("xuc.npy", "xuc.json", "xuc.wav"),  # Uncertainty and Colouration
             6: ("luc.npy", "luc.json", "luc.wav"),  # Localisation, Uncertainty and Colouration
         }
+
+
 
             # ---------- Resolve folders / filenames ----------
         try:
@@ -60,9 +56,9 @@ class saver():
             raise ValueError(f"Invalid lstn_idx: {lstn_idx}")
 
         try:
-            angle_folder = angle_map[angle_idx]
+            angle_folder = self.angle_to_str(angle)
         except KeyError:
-            raise ValueError(f"Invalid angle_idx: {angle_idx}")
+            raise ValueError(f"Invalid angle_idx: {angle}")
 
         try:
             file_name, json_name, wav_name = curr_map[curr_idx]
@@ -73,7 +69,7 @@ class saver():
         
         # ---------- Base path ----------
         # ---------- Resolve base directory (battery/) ----------
-        BASE_DIR = Path(__file__).resolve().parent.parent
+        BASE_DIR = Path(__file__).resolve().parent.parent.parent
         folder_path = BASE_DIR / "results" / folder_name
         run_dir = folder_path / pos_folder / angle_folder
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -89,7 +85,9 @@ class saver():
         (self.run_dir / "np_files").mkdir(exist_ok=True)
         (self.run_dir / "json_files").mkdir(exist_ok=True)
 
-
+    def angle_to_str(self, angle):
+        angle_360 = angle % 360
+        return f"{int(angle_360):03d}_deg"
 
     def save_results(self, estimation_dict, est_filters):    
 

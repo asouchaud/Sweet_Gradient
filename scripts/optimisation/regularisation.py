@@ -81,9 +81,9 @@ class second_moment_regularisation:
         Returns:
             torch.Tensor: Computed regularisation loss.
         """
-        E = torch.sum((torch.abs(filter)**2), dim = -1)
+        E = torch.sum((torch.abs(filter)**2), dim = -1) # Compute the energy of the filters  
 
-        mu = torch.sum((self.reg_idx*filter.abs()**2), dim = -1)/E
+        mu = torch.sum((self.reg_idx*filter.abs()**2), dim = -1)/E # Compute the 
 
         sig = torch.sum((self.reg_idx - mu[..., None])**2 * filter.abs()**2, dim = -1)/E
 

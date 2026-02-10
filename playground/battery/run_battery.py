@@ -82,7 +82,7 @@ def run_battery(args):
                                   reg_idx=args.reg, 
                                   init_idx=args.init, 
                                   n_samples=args.n_samples, 
-                                  angle_idx=ta_idx, 
+                                  angle=target_angle[ta_idx], 
                                   lstn_idx=lstn_pos_conf_idx,
                                   curr_idx=dict_sub_idx)
                 logger = saver_obj if args.log else None
@@ -113,8 +113,8 @@ parser.add_argument("--n_samples", type=int, default=128)
 parser.add_argument("--stimulus", type=str, default="random")
 parser.add_argument("--sofa_path", type=str, default=str(default_sofa_path))
 parser.add_argument("--lr", type=float, default=0.01)
-parser.add_argument("--init", type=int, default=1, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
-parser.add_argument("--reg", type=int, default=1, help="If 1, use first moment or 2 for second moment regularisation during training")
+parser.add_argument("--init", type=int, default=0, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
+parser.add_argument("--reg", type=int, default=2, help="If 1, use first moment or 2 for second moment regularisation during training")
 parser.add_argument("--seed", type=int, default = None, help="Random seed for reproducibility")
 parser.add_argument("--log", type=int, default=1, help="If 1, will log the training in Tensorboard, to view run in terminal | tensorboard --logdir runs | ")
 args = parser.parse_args()

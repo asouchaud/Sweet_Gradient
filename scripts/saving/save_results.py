@@ -24,7 +24,7 @@ class saver():
         n_listeners = len(lstn_pos)
 
         # Build run folder name
-        run_name = f"{date_prefix}_{flag_str}_n{n_listeners}_{time_suffix}"
+        run_name = f"{flag_str}_n{n_listeners}_{date_prefix}_{time_suffix}"
         run_dir = exp_root / run_name
         
         self.run_dir = run_dir
