@@ -94,7 +94,7 @@ class saver():
         # ---------- Save wav file ---------------
         maxval = np.max(np.abs(est_filters))
         if maxval > 0:
-            est_filters = np.flip(est_filters, axis=-1) / maxval
+            est_filters = est_filters / maxval
 
         wav_path = self.run_dir / "wav_files" / self.wav_name
         wav.write(wav_path, 48000, (est_filters.T * 32767).astype(np.int16))
