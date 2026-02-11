@@ -32,10 +32,11 @@ class first_moment_regularisation:
     """
     Regularisation class to compute first moment regularisation loss.
     """
-    def __init__(self, n_samples: int, device='cuda', dtype=torch.float32):
+    def __init__(self, n_samples: int, device='cuda', dtype=torch.float32, eps = 1e-8):
         """
         Initialize the regularisation with a weight.
         """
+        self.eps = eps
         self.n_samples = n_samples
         self.reg_idx = ((torch.arange(n_samples, device=device, dtype=dtype))).view(1,1,-1)
 
@@ -53,7 +54,9 @@ class first_moment_regularisation:
             torch.Tensor: Computed regularisation loss.
         """
 
-        mu = torch.sum((self.reg_idx*filter.abs()**2), dim = -1)
+        E = torch.sum((torch.abs(filter)**2), dim = -1) + self.eps
+
+        mu = torch.sum((self.reg_idx*filter.abs()**2), dim = -1) / E
 
         return(mu.squeeze())
 
@@ -61,11 +64,12 @@ class second_moment_regularisation:
     """
     Regularisation class to compute second moment regularisation loss.
     """
-    def __init__(self, n_samples: int, device='cuda', dtype=torch.float32):
+    def __init__(self, n_samples: int, device='cuda', dtype=torch.float32, eps = 1e-8):
         """
         Initialize the regularisation with a weight.
 
         """
+        self.eps = eps
         self.n_samples = n_samples
         self.reg_idx = ((torch.arange(n_samples, device=device, dtype=dtype))).view(1,1,-1)
 
@@ -81,7 +85,7 @@ class second_moment_regularisation:
         Returns:
             torch.Tensor: Computed regularisation loss.
         """
-        E = torch.sum((torch.abs(filter)**2), dim = -1) # Compute the energy of the filters  
+        E = torch.sum((torch.abs(filter)**2), dim = -1) + self.eps# Compute the energy of the filters  
 
         mu = torch.sum((self.reg_idx*filter.abs()**2), dim = -1)/E # Compute the 
 

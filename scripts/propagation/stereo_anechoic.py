@@ -11,7 +11,7 @@ from scripts.setup.helpers import math_conv1d
 ## Stereo anechoic class definition
 
 class stereo_anechoic(nn.Module):
-    def __init__(self, stim, lstn_pos, spk_pos, sofa_file_path, fs = 44100):
+    def __init__(self, stim, lstn_pos, spk_pos, sofa_file_path, fs = 48000):
         super().__init__()
         self.fs = fs
         self.dtype = stim.dtype

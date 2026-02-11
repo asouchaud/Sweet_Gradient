@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 
 def load_optimiser(nn, lr = 0.01): # Optimiser definition
-    lr = 0.01
     optimiser = torch.optim.Adam(nn.parameters(), lr=lr)
     return optimiser
 
