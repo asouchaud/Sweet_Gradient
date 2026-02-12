@@ -1,10 +1,9 @@
 import torch
 
-def desena2020_estimateuncertainty(distance):
+def desena2020_estimateuncertainty(distance, Hmin = 0.8822):
 
     weightedLikelihood = distance['weightedLikelihood']
     n_angles = weightedLikelihood.shape[2]
-    Hmin = 0.8822
 
     values = torch.arange(1,38, dtype=weightedLikelihood.dtype, device = weightedLikelihood.device).view(1,1,n_angles)
     cos = torch.cos(2*values*2*torch.pi/n_angles)

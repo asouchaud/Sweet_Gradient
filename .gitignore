@@ -231,6 +231,8 @@ scripts/plotting/tensoboard_updates.py
 
 requirements.txt
 
+test.py
+
 
 __pycache__/
 *.pyc

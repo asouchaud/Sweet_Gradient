@@ -101,6 +101,43 @@ class Train:
             )
             print()
 
+        ##### SAVE EVERYTHING AFTER FINAL BACKPROPAGATION ####
+
+        h = self.nn(torch.ones(1,1, device=self.device, dtype=self.dtype))
+        h_l = h[:,:self.n_samples].unsqueeze(1)
+        h_r = h[:,self.n_samples:].unsqueeze(1)
+        h_full = torch.cat([h_l,h_r], dim=1)
+
+        bin_stim = self.prop(h_full)
+
+        # Get perceptual estimations and compute losses
+        loss_dict = {}
+        for entry in self.perceptual_dict.items():
+            model = entry[1] # Get model
+            model_target = model.target # Get target
+            model_loss = model.loss # Get loss function
+
+            model_estimation = model(bin_stim) # Get model estimation
+            loss = model_loss(model_estimation, torch.tensor([model_target], device=self.device, dtype=self.dtype).expand_as(model_estimation)) # Calculate loss
+            loss_dict[entry[0]] = loss / model.loss_norm # Store loss in dictionary
+
+        # Compute regularisation loss
+        if self.reg:
+            loss_dict['regularisation_l'] = self.regularisation.compute_loss(h_l) / self.regularisation.loss_norm
+            loss_dict['regularisation_r'] = self.regularisation.compute_loss(h_r) / self.regularisation.loss_norm
+
+        # # Get curriculum weighted loss
+        # weights, _ = curriculum_weights(epoch, self.n_epoch, self.optimiser, h_l, h_r, loss_dict['localization'], loss_dict['uncertainty'], loss_dict['coloration'])
+        weights = {'localisation': 1.0, 'uncertainty': 1.0, 'coloration': 1.0}#, 'regularisation_l': 1.0, 'regularisation_r': 1.0} # Temporary fixed weights
+
+        if self.reg:
+            weights = {'localisation': 1.0, 'uncertainty': 1.0, 'coloration': 1.0, 'regularisation_l': 1.0, 'regularisation_r': 1.0} # Temporary fixed weights
+
+        # Compute full loss
+        full_loss = 0
+        for key in loss_dict.keys():
+            full_loss += weights.get(key, 0) * loss_dict[key]
+
         if self.logger is not None:
             self.logger.log_losses(loss_dict, full_loss, epoch+1)
             self.logger.log_h_full(h_l, h_r, h_full, epoch+1)
