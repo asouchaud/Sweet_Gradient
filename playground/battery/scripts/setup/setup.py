@@ -25,12 +25,12 @@ def setup(args):
     set_seed(seed=args.seed)
 
     # Training angles 
-    target_angle = torch.tensor([0,10,-10, 20, -20], device=device, dtype=dtype)  # Target angle in degrees
+    target_angle = torch.tensor([0,10, 20], device=device, dtype=dtype)  # Target angle in degrees
 
     # Loudspeaker and listener positions
-    lstn_pos_conf = [[[-0.732, 0]],  # 1 listener position
-                [[-0.732, 0], [-0.732, 0.5], [-0.732, -0.5]], # 3 listener positions
-                [[-0.732, 0], [-0.732, 0.5], [-0.732, -0.5], [-0.232, 0], [-1.232, 0], [-0.232, 0.5], [-0.232, -0.5], [-1.232, 0.5], [-1.232, -0.5]]] # 9 listener positions
+    lstn_pos_conf = [#[[-0.732, 0]],  # 1 listener position
+                [[-0.732, 0], [-0.732, 0.5], [-0.732, -0.5]]] # 3 listener positions
+                #[[-0.732, 0], [-0.732, 0.5], [-0.732, -0.5], [-0.232, 0], [-1.232, 0], [-0.232, 0.5], [-0.232, -0.5], [-1.232, 0.5], [-1.232, -0.5]]] # 9 listener positions
     spk_pos = [[1,1], [1,-1]]
 
 ## Load data
@@ -51,11 +51,11 @@ def get_all_subsets(classes):
     ]
     return dict_subsets
 
-def init_perc_model(full_dict, device, dtype, fs, stim, hrirs, target_angle, gtfb):
+def init_perc_model(full_dict, device, dtype, fs, stim, hrirs, target_angle, gtfb, lstn_pos_conf = None):
     perceptual_dict = {}
     for key, model_class in full_dict.items():
         if key == 'localisation':
-            model_instance = model_class(F.mse_loss, target=target_angle, hrirs=hrirs, fs=fs, gtfb=gtfb) # Initialize model instance
+            model_instance = model_class(F.mse_loss, target=target_angle, hrirs=hrirs, fs=fs, gtfb=gtfb, lstn_pos_conf=lstn_pos_conf) # Initialize model instance
         elif key == 'uncertainty':
             model_instance = model_class(F.mse_loss, torch.tensor([0], device = device, dtype=dtype), hrirs=hrirs, fs=fs, gtfb=gtfb) # Initialize model instance
         elif key == 'colouration':

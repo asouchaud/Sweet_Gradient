@@ -71,7 +71,10 @@ def run_battery(args):
                                  sofa_file_path=default_sofa_path) # Load stereo anechoic propagation module
                 
                 # Initialize model
-                perceptual_dict = init_perc_model(dict_subsets[dict_sub_idx], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb)
+                if args.near_field:
+                    perceptual_dict = init_perc_model(dict_subsets[dict_sub_idx], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb, lstn_pos_conf[lstn_pos_conf_idx])
+                else:
+                    perceptual_dict = init_perc_model(dict_subsets[dict_sub_idx], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb)
                 
                 # Initialise neural network
                 nn_model = load_NN(n_samples=args.n_samples, device=device, dtype=dtype, init = args.init) # Load neural network ICLD or FIR
@@ -82,8 +85,9 @@ def run_battery(args):
                                   reg_idx=args.reg, 
                                   init_idx=args.init, 
                                   n_samples=args.n_samples, 
+                                  nf_idx=args.near_field,
                                   angle=target_angle[ta_idx], 
-                                  lstn_idx=lstn_pos_conf_idx,
+                                  lstn_len=len(lstn_pos_conf[lstn_pos_conf_idx]),
                                   curr_idx=dict_sub_idx)
                 logger = saver_obj if args.log else None
 
@@ -108,14 +112,15 @@ repo_root = Path(__file__).resolve().parent.parent
 default_sofa_path = repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"
 
 parser = argparse.ArgumentParser()
+parser.add_argument("--near_field", type = int, default = 1, help = "Optimise for source in the near-field (0) and far-field (1)")
 parser.add_argument("--epochs", type=int, default=1000)
 parser.add_argument("--n_samples", type=int, default=128)
 parser.add_argument("--stimulus", type=str, default="random")
 parser.add_argument("--sofa_path", type=str, default=str(default_sofa_path))
-parser.add_argument("--lr", type=float, default=0.0001)
-parser.add_argument("--init", type=int, default=0, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
+parser.add_argument("--lr", type=float, default=0.1)
+parser.add_argument("--init", type=int, default=1, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
 parser.add_argument("--reg", type=int, default=2, help="If 1, use first moment or 2 for second moment regularisation during training")
-parser.add_argument("--seed", type=int, default = None, help="Random seed for reproducibility")
+parser.add_argument("--seed", type=int, default = 44, help="Random seed for reproducibility")
 parser.add_argument("--log", type=int, default=1, help="If 1, will log the training in Tensorboard, to view run in terminal | tensorboard --logdir runs | ")
 args = parser.parse_args()
 

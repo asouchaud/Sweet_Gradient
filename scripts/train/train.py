@@ -54,7 +54,7 @@ class Train:
                 model_loss = model.loss # Get loss function
 
                 model_estimation = model(bin_stim) # Get model estimation
-                loss = model_loss(model_estimation, torch.tensor([model_target], device=self.device, dtype=self.dtype).expand_as(model_estimation)) # Calculate loss
+                loss = model_loss(model_estimation, torch.tensor(model_target, device=self.device, dtype=self.dtype).expand_as(model_estimation)) # Calculate loss
                 loss_dict[entry[0]] = loss / model.loss_norm # Store loss in dictionary
 
             
@@ -118,7 +118,7 @@ class Train:
             model_loss = model.loss # Get loss function
 
             model_estimation = model(bin_stim) # Get model estimation
-            loss = model_loss(model_estimation, torch.tensor([model_target], device=self.device, dtype=self.dtype).expand_as(model_estimation)) # Calculate loss
+            loss = model_loss(model_estimation, torch.tensor(model_target, device=self.device, dtype=self.dtype).expand_as(model_estimation)) # Calculate loss
             loss_dict[entry[0]] = loss / model.loss_norm # Store loss in dictionary
 
         # Compute regularisation loss

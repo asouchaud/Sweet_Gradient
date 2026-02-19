@@ -5,7 +5,7 @@ from datetime import datetime
 import scipy.io.wavfile as wav
 
 class saver():
-    def __init__(self, current_date, current_time, reg_idx, init_idx, n_samples, angle, lstn_idx, curr_idx):
+    def __init__(self, current_date, current_time, reg_idx, init_idx, n_samples, nf_idx, angle, lstn_len, curr_idx):
 
             # ---------- Index mappings ----------
 
@@ -21,10 +21,16 @@ class saver():
             2: "1" # Impulse at only left loudspeaker and silent right loudspeaker initialisation
         }
 
+        field_map = {
+            0: "ff", # Far-field
+            1: "nf", # Near-field
+        }
+
         lstn_map = {
-            0: "1_pos",
-            1: "3_pos",
-            2: "9_pos",
+            1: "1_pos",
+            3: "3_pos",
+            5: "5_pos",
+            9: "9_pos",
         }
 
         curr_map = {
@@ -49,11 +55,16 @@ class saver():
             init_id = init_map[init_idx]
         except KeyError:
             raise ValueError(f"Invalid init_idx:{init_idx}")
+        
+        try:
+            field_id = field_map[nf_idx]
+        except KeyError:
+            raise ValueError(f"Invalid nf_idx: {nf_idx}")
 
         try:
-            pos_folder = lstn_map[lstn_idx]
+            pos_folder = lstn_map[lstn_len]
         except KeyError:
-            raise ValueError(f"Invalid lstn_idx: {lstn_idx}")
+            raise ValueError(f"Invalid lstn_len: {lstn_len}")
 
         try:
             angle_folder = self.angle_to_str(angle)
@@ -65,7 +76,7 @@ class saver():
         except KeyError:
             raise ValueError(f"Invalid curr_idx: {curr_idx}")
 
-        folder_name = f"r{reg_id}_i{init_id}_n{n_samples}_{current_date}_{current_time}"
+        folder_name = f"r{reg_id}_i{init_id}_n{n_samples}_{field_id}_{current_date}_{current_time}"
         
         # ---------- Base path ----------
         # ---------- Resolve base directory (battery/) ----------
