@@ -80,13 +80,13 @@ class stereo_anechoic(nn.Module):
     def get_IRs(self, left_spk_idx, right_spk_idx):
         
         # Get left speaker to left ear IR
-        left_spk_left_ear_IR = torch.tensor(self.sofaile.Data_IR[left_spk_idx.cpu().numpy(), 0], device=self.device, dtype = torch.float32)
+        left_spk_left_ear_IR = torch.tensor(self.sofaile.Data_IR[left_spk_idx.cpu().numpy(), 0], device=self.device, dtype = self.dtype)
         # Get left speaker to right ear IR
-        left_spk_right_ear_IR = torch.tensor(self.sofaile.Data_IR[left_spk_idx.cpu().numpy(), 1], device=self.device, dtype = torch.float32)
+        left_spk_right_ear_IR = torch.tensor(self.sofaile.Data_IR[left_spk_idx.cpu().numpy(), 1], device=self.device, dtype = self.dtype)
         # Get right speaker to left ear IR
-        right_spk_left_ear_IR = torch.tensor(self.sofaile.Data_IR[right_spk_idx.cpu().numpy(), 0], device=self.device, dtype = torch.float32)
+        right_spk_left_ear_IR = torch.tensor(self.sofaile.Data_IR[right_spk_idx.cpu().numpy(), 0], device=self.device, dtype = self.dtype)
         # Get right speaker to right ear IR
-        right_spk_right_ear_IR = torch.tensor(self.sofaile.Data_IR[right_spk_idx.cpu().numpy(), 1], device=self.device, dtype = torch.float32)
+        right_spk_right_ear_IR = torch.tensor(self.sofaile.Data_IR[right_spk_idx.cpu().numpy(), 1], device=self.device, dtype = self.dtype)
 
         # Concatenate over left/right ear
         left_spk_IR = torch.stack((left_spk_left_ear_IR, left_spk_right_ear_IR), dim=1)

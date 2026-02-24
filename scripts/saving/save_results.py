@@ -3,6 +3,8 @@ import json
 import numpy as np
 from datetime import datetime
 
+from save_normalise import normalise_max
+
 
 class saver():
     def __init__(self, perceptual_dict, lstn_pos):
@@ -42,7 +44,7 @@ class saver():
 
         # ---------- Save artifacts ----------
         np.save(artifacts_dir / "est_filters.npy",
-                est_filters)
+                normalise_max(est_filters))
 
         # Optional: save perceptual outputs as arrays if needed
         for key, value in estimation_dict.items():

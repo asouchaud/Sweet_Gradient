@@ -66,10 +66,10 @@ def load_gtfb(fs, device, dtype):
 
     return gtfb
 
-def load_hrirs(dtype, device, sofa_path = os.path.join('data', 'impulses', 'SOFA', 'D1_48K_24bit_256tap_FIR_SOFA.sofa'),):
+def load_hrirs(dtype, device, sofa_path = os.path.join('data', 'impulses', 'SOFA', 'D1_48K_24bit_256tap_FIR_SOFA.sofa'), idx_path = os.path.join( 'data','impulses', 'SOFA', 'D1_48k_hrirs_idx.csv')):
     # Load SOFA File 
-    sofaile = sf.read_sofa(os.path.join('data', 'impulses', 'SOFA', 'D1_48K_24bit_256tap_FIR_SOFA.sofa')) #CHANGE HERE TO CHANGE HRIR SET
-    idx = np.loadtxt(os.path.join( 'data','impulses', 'SOFA', 'D1_48k_hrirs_idx.csv'), delimiter=",")
+    sofaile = sf.read_sofa(sofa_path) #CHANGE HERE TO CHANGE HRIR SET
+    idx = np.loadtxt(idx_path, delimiter=",") # FROM RIGHT TO LEFT EAR, 37 AZIMUTHS FROM -90 TO 90 IN STEPS OF 5 DEGREES, 1 ELEVATION (0 DEGREES)
 
     # Get IRs from SOFA File and Pad for Desired Output 
     hrirs = sofaile.Data_IR[idx.astype(int),:,:]

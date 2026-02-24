@@ -65,15 +65,17 @@ class Train:
 
             # # Get curriculum weighted loss
             # weights, _ = curriculum_weights(epoch, self.n_epoch, self.optimiser, h_l, h_r, loss_dict['localization'], loss_dict['uncertainty'], loss_dict['coloration'])
-            weights = {'localisation': 1.0, 'uncertainty': 1.0, 'coloration': 1.0}#, 'regularisation_l': 1.0, 'regularisation_r': 1.0} # Temporary fixed weights
+            weights = {'localisation': 1.0, 'uncertainty': 1e-5, 'coloration': 1.0}#, 'regularisation_l': 1.0, 'regularisation_r': 1.0} # Temporary fixed weights
 
             if self.reg:
-                weights = {'localisation': 1.0, 'uncertainty': 1.0, 'coloration': 1.0, 'regularisation_l': 1.0, 'regularisation_r': 1.0} # Temporary fixed weights
+                weights = {'localisation': 1.0, 'uncertainty': 1e-5, 'coloration': 1.0, 'regularisation_l': 1.0, 'regularisation_r': 1.0} # Temporary fixed weights
 
             # Compute full loss
             full_loss = 0
             for key in loss_dict.keys():
-                full_loss += weights.get(key, 0) * loss_dict[key]
+                loss_dict[key] = loss_dict[key] * weights.get(key, 0)
+                full_loss += loss_dict[key]
+
 
             # Log training in Tensorboard
             if self.logger is not None:

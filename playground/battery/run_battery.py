@@ -106,6 +106,17 @@ def run_battery(args):
                 est_filters, estimation_dict = trainer.evaluate()
 
                 saver_obj.save_results(estimation_dict, est_filters)
+    
+    saver_obj.save_config(nf=args.near_field,
+                          epochs=args.epochs,
+                          n_samples=args.n_samples,
+                          stimulus=args.stimulus,
+                          sofa_path=args.sofa_path,
+                          lr=args.lr,
+                          init=args.init,
+                          reg=args.reg,
+                          seed=args.seed,
+                          log=args.log)
 
 # Default paths relative to this repository (portable across machines/OSes)
 repo_root = Path(__file__).resolve().parent.parent
@@ -117,10 +128,10 @@ parser.add_argument("--epochs", type=int, default=1000)
 parser.add_argument("--n_samples", type=int, default=128)
 parser.add_argument("--stimulus", type=str, default="random")
 parser.add_argument("--sofa_path", type=str, default=str(default_sofa_path))
-parser.add_argument("--lr", type=float, default=0.1)
+parser.add_argument("--lr", type=float, default=0.01)
 parser.add_argument("--init", type=int, default=1, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
 parser.add_argument("--reg", type=int, default=2, help="If 1, use first moment or 2 for second moment regularisation during training")
-parser.add_argument("--seed", type=int, default = 44, help="Random seed for reproducibility")
+parser.add_argument("--seed", type=int, default = 45, help="Random seed for reproducibility")
 parser.add_argument("--log", type=int, default=1, help="If 1, will log the training in Tensorboard, to view run in terminal | tensorboard --logdir runs | ")
 args = parser.parse_args()
 

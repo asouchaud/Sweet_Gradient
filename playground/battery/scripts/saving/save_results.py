@@ -125,3 +125,25 @@ class saver():
             json.dump(results, f, indent=4)
 
         print(f"\n✅ Results saved to {self.run_dir / 'json_files' / self.json_name}")
+    
+    def save_config(self, nf, epochs, n_samples, stimulus, sofa_path, lr, init, reg, seed, log):
+        
+        config = {
+            "near_field": nf,
+            "epochs": epochs,
+            "n_samples": n_samples,
+            "stimulus": stimulus,
+            "sofa_path": sofa_path,
+            "learning_rate": lr,
+            "initialisation": init,
+            "regularisation": reg,
+            "seed": seed,
+            "log": log
+        }
+
+        with open(self.folder_path / "config.json", "w") as f:
+            json.dump(config, f, indent=4)
+
+        print(f"\n✅ Config saved to {self.folder_path / 'config.json'}")
+    
+

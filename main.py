@@ -59,7 +59,7 @@ def main(args):
     epochs = args.epochs # Number of training epochs
 
     # Loudspkeaker and listener positions
-    lstn_pos_conf = [[[-0.732, 0.5]],  # 1 listner position
+    lstn_pos_conf = [[[-0.732, 0.0]],  # 1 listner position
                 [[-0.732, 0], [-0.732, 0.5], [-0.732, -0.5]], # 3 listener positions
                 [[-0.732, 0], [-0.732, 0.5], [-0.732, -0.5], [-0.232, 0], [-1.232, 0]], # 5 listener positions
                 [[-0.732, 0], [-0.732, 0.5], [-0.732, -0.5], [-0.232, 0], [-1.232, 0], [-0.232, 0.5], [-0.232, -0.5], [-1.232, 0.5], [-1.232, -0.5]]] # 9 listener positions
@@ -78,7 +78,7 @@ def main(args):
 
     # Initiate perceptual models
     loc_loss = F.mse_loss
-    unc_loss = F.mse_loss
+    unc_loss = F.l1_loss
     col_loss = F.l1_loss
 
     loc_target = args.target_angle
@@ -92,8 +92,8 @@ def main(args):
     unc_model = desena2020(loss = unc_loss, target = unc_target, hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # De Sena et al. 2020 model
     col_model = spectral_matching(loss = col_loss, target = col_target, stim=stim, hrirs=hrirs, target_angle=args.target_angle, fs=fs).to(device=device, dtype=dtype) # Spectral Matching model
 
-    perceptual_dict = {'localisation': loc_model}#,
-                         #'uncertainty': unc_model,}
+    perceptual_dict = {'localisation': loc_model,
+                         'uncertainty': unc_model}#,
                          #'coloration': col_model}
 
     # Initialise neural network
@@ -143,13 +143,13 @@ if __name__ == "__main__":
     parser.add_argument("--near_field", type = int, default = 0, help = "Optimise for source in the near-field (1) and far-field (0)")
     parser.add_argument("--epochs", type=int, default=1000)
     parser.add_argument("--n_samples", type=int, default=128)
-    parser.add_argument("--target_angle", type=float, default=-25.0)
+    parser.add_argument("--target_angle", type=float, default=15.0)
     parser.add_argument("--stimulus", type=str, default="random")
     parser.add_argument("--sofa_path", type=str, default=str(default_sofa_path))
-    parser.add_argument("--lstn_pos_conf", type=int, default=1, help="Listener position configuration index (0: 1 pos, 1: 3 pos, 2: 5 pos, 3: 9 pos)")
+    parser.add_argument("--lstn_pos_conf", type=int, default=0, help="Listener position configuration index (0: 1 pos, 1: 3 pos, 2: 5 pos, 3: 9 pos)")
     parser.add_argument("--lr", type=float, default=0.001)
     parser.add_argument("--init", type=int, default=1, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
-    parser.add_argument("--reg", type=int, default=0, help="If 1, use first moment or 2 for second moment regularisation during training")
+    parser.add_argument("--reg", type=int, default=2, help="If 1, use first moment or 2 for second moment regularisation during training")
     parser.add_argument("--seed", type=int, default = None, help="Random seed for reproducibility")
     parser.add_argument("--log", type=int, default=1, help="If 1, will log the training in Tensorboard, to view run in terminal | tensorboard --logdir runs | ")
     parser.add_argument("--device", type=str, default=None, help="Device to use for computation (e.g., 'cpu', 'cuda', or 'mps'). If None, will use CUDA if available.")
