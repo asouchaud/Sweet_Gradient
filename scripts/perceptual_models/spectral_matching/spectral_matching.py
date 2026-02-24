@@ -7,10 +7,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchaudio.functional as TF
 
+from scripts.perceptual_models.spectral_matching.spectral_matching_helpers import near_field_target
+from scripts.perceptual_models.spectral_matching.spectral_matching_helpers import near_field_comp_angles
+from scripts.setup.helpers import math_conv1d
 
 
 class spectral_matching(nn.Module):
-    def __init__(self, loss, target, stim, hrirs, target_angle, fs, n_fft=4096, sofa_path = os.path.join('data', 'impulses', 'SOFA', 'D1_48K_24bit_256tap_FIR_SOFA.sofa')):
+    def __init__(self, loss, target, stim, hrirs, target_angle, fs, lstn_pos_conf = None, n_fft=4096, sofa_path = os.path.join('data', 'impulses', 'SOFA', 'D1_48K_24bit_256tap_FIR_SOFA.sofa')):
         super(spectral_matching, self).__init__()
         
         self.dtype = hrirs.dtype
@@ -23,12 +26,31 @@ class spectral_matching(nn.Module):
         self.stim = stim
         self.sofaile = sf.read_sofa(sofa_path)
 
-        self.reference_hrir = self.get_IR(self.sofa_find(self.target_angle)).view(2,1,-1).to(dtype=self.dtype, device=self.device)
-        self.reference_stim = F.conv1d(self.stim, torch.flip(self.reference_hrir, dims=(2,)), padding = 'same').permute(1, 0, 2)
-        self.reference_fft = 20*torch.log(torch.abs(torch.fft.rfft(self.reference_stim, n=n_fft, dim = -1))).permute(1,0,2)
+        if isinstance(lstn_pos_conf, type(None)):
+            
+            self.reference_hrir = self.get_IR(self.sofa_find(self.target_angle)).view(2,1,-1).to(dtype=self.dtype, device=self.device)
+            self.reference_stim = math_conv1d(self.stim, self.reference_hrir, padding = 'same').permute(1, 0, 2)
+            self.reference_fft = 20*torch.log(torch.abs(torch.fft.rfft(self.reference_stim, n=n_fft, dim = -1))).permute(1,0,2)
 
-        low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
-        low_fft = 20*torch.log(torch.abs(torch.fft.rfft(low_stim, n=n_fft, dim = -1))).permute(1,0,2)
+            low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
+            low_fft = 20*torch.log(torch.abs(torch.fft.rfft(low_stim, n=n_fft, dim = -1))).permute(1,0,2)
+
+        elif isinstance(lstn_pos_conf, list):
+
+            near_field_loc = near_field_target(target_angle)
+            self.target_angle = near_field_comp_angles(near_field_loc, lstn_pos_conf)
+
+            self.reference_hrir = self.get_IR(self.sofa_find(self.target_angle)).view(2*len(lstn_pos_conf),1,-1).to(dtype=self.dtype, device=self.device)
+            self.reference_stim = math_conv1d(self.stim, self.reference_hrir, padding = 'same').permute(1, 0, 2)
+            self.reference_fft = 20*torch.log(torch.abs(torch.fft.rfft(self.reference_stim, n=n_fft, dim = -1))).permute(1,0,2).view(len(lstn_pos_conf), 2, -1)
+
+            low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
+            low_fft = 20*torch.log(torch.abs(torch.fft.rfft(low_stim, n=n_fft, dim = -1))).permute(1,0,2).view(len(lstn_pos_conf), 2, -1)
+        else:
+            print("Wrong data type, defaulting for far-field")
+            self.target = target_angle
+
+        
 
         self.target = target
         self.loss = loss

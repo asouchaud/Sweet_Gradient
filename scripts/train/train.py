@@ -65,10 +65,10 @@ class Train:
 
             # # Get curriculum weighted loss
             # weights, _ = curriculum_weights(epoch, self.n_epoch, self.optimiser, h_l, h_r, loss_dict['localization'], loss_dict['uncertainty'], loss_dict['coloration'])
-            weights = {'localisation': 1.0, 'uncertainty': 1e-5, 'coloration': 1.0}#, 'regularisation_l': 1.0, 'regularisation_r': 1.0} # Temporary fixed weights
+            weights = {'localisation': 1.0, 'uncertainty': 1, 'coloration': 1.0}#, 'regularisation_l': 1.0, 'regularisation_r': 1.0} # Temporary fixed weights
 
             if self.reg:
-                weights = {'localisation': 1.0, 'uncertainty': 1e-5, 'coloration': 1.0, 'regularisation_l': 1.0, 'regularisation_r': 1.0} # Temporary fixed weights
+                weights = {'localisation': 1.0, 'uncertainty': 1, 'coloration': 1.0, 'regularisation_l': 1.0, 'regularisation_r': 1.0} # Temporary fixed weights
 
             # Compute full loss
             full_loss = 0
