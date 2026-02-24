@@ -3,7 +3,7 @@ import json
 import numpy as np
 from datetime import datetime
 
-from save_normalise import normalise_max
+from scripts.saving.save_normalise import normalise_max
 
 
 class saver():

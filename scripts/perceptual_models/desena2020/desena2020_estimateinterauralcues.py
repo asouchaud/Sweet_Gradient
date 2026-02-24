@@ -69,8 +69,8 @@ def desena2020_estimateinterauralcues(bin_stim,fs,gtfb, tau_IACC=0.01):
     # ITD/ILD Estimation
     itd = torch.sum(torch.mul(softmax_st(iaccFuncts, dim=-1, tau=tau_IACC), lagValues), dim=-1) # Softmax straight-through estimator
     # itd = torch.sum(torch.mul(torch.softmax(iaccFuncts/tau_IACC, dim=-1), lagValues), dim=-1) # Basic Softmax
-    ild = (20 * torch.log10(torch.sqrt(torch.sum(gtfbout_right ** 2, dim=-1) + 1e-15)) - 
-           20 * torch.log10(torch.sqrt(torch.sum(gtfbout_left ** 2, dim=-1) + 1e-15)))
+    ild = (20 * torch.log10(torch.sqrt(torch.sum(gtfbout_right ** 2, dim=-1) + 1e-12)) - 
+           20 * torch.log10(torch.sqrt(torch.sum(gtfbout_left ** 2, dim=-1) + 1e-12)))
     
     # Format for desena2020_distance_torch
     itd = itd.view(batch_size, N_lstn_pos, N_banks)

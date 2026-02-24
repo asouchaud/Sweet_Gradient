@@ -50,7 +50,6 @@ class spectral_matching(nn.Module):
             print("Wrong data type, defaulting for far-field")
             self.target = target_angle
 
-        
 
         self.target = target
         self.loss = loss

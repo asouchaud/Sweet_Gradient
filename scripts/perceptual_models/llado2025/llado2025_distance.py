@@ -29,8 +29,8 @@ def llado2025_distance(target,template):
     p = 0.7
     
     # Calculate Distance Between Template and Target per Frequency Band
-    distance_itd = torch.pow(torch.abs(target_itd_normalized - template_itd_normalized) + 1e-5, p)
-    distance_ild = torch.pow(torch.abs(target_ild_normalized - template_ild_normalized) + 1e-5 , p)
+    distance_itd = torch.pow(torch.abs(target_itd_normalized - template_itd_normalized) + 1e-8, p)
+    distance_ild = torch.pow(torch.abs(target_ild_normalized - template_ild_normalized) + 1e-8 , p)
 
     # Weighted Sum of ILD and ITD Distances per Frequency Band
     distance_combined = torch.pow(distance_itd * (1 - weighting_function_itd_ild) + distance_ild * weighting_function_itd_ild, 1/p)

@@ -87,12 +87,14 @@ def main(args):
 
     if args.near_field == 1:
         loc_model = llado2025(loss = loc_loss, target = loc_target, hrirs=hrirs, fs=fs, gtfb=gtfb, lstn_pos_conf=lstn_pos_conf[args.lstn_pos_conf]).to(device=device, dtype=dtype) # Llado et al. 2025 model
+        col_model = spectral_matching(loss = col_loss, target = col_target, stim=stim, hrirs=hrirs, target_angle=args.target_angle, fs=fs, lstn_pos_conf=lstn_pos_conf[args.lstn_pos_conf]).to(device=device, dtype=dtype) # Spectral Matching model
     else: 
         loc_model = llado2025(loss = loc_loss, target = loc_target, hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # Llado et al. 2025 model
+        col_model = spectral_matching(loss = col_loss, target = col_target, stim=stim, hrirs=hrirs, target_angle=args.target_angle, fs=fs).to(device=device, dtype=dtype) # Spectral Matching model
     unc_model = desena2020(loss = unc_loss, target = unc_target, hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # De Sena et al. 2020 model
-    col_model = spectral_matching(loss = col_loss, target = col_target, stim=stim, hrirs=hrirs, target_angle=args.target_angle, fs=fs).to(device=device, dtype=dtype) # Spectral Matching model
+    
 
-    perceptual_dict = {'localisation': loc_model,
+    perceptual_dict = {#'localisation': loc_model,
                          'uncertainty': unc_model}#,
                          #'coloration': col_model}
 
@@ -140,13 +142,13 @@ if __name__ == "__main__":
     default_sofa_path = repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--near_field", type = int, default = 0, help = "Optimise for source in the near-field (1) and far-field (0)")
+    parser.add_argument("--near_field", type = int, default = 1, help = "Optimise for source in the near-field (1) and far-field (0)")
     parser.add_argument("--epochs", type=int, default=1000)
     parser.add_argument("--n_samples", type=int, default=128)
     parser.add_argument("--target_angle", type=float, default=15.0)
     parser.add_argument("--stimulus", type=str, default="random")
     parser.add_argument("--sofa_path", type=str, default=str(default_sofa_path))
-    parser.add_argument("--lstn_pos_conf", type=int, default=0, help="Listener position configuration index (0: 1 pos, 1: 3 pos, 2: 5 pos, 3: 9 pos)")
+    parser.add_argument("--lstn_pos_conf", type=int, default=1, help="Listener position configuration index (0: 1 pos, 1: 3 pos, 2: 5 pos, 3: 9 pos)")
     parser.add_argument("--lr", type=float, default=0.001)
     parser.add_argument("--init", type=int, default=1, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
     parser.add_argument("--reg", type=int, default=2, help="If 1, use first moment or 2 for second moment regularisation during training")
