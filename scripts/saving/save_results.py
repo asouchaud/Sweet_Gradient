@@ -61,6 +61,7 @@ class saver():
             "listeners_position": lstn_pos,
             "n_listeners": len(lstn_pos),
             "speakers_position": spk_pos,
+            "near_field": bool(args.near_field),
             "target_angle": args.target_angle,
             "stimulus": args.stimulus,
             "HRTF": Path(args.sofa_path).name,

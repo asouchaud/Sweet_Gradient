@@ -26,9 +26,9 @@ class Train:
 
         if logger is not None:
             if saver is not None:
-                self.logger = TensorboardLogger(logger.run_dir / 'tensorboard' / saver.file_name[:-4])
+                self.logger = TensorboardLogger(logger.run_dir / 'tensorboard' / saver.file_name[:-4], device = self.device, dtype = self.dtype)
             else: 
-                self.logger = TensorboardLogger(logger.run_dir / 'tensorboard' )
+                self.logger = TensorboardLogger(logger.run_dir / 'tensorboard', device = self.device, dtype = self.dtype)
         else:
             self.logger = None
 
@@ -48,6 +48,7 @@ class Train:
 
             # Get perceptual estimations and compute losses
             loss_dict = {}
+            est_dict = {}
             for entry in self.perceptual_dict.items():
                 model = entry[1] # Get model
                 model_target = model.target # Get target
@@ -56,6 +57,7 @@ class Train:
                 model_estimation = model(bin_stim) # Get model estimation
                 loss = model_loss(model_estimation, torch.tensor(model_target, device=self.device, dtype=self.dtype).expand_as(model_estimation)) # Calculate loss
                 loss_dict[entry[0]] = loss / model.loss_norm # Store loss in dictionary
+                est_dict[entry[0]] = model_estimation # Store estimation in dictionary
 
             
             # Compute regularisation loss
@@ -80,10 +82,27 @@ class Train:
             # Log training in Tensorboard
             if self.logger is not None:
                 self.logger.log_losses(loss_dict, full_loss, epoch)
-                self.logger.log_h_full(h_l, h_r, h_full, epoch)
+                self.logger.log_h_full(h_full, epoch)
 
                 if 'localisation' in self.perceptual_dict or 'uncertainty' in self.perceptual_dict:
                     self.logger.log_bin_cues(bin_stim, epoch)
+
+                if 'localisation' in self.perceptual_dict:
+                    if self.perceptual_dict['localisation'].lstn_pos_conf is not None:
+                        self.logger.log_plot_arrows(self.prop.lstn_pos, 
+                                                   self.prop.spk_pos, 
+                                                   est_dict['localisation'], 
+                                                   est_dict['uncertainty'] if 'uncertainty' in self.perceptual_dict else None, 
+                                                   est_dict['coloration'] if 'coloration' in self.perceptual_dict else None, 
+                                                   epoch, 
+                                                   loc_target=self.perceptual_dict['localisation'].target[0])
+                    else:
+                        self.logger.log_plot_arrows(self.prop.lstn_pos, 
+                                                   self.prop.spk_pos, 
+                                                   est_dict['localisation'], 
+                                                   est_dict['uncertainty'] if 'uncertainty' in self.perceptual_dict else None, 
+                                                   est_dict['coloration'] if 'coloration' in self.perceptual_dict else None, 
+                                                   epoch)
 
             # Optimize
             self.optimiser.zero_grad()
