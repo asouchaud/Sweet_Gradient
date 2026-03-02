@@ -2,9 +2,6 @@
 import torch
 import torch.nn.functional as F
 
-# Import libraries for plotting
-from scripts.plotting.graph_plot import graph_plot
-
 # Import setup functions
 from scripts.setup.setup import set_seed
 from scripts.setup.setup import load_gtfb
@@ -28,10 +25,10 @@ def setup(args):
     target_angle = torch.tensor([0,10, 20], device=device, dtype=dtype)  # Target angle in degrees
 
     # Loudspeaker and listener positions
-    lstn_pos_conf = [#[[-0.732, 0]],  # 1 listener position
-                [[-0.732, 0], [-0.732, 0.5], [-0.732, -0.5]]] # 3 listener positions
-                #[[-0.732, 0], [-0.732, 0.5], [-0.732, -0.5], [-0.232, 0], [-1.232, 0], [-0.232, 0.5], [-0.232, -0.5], [-1.232, 0.5], [-1.232, -0.5]]] # 9 listener positions
-    spk_pos = [[1,1], [1,-1]]
+    lstn_pos_conf = [#[[0, 0]],  # 1 listener position
+                #[[0, 0], [0, 0.5], [0, -0.5]]] # 3 listener positions
+                [[0, 0], [0, 0.5], [0, -0.5], [0.5, 0], [-0.5, 0], [0.5, 0.5], [0.5, -0.5], [-0.5, 0.5], [-0.5, -0.5]]] # 9 listener positions
+    spk_pos = [[1.732,1], [1.732,-1]]
 
 ## Load data
 

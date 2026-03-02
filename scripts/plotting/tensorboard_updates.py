@@ -20,28 +20,30 @@ class TensorboardLogger:
 
     def log_losses(self, loss_dict, full_loss, epoch):
         for key, value in loss_dict.items():
-            self.writer.add_scalar(f"loss/{key}", value.item(), epoch)
-        self.writer.add_scalar("loss/total", full_loss.item(), epoch)
+            self.writer.add_scalar(f"loss/{key}", value.item(), global_step=epoch)
+        self.writer.add_scalar("loss/total", full_loss.item(), global_step=epoch)
 
 
     def log_h_full(self, h_full, epoch):
         if epoch % self.h_log_interval != 0:
             return
         
+        print("Logging filters")
+        
         h_full = h_full.squeeze(0).detach().cpu().numpy()
 
         # Histograms
-        self.writer.add_histogram("h_full/left", h_full[0], epoch)
-        self.writer.add_histogram("h_full/right", h_full[1], epoch)
+        self.writer.add_histogram("h_full/left", h_full[0], global_step=epoch)
+        self.writer.add_histogram("h_full/right", h_full[1], global_step=epoch)
 
         # Time domain plots
         fig_time = plot_time(h_full, show=False)
-        self.writer.add_figure("h_full (Time Domain)", fig_time, epoch)
+        self.writer.add_figure("h_full (Time Domain)", fig_time, global_step=epoch)
         plt.close(fig_time)
 
         # Frequency domain plots
         fig_freq = plot_freq(h_full, self.fs, show=False)
-        self.writer.add_figure("h_full (Frequency Domain)", fig_freq, epoch)
+        self.writer.add_figure("h_full (Frequency Domain)", fig_freq, global_step=epoch)
         plt.close(fig_freq)
     
 
@@ -50,7 +52,7 @@ class TensorboardLogger:
             return
 
         fig_bin_cues = plot_bin_cues(bin_stim, self.fs, gtfb=self.gtfb, show=False)
-        self.writer.add_figure("Binaural Cues", fig_bin_cues, epoch)
+        self.writer.add_figure("Binaural Cues", fig_bin_cues, global_step=epoch)
         plt.close(fig_bin_cues)
 
 

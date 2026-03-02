@@ -21,10 +21,10 @@ class binaural_listening:
         # Loudspkeaker and listener positions
         self.fs = json_data["fs"]
         self.spk_pos = [[1,1], [1,-1]]
-        lstn_pos_conf = [[[-0.732, 0.0]],  # 1 listner position
-                    [[-0.732, 0], [-0.732, 0.5], [-0.732, -0.5]], # 3 listener positions
-                    [[-0.732, 0], [-0.732, 0.5], [-0.732, -0.5], [-0.232, 0], [-1.232, 0]], # 5 listener positions
-                    [[-0.732, 0], [-0.732, 0.5], [-0.732, -0.5], [-0.232, 0], [-1.232, 0], [-0.232, 0.5], [-0.232, -0.5], [-1.232, 0.5], [-1.232, -0.5]]] # 9
+        lstn_pos_conf = [[[0.0, 0.0]],  # 1 listner position
+                    [[0.0, 0], [0.0, 0.5], [0.0, -0.5]], # 3 listener positions
+                    [[0.0, 0], [0.0, 0.5], [0.0, -0.5], [0.5, 0], [-0.5, 0]], # 5 listener positions
+                    [[0.0, 0], [0.0, 0.5], [0.0, -0.5], [0.5, 0], [-0.5, 0], [0.5, 0.5], [0.5, -0.5], [-0.5, 0.5], [-0.5, -0.5]]] # 9
         
         match = re.search(r"n(\d+)", os.path.basename(folder_path))
         number = match.group(1)
@@ -46,13 +46,24 @@ class binaural_listening:
         self.bin_stim = self.prop(self.filters)
         self.pos_idx = 0
         self.stim_idx = 0
+        self.is_playing = 0
 
     def listen(self):
 
-        # Convert to numpy and play
+
+        if self.is_playing:
+            sd.stop()
+            self.is_playing = False
+            return
+
+        # Otherwise → start playback
         bin_stim_np = self.bin_stim.cpu().detach().numpy().squeeze()
-        sd.play(bin_stim_np[self.pos_idx].T, self.fs)
-        sd.wait()
+        audio = bin_stim_np[self.pos_idx].T
+        audio_norm = audio / np.max(np.abs(audio))
+
+        self.current_audio = audio_norm
+        sd.play(self.current_audio, self.fs)
+        self.is_playing = True
     
     def select_stim(self, stim_idx):
 
@@ -92,8 +103,7 @@ if __name__ == "__main__":
                     binaural_listening_instance.pos_idx += 1
                     binaural_listening_instance.pos_idx %= len(binaural_listening_instance.lstn_pos)
                     print(f"Selected position: {binaural_listening_instance.lstn_pos[binaural_listening_instance.pos_idx]}")
-                elif event.key == pygame.K_SPACE:
-                    binaural_listening_instance.listen()
+                
                 elif event.key == pygame.K_UP:  # example for stimulus increment
                     binaural_listening_instance.stim_idx += 1
                     binaural_listening_instance.stim_idx %= 4
@@ -102,4 +112,7 @@ if __name__ == "__main__":
                     binaural_listening_instance.stim_idx -= 1
                     binaural_listening_instance.stim_idx %= 4
                     binaural_listening_instance.select_stim(binaural_listening_instance.stim_idx)
+                
+                elif event.key == pygame.K_SPACE:
+                    binaural_listening_instance.listen()
 

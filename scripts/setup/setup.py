@@ -44,11 +44,11 @@ def load_stim(fs, device, dtype, selected_stim = 'random'):
     elif selected_stim == 'male_speech':
         stim_48 = scipy.io.wavfile.read('./data/stimulus/EBU_MaleSpeech.wav')
         stim = torch.tensor(scipy.signal.resample(stim_48[1], int(len(stim_48[1])*fs/stim_48[0])), device=device, dtype=dtype).view(1,1,-1)
-        stim = stim[0,0,int(fs*0.5):fs].view(1,1,-1)
+        # stim = stim[0,0,int(fs*0.5):fs].view(1,1,-1)
     elif selected_stim == 'pop_music':
         stim_48 = scipy.io.wavfile.read('./data/stimulus/EBU_PopMusic.wav')
         stim = torch.tensor(scipy.signal.resample(stim_48[1], int(len(stim_48[1])*fs/stim_48[0])), device=device, dtype=dtype).view(1,1,-1)
-        stim = stim[0,0,int(fs*0.5):fs].view(1,1,-1)
+        # stim = stim[0,0,int(fs*0.5):fs].view(1,1,-1)
     else:
         print("Selected stimulus not available, using random noise")
         stim = torch.randn(1,1,int(0.5*fs), device=device, dtype=dtype)

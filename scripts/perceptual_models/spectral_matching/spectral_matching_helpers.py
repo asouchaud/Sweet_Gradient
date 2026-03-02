@@ -9,12 +9,11 @@ def near_field_target(target):
     # return torch.tensor([x.item(),y.item()])
     
     theta = torch.deg2rad(torch.as_tensor(target))
+    x = torch.tensor(1, device=theta.device, dtype=theta.dtype)
+    y = torch.tan(theta)
+    
 
-    r = 2.0
-    x = r * torch.cos(theta) - 0.732
-    y = r * torch.sin(theta)
-
-    return torch.stack((x, y))
+    return torch.stack((x, y)) 
 
 
 def near_field_comp_angles(target_pos, lstn_pos_conf):
@@ -38,4 +37,4 @@ def near_field_comp_angles(target_pos, lstn_pos_conf):
     # Angle relative to (1, 0)
     theta = torch.rad2deg(torch.atan2(vec_diff[:, 1], vec_diff[:, 0]))
 
-    return theta
+    return theta % 360

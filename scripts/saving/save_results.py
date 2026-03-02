@@ -7,7 +7,7 @@ from scripts.saving.save_normalise import normalise_max
 
 
 class saver():
-    def __init__(self, perceptual_dict, lstn_pos):
+    def __init__(self, perceptual_dict, lstn_pos, args):
         # Root experiment directory
         exp_root = Path("results")
         exp_root.mkdir(exist_ok=True)
@@ -25,8 +25,25 @@ class saver():
         # Number of listener positions
         n_listeners = len(lstn_pos)
 
+        reg_map = {
+            0: "0", # No regularisation
+            1: "1", # First moment regularisation
+            2: "2", # Second moment regularisation
+        }
+
+        init_map = {
+            0: "n", # Random noise initialisation
+            1: "2", # Impulses at both loudspeakers initialisation
+            2: "1" # Impulse at only left loudspeaker and silent right loudspeaker initialisation
+        }
+
+        field_map = {
+            0: "ff", # Far-field
+            1: "nf", # Near-field
+        }
+
         # Build run folder name
-        run_name = f"{flag_str}_n{n_listeners}_{date_prefix}_{time_suffix}"
+        run_name = f"{flag_str}_n{n_listeners}_r{reg_map[args.reg]}_i{init_map[args.init]}_{field_map[args.near_field]}_{date_prefix}_{time_suffix}"
         run_dir = exp_root / run_name
         
         self.run_dir = run_dir
