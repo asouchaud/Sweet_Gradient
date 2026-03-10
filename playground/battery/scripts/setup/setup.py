@@ -26,8 +26,8 @@ def setup(args):
 
     # Loudspeaker and listener positions
     lstn_pos_conf = [#[[0, 0]],  # 1 listener position
-                #[[0, 0], [0, 0.5], [0, -0.5]]] # 3 listener positions
-                [[0, 0], [0, 0.5], [0, -0.5], [0.5, 0], [-0.5, 0], [0.5, 0.5], [0.5, -0.5], [-0.5, 0.5], [-0.5, -0.5]]] # 9 listener positions
+                [[0, 0], [0, 0.5], [0, -0.5]]] # 3 listener positions
+                #[[0, 0], [0, 0.5], [0, -0.5], [0.5, 0], [-0.5, 0], [0.5, 0.5], [0.5, -0.5], [-0.5, 0.5], [-0.5, -0.5]]] # 9 listener positions
     spk_pos = [[1.732,1], [1.732,-1]]
 
 ## Load data
@@ -56,7 +56,7 @@ def init_perc_model(full_dict, device, dtype, fs, stim, hrirs, target_angle, gtf
         elif key == 'uncertainty':
             model_instance = model_class(F.mse_loss, torch.tensor([0], device = device, dtype=dtype), hrirs=hrirs, fs=fs, gtfb=gtfb) # Initialize model instance
         elif key == 'colouration':
-            model_instance = model_class(F.l1_loss, torch.tensor([0], device = device, dtype=dtype), stim = stim, hrirs=hrirs, target_angle = target_angle, fs=fs) # Initialize model instance
+            model_instance = model_class(F.l1_loss, torch.tensor([0], device = device, dtype=dtype), stim = stim, hrirs=hrirs, target_angle = target_angle, fs=fs, lstn_pos_conf= lstn_pos_conf) # Initialize model instance
         else:
             Exception(f"Perceptual model {key} not recognized.")
         perceptual_dict[key] = model_instance # Store in dictionary

@@ -2,6 +2,7 @@ from pathlib import Path
 import json
 import numpy as np
 from datetime import datetime
+import scipy.io as sio
 
 from scripts.saving.save_normalise import normalise_max
 
@@ -43,7 +44,7 @@ class saver():
         }
 
         # Build run folder name
-        run_name = f"{flag_str}_n{n_listeners}_r{reg_map[args.reg]}_i{init_map[args.init]}_{field_map[args.near_field]}_{date_prefix}_{time_suffix}"
+        run_name = f"{flag_str}_n{n_listeners}_r{reg_map[args.reg]}_i{init_map[args.init]}_{field_map[args.near_field]}_g{args.gradnorm}_{date_prefix}_{time_suffix}"
         run_dir = exp_root / run_name
         
         self.run_dir = run_dir
@@ -51,17 +52,26 @@ class saver():
         self.now = now
 
 
-    def save_results(self, args, estimation_dict, est_filters, fs, lstn_pos, spk_pos):    
+    def save_results(self, args, estimation_dict, est_filters, fs, lstn_pos, spk_pos, trainer):    
         # =========================
         # Save results (clean layout)
         # Subfolders
+
+        est_filters = normalise_max(est_filters)
+
         artifacts_dir = self.run_dir / "artifacts"
 
         artifacts_dir.mkdir(parents=True)
 
+        wav_dir = self.run_dir / "wave_files"
+
+        wav_dir.mkdir(parents=True)
+
         # ---------- Save artifacts ----------
         np.save(artifacts_dir / "est_filters.npy",
-                normalise_max(est_filters))
+                est_filters)
+        
+        sio.wavfile.write(wav_dir / "est_filters.wav", fs, est_filters.T)
 
         # Optional: save perceptual outputs as arrays if needed
         for key, value in estimation_dict.items():
@@ -85,7 +95,10 @@ class saver():
             "learning_rate": args.lr,
             "init": args.init,
             "regularisation": args.reg,
-            "perceptual_losses": list(estimation_dict.keys())
+            "perceptual_losses": list(estimation_dict.keys()),
+            "Gradnorm": args.gradnorm,
+            "importance": trainer.importance,
+            "alpha": trainer.alpha
         }
 
         with open(self.run_dir / "config.json", "w") as f:

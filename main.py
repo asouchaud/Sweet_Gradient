@@ -71,7 +71,7 @@ def main(args):
 
     gtfb = load_gtfb(fs=fs, device=device, dtype=dtype)  # Load Gamma Tone Filter Bank
     stim = load_stim(fs=fs, device=device, dtype=dtype, selected_stim=args.stimulus)  # Load stimulus
-    hrirs = load_hrirs(dtype=dtype, device=device) # Load HRIRs using specific location from SOFA file
+    hrirs = load_hrirs(dtype=dtype, device=device, sofa_path=args.sofa_path, idx_path=args.idx_path) # Load HRIRs using specific location from SOFA file
 
 ## Initialize model
 
@@ -80,7 +80,7 @@ def main(args):
 
     # Initiate perceptual models
     loc_loss = F.mse_loss
-    unc_loss = F.mse_loss
+    unc_loss = F.l1_loss
     col_loss = F.l1_loss
 
     loc_target = args.target_angle
@@ -98,7 +98,7 @@ def main(args):
 
     perceptual_dict = {'localisation': loc_model,}
                          #'uncertainty': unc_model,
-                         #'coloration': col_model}
+                        #  'colouration': col_model}
 
     # Initialise neural network
     nn_model = load_NN(n_samples=args.n_samples, device=device, dtype=dtype, init = args.init) # Load neural network ICLD or FIR
@@ -120,7 +120,8 @@ def main(args):
                     optimiser=nn_optimiser,
                     reg = args.reg,
                     loggers = [logger, None], 
-                    scheduler=nn_scheduler) # Initialize training class
+                    scheduler=nn_scheduler,
+                    gradnorm=args.gradnorm) # Initialize training class
 
     trainer.train()
 
@@ -139,24 +140,28 @@ def main(args):
 
 ## Save results
 
-    saver_obj.save_results(args, estimation_dict, est_filters, fs, lstn_pos_conf[args.lstn_pos_conf], spk_pos)
+    saver_obj.save_results(args, estimation_dict, est_filters, fs, lstn_pos_conf[args.lstn_pos_conf], spk_pos, trainer)
 
 if __name__ == "__main__":
     # Default paths relative to this repository (portable across machines/OSes)
     repo_root = Path(__file__).resolve().parent
     default_sofa_path = repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"
+    default_idx_path = repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--near_field", type = int, default = 1, help = "Optimise for source in the near-field (1) and far-field (0)")
-    parser.add_argument("--epochs", type=int, default=3000)
+    parser.add_argument("--epochs", type=int, default=1500)
     parser.add_argument("--n_samples", type=int, default=128)
     parser.add_argument("--target_angle", type=float, default=00.0)
     parser.add_argument("--stimulus", type=str, default="random")
     parser.add_argument("--sofa_path", type=str, default=str(default_sofa_path))
-    parser.add_argument("--lstn_pos_conf", type=int, default=3, help="Listener position configuration index (0: 1 pos, 1: 3 pos, 2: 5 pos, 3: 9 pos)")
-    parser.add_argument("--lr", type=float, default=0.1)
-    parser.add_argument("--init", type=int, default=0, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
-    parser.add_argument("--reg", type=int, default=1, help="If 1, use first moment or 2 for second moment regularisation during training")
+    parser.add_argument("--idx_path", type=str,default=str() )
+    parser.add_argument("--lstn_pos_conf", type=int, default=1, help="Listener position configuration index (0: 1 pos, 1: 3 pos, 2: 5 pos, 3: 9 pos)")
+    parser.add_argument("--lr", type=float, default=0.01)
+    parser.add_argument("--init", type=int, default=1, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
+    parser.add_argument("--reg", type=int, default=0, help="If 1, use first moment or 2 for second moment regularisation during training")
+    parser.add_argument("--gradnorm", type=int, default=0, help="If 1, dynamically normalise weighting of losses using the GradNorm method")
+    parser.add_argument("--alpha", type=float, default=1.5)
     parser.add_argument("--seed", type=int, default = 52, help="Random seed for reproducibility")
     parser.add_argument("--log", type=int, default=1, help="If 1, will log the training in Tensorboard, to view run in terminal | tensorboard --logdir runs | ")
     parser.add_argument("--device", type=str, default=None, help="Device to use for computation (e.g., 'cpu', 'cuda', or 'mps'). If None, will use CUDA if available.")

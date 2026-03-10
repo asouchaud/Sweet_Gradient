@@ -24,6 +24,7 @@ from scripts.perceptual_models.spectral_matching.spectral_matching import spectr
 # Import neural network related scripts
 from scripts.optimisation.nn_init import load_NN
 from scripts.optimisation.nn_init import load_optimiser
+from scripts.optimisation.nn_init import load_scheduler
 
 # Import training script
 from scripts.train.train import Train
@@ -57,11 +58,14 @@ def run_battery(args):
 
     full_dict = [{'localisation': llado2025}, {'uncertainty': desena2020}, {'colouration': spectral_matching}]
     dict_subsets = get_all_subsets(full_dict)
+
+    ## QUICK FIX TO GO FASTER
+    dict_idx = [0,3,4,6]
     
     for lstn_pos_conf_idx in range(n_lstn_pos_conf):
         for ta_idx in range(n_ta):
-            for dict_sub_idx in range(7): # 7 different initialisation and regularisation combinations
-                print(f"Running battery for target angle {target_angle[ta_idx].item()} deg, listener position configuration {lstn_pos_conf_idx}, current run {dict_sub_idx+1}/7")
+            for dict_sub_idx in range(4): # 7 different initialisation and regularisation combinations  ## CHANGE THIS BACK TO DICT_SUB_IDX
+                print(f"Running battery for target angle {target_angle[ta_idx].item()} deg, listener position configuration {lstn_pos_conf_idx}, current run {dict_idx[dict_sub_idx]+1}/7") ## CHANGE THIS BACK TO DICT_SUB_IDX
                 
                 # Initialize sound propagation module
                 stereo_prop = stereo_anechoic(stim=stim,
@@ -72,13 +76,14 @@ def run_battery(args):
                 
                 # Initialize model
                 if args.near_field:
-                    perceptual_dict = init_perc_model(dict_subsets[dict_sub_idx], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb, lstn_pos_conf[lstn_pos_conf_idx])
+                    perceptual_dict = init_perc_model(dict_subsets[dict_idx[dict_sub_idx]], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb, lstn_pos_conf[lstn_pos_conf_idx]) ## CHANGE THIS BACK TO DICT_SUB_IDX
                 else:
-                    perceptual_dict = init_perc_model(dict_subsets[dict_sub_idx], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb)
+                    perceptual_dict = init_perc_model(dict_subsets[dict_idx[dict_sub_idx]], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb) ## CHANGE THIS BACK TO DICT_SUB_IDX
                 
                 # Initialise neural network
                 nn_model = load_NN(n_samples=args.n_samples, device=device, dtype=dtype, init = args.init) # Load neural network ICLD or FIR
-                nn_optimiser = load_optimiser(nn_model, lr=0.001) # Load optimiser for neural network
+                nn_optimiser = load_optimiser(nn_model, lr=0.01) # Load optimiser for neural network
+                nn_scheduler = load_scheduler(nn_optimiser,args.epochs)
 
                 saver_obj = saver(current_date=current_date,
                                   current_time=current_time,
@@ -88,7 +93,7 @@ def run_battery(args):
                                   nf_idx=args.near_field,
                                   angle=target_angle[ta_idx], 
                                   lstn_len=len(lstn_pos_conf[lstn_pos_conf_idx]),
-                                  curr_idx=dict_sub_idx)
+                                  curr_idx=dict_idx[dict_sub_idx]) ## CHANGE THIS BACK TO DICT_SUB_IDX
                 logger = saver_obj if args.log else None
 
                 # Train the neural network
@@ -98,7 +103,9 @@ def run_battery(args):
                     perceptual_dict=perceptual_dict,
                     optimiser=nn_optimiser,
                     reg = args.reg,
-                    loggers=[logger, saver_obj]) # Initialize training class
+                    loggers=[logger, saver_obj],
+                    scheduler=nn_scheduler,
+                    gradnorm=args.gradnorm) # Initialize training class
     
                 trainer.train()
 
@@ -123,15 +130,17 @@ repo_root = Path(__file__).resolve().parent.parent
 default_sofa_path = repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--near_field", type = int, default = 1, help = "Optimise for source in the near-field (0) and far-field (1)")
-parser.add_argument("--epochs", type=int, default=1000)
+parser.add_argument("--near_field", type = int, default = 0, help = "Optimise for source in the near-field (0) and far-field (1)")
+parser.add_argument("--epochs", type=int, default=1500)
 parser.add_argument("--n_samples", type=int, default=128)
 parser.add_argument("--stimulus", type=str, default="random")
 parser.add_argument("--sofa_path", type=str, default=str(default_sofa_path))
 parser.add_argument("--lr", type=float, default=0.01)
 parser.add_argument("--init", type=int, default=1, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
-parser.add_argument("--reg", type=int, default=2, help="If 1, use first moment or 2 for second moment regularisation during training")
-parser.add_argument("--seed", type=int, default = 45, help="Random seed for reproducibility")
+parser.add_argument("--reg", type=int, default=0, help="If 1, use first moment or 2 for second moment regularisation during training")
+parser.add_argument("--gradnorm", type=int, default=1, help="If 1, dynamically normalise weighting of losses using the GradNorm method")
+parser.add_argument("--alpha", type=float, default=1.5)
+parser.add_argument("--seed", type=int, default=52, help="Random seed for reproducibility")
 parser.add_argument("--log", type=int, default=1, help="If 1, will log the training in Tensorboard, to view run in terminal | tensorboard --logdir runs | ")
 args = parser.parse_args()
 

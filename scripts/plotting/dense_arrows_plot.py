@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import argparse
 import json
 import os
@@ -18,7 +19,7 @@ from scripts.perceptual_models.spectral_matching.spectral_matching import spectr
 
 DTYPE = torch.float32
 
-def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None, show = True):
+def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None, show = True, vbap_values = None):
         
         if unc is None:
             unc = torch.zeros_like(loc, device=loc.device, dtype=loc.dtype)
@@ -34,11 +35,11 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None,
         col = col.detach().cpu().numpy().squeeze().reshape(-1)
 
         fig_arrow, ax = plt.subplots(figsize=(6,6))
-        ax.scatter(spk_pos[0], spk_pos[1], c='red', label='Speaker')
+        ax.scatter(spk_pos[:,0], spk_pos[:,1], c='red', label='Speaker')
         ax.scatter(lstn_pos[:,0], lstn_pos[:,1], c='blue', label='Listener positions')
 
         if loc_target is not None:
-            loc_pos = [1, np.tan(np.deg2rad(loc_target.item()))]
+            loc_pos = [1.732, 1.732*np.tan(np.deg2rad(loc_target.item()))]
             ax.scatter(loc_pos[0], loc_pos[1], c='green', label='Target position')
 
         
@@ -51,12 +52,42 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None,
             ax.arrow(float(x), float(y), float(dx), float(dy),
                     head_width=0.05, head_length=0.08, fc='orange', ec='orange')    
 
-        ax.set_ylim(-1.5,1.5)
-        ax.set_xlim(-1.5-0.732,1.5)
+        if vbap_values is not None:
+
+            loc_vbap, unc_vbap, col_vbap = vbap_values
+            
+            loc_vbap = loc_vbap.detach().cpu().numpy().squeeze().reshape(-1)
+            unc_vbap = unc_vbap.detach().cpu().numpy().squeeze().reshape(-1)
+            col_vbap = col_vbap.detach().cpu().numpy().squeeze().reshape(-1)
+
+            arrow_len = 0.2
+            for x, y, ang, unc in zip(lstn_pos[:,0], lstn_pos[:,1], loc_vbap, unc_vbap):  
+
+                dx = (1-unc)*arrow_len * np.cos(np.deg2rad(ang))
+                dy = (1-unc)*arrow_len * np.sin(np.deg2rad(ang))
+
+                ax.arrow(float(x), float(y), float(dx), float(dy),
+                        head_width=0.05, head_length=0.08, fc='purple', ec='purple')
+                
+
+        legend_elements = [
+            Line2D([0], [0], color='orange', lw=2, label='Model prediction'),
+        ]
+
+        if vbap_values is not None:
+            legend_elements.append(
+                Line2D([0], [0], color='purple', lw=2, label='VBAP prediction')
+            )
+
+        ax.legend(handles=ax.get_legend_handles_labels()[0] + legend_elements,
+                labels=ax.get_legend_handles_labels()[1] + [le.get_label() for le in legend_elements])
+
+        ax.set_ylim(-2,2)
+        ax.set_xlim(-2,2)
         ax.grid()
         ax.set_ylabel('Y position (m)')
         ax.set_xlabel('X position (m)')
-        ax.legend()
+
 
         if show:
             plt.show()
@@ -82,14 +113,12 @@ def load_data(folder_path):
     return filters, optim_lstn_pos, spk_pos, target_angle, stim_type, fs, device
 
 def create_grid(n_points_x, n_points_y):
-    x = np.linspace(-1, 1, n_points_x)
-    y = np.linspace(-1, 1, n_points_y)
+    x = np.linspace(-0.75, 0.75, n_points_x)
+    y = np.linspace(-0.75, 0.75, n_points_y)
 
     X, Y = np.meshgrid(x, y, indexing='ij')
 
     grid = np.stack((X, Y), axis=-1).reshape(-1,2) 
-
-    grid[:,0] -= 0.732 # centered on sweet spot
 
     return grid
 
@@ -138,14 +167,39 @@ def evaluate_dense_grid(filters, prop_model, localisation_model, uncertainty_mod
     return loc, unc, col
 
 
+def azimuth_to_unit_vector(azimuth_deg):
+    rad = np.deg2rad(azimuth_deg)
+    return np.array([np.cos(rad), np.sin(rad)])
+
+def vbap_stereo_gains(source_azimuth_deg, ls_azimuths_deg=(-30, 30)):
+    l1 = azimuth_to_unit_vector(ls_azimuths_deg[0])
+    l2 = azimuth_to_unit_vector(ls_azimuths_deg[1])
+    L = np.column_stack((l1, l2))
+    p = azimuth_to_unit_vector(source_azimuth_deg)
+
+    try:
+        g = np.linalg.solve(L, p)
+    except np.linalg.LinAlgError:
+        raise ValueError("Invalid speaker configuration.")
+
+    if np.any(g < 0):
+        g[:] = 0.0
+    else:
+        g = g / np.linalg.norm(g)
+
+    return g
+
+
 repo_root = Path(__file__).resolve().parent
 default_sofa_path = repo_root / ".." / ".."/ "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"
 default_sofa_idx = repo_root  / ".." / ".."/ "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"
+vbap_values = None
 
 parser = argparse.ArgumentParser(description='Plot dense arrows')
 parser.add_argument('--folder_path', type=str, required=True, help='Path to the run folder')
 parser.add_argument('--sofa_path', type = str, default= default_sofa_path)
 parser.add_argument('--sofa_idx', type = str, default= default_sofa_idx)
+parser.add_argument("--vbap_comp", type = int, default=1, help = "Display VBAP localisation for desired angle")
 
 args = parser.parse_args()
 
@@ -156,7 +210,8 @@ if __name__ == "__main__":
     
     filters, opt_lstn_pos, spk_pos, target_angle, stim_type, fs, device = load_data(args.folder_path)
 
-    dense_grid = create_grid(10,10)
+    dense_grid = create_grid(3,3)
+
 
     prop_model, localisation_model, uncertainty_model, colouration_model = setup_evaluation(dense_grid,
                                                                                             spk_pos, 
@@ -166,10 +221,20 @@ if __name__ == "__main__":
                                                                                             device,
                                                                                             args
                                                                                             )
+
+    if args.vbap_comp:
+        g = vbap_stereo_gains(target_angle)
+
+        filters_vbap = torch.zeros((1,2,256),dtype=DTYPE, device=device)
+        filters_vbap[0,:,0] = torch.tensor(g, dtype=DTYPE, device=device)
+
+        vbap_values = evaluate_dense_grid(filters_vbap, prop_model, localisation_model, uncertainty_model, colouration_model)                                                                                      
     
     loc, unc, col = evaluate_dense_grid(filters, prop_model, localisation_model, uncertainty_model, colouration_model)
+
+
     
-    plot_arrows(torch.tensor(dense_grid),torch.tensor(spk_pos),loc,unc,col,torch.tensor(target_angle),True)
+    plot_arrows(torch.tensor(dense_grid),torch.tensor(spk_pos),loc,unc,col,torch.tensor(target_angle),True, vbap_values = vbap_values)
 
 
     

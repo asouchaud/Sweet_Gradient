@@ -74,6 +74,7 @@ class binaural_listening:
         self.filters = torch.tensor(filters_np, device='cuda', dtype=torch.float32).unsqueeze(0)
         
         self.bin_stim = self.prop(self.filters)
+        self.is_playing = 0
 
 
     def find_any_filter(self, folder_path):
@@ -86,10 +87,19 @@ class binaural_listening:
 
     def listen(self):
 
+        if self.is_playing:
+            sd.stop()
+            self.is_playing = False
+            return
+
         # Convert to numpy and play
         bin_stim_np = self.bin_stim.cpu().detach().numpy().squeeze()
-        sd.play(bin_stim_np[self.pos_idx].T, self.fs)
-        sd.wait()
+
+        audio = bin_stim_np[self.pos_idx].T
+        audio_norm = audio / np.max(np.abs(audio))
+
+        sd.play(audio_norm, self.fs)
+        self.is_playing = True
 
     def select_lstn_conf(self, pos_conf_idx):
         self.pos_conf_idx = pos_conf_idx

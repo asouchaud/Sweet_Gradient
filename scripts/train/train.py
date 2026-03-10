@@ -1,6 +1,6 @@
 import torch
 
-from scripts.optimisation.curriculum import curriculum_weights
+from scripts.optimisation.curriculum import gradnorm
 from scripts.optimisation.regularisation import select_regularistion
 from scripts.optimisation.regularisation import rms_normalisation
 from scripts.optimisation.regularisation import energy_normalisation
@@ -8,7 +8,7 @@ from scripts.optimisation.regularisation import energy_normalisation
 from scripts.plotting.tensorboard_updates import TensorboardLogger
 
 class Train:
-    def __init__(self, n_epoch, nn, prop, perceptual_dict, optimiser, reg=0, loggers=None):
+    def __init__(self, n_epoch, nn, prop, perceptual_dict, optimiser, reg=0, loggers=None, scheduler=None, gradnorm = 0, alpha = 1):
 
         self.n_epoch = n_epoch
         self.device = nn[0].weight.device
@@ -16,7 +16,44 @@ class Train:
         self.optimiser = optimiser
         self.n_samples = nn[-1].weight.shape[0] // 2
         self.reg = reg
-        
+        self.gradnorm = gradnorm
+
+        if self.reg:
+            self.loss_weights = torch.nn.ParameterDict({
+                **{key: torch.nn.Parameter(torch.tensor(1.0, device=self.device, dtype=self.dtype))
+                for key in perceptual_dict.keys()},
+                'regularisation_l': torch.nn.Parameter(torch.tensor(1.0, device=self.device, dtype=self.dtype)),
+                'regularisation_r': torch.nn.Parameter(torch.tensor(1.0, device=self.device, dtype=self.dtype)),
+            })
+
+        else:
+            self.loss_weights = torch.nn.ParameterDict({
+                key: torch.nn.Parameter(torch.tensor(1.0, device=self.device, dtype=self.dtype))
+                for key in perceptual_dict.keys()
+            })
+
+        self.importance = None
+        self.alpha = None
+        if self.gradnorm:
+            self.gradnorm_optimiser = torch.optim.Adam(self.loss_weights.parameters(), lr = 1e-2)
+            self.importance = {
+                                'localisation': 6.0,
+                                'uncertainty': 1.0,
+                                'colouration': 7.0,
+                                'regularisation_l': 1.0,
+                                'regularisation_r': 1.0
+                            }
+            self.alpha = alpha
+
+            # N = len(self.importance)
+            # scale = N / sum(self.importance.values())
+            # for key in self.importance:
+            #     self.importance[key] *= scale
+            
+            # self.initial_losses = {
+            #             key: torch.tensor(1, dtype=self.dtype, device=self.device).detach() for key in perceptual_dict
+            #         }
+
         self.nn = nn
         self.prop = prop
         self.perceptual_dict = perceptual_dict
@@ -31,6 +68,8 @@ class Train:
                 self.logger = TensorboardLogger(logger.run_dir / 'tensorboard', device = self.device, dtype = self.dtype)
         else:
             self.logger = None
+
+        self.scheduler = scheduler
 
     def train(self):
         for epoch in range(self.n_epoch):
@@ -65,21 +104,46 @@ class Train:
                 loss_dict['regularisation_l'] = self.regularisation.compute_loss(h_l) / self.regularisation.loss_norm
                 loss_dict['regularisation_r'] = self.regularisation.compute_loss(h_r) / self.regularisation.loss_norm
 
-            # # Get curriculum weighted loss
-            # weights, _ = curriculum_weights(epoch, self.n_epoch, self.optimiser, h_l, h_r, loss_dict['localization'], loss_dict['uncertainty'], loss_dict['coloration'])
-            weights = {'localisation': 1.0, 'uncertainty': 1.0, 'coloration': 1.0}#, 'regularisation_l': 1.0, 'regularisation_r': 1.0} # Temporary fixed weights
-
-            if self.reg:
-                weights = {'localisation': 1.0, 'uncertainty': 1.0, 'coloration': 1.0, 'regularisation_l': 1.0, 'regularisation_r': 1.0} # Temporary fixed weights
-
             # Compute full loss
             full_loss = 0
             for key in loss_dict.keys():
-                loss_dict[key] = loss_dict[key] * weights.get(key, 0)
+                loss_dict[key] = loss_dict[key] * self.loss_weights[key]
                 full_loss += loss_dict[key]
 
+            # Optimize Losses
+            self.optimiser.zero_grad()
+            full_loss.backward(retain_graph = True)
+            self.optimiser.step()
 
-            # Log training in Tensorboard
+            # Optimise weigths 
+            if self.gradnorm:
+                # if epoch == 0:
+                #     self.initial_losses = {
+                #         key: loss_dict[key].detach() + 1e-2 for key in loss_dict
+                #     }
+                
+                gradnorm_loss, gradnorms, r = gradnorm(self.nn, loss_dict, self.loss_weights, self.importance, alpha = self.alpha)
+                
+                self.gradnorm_optimiser.zero_grad()
+                gradnorm_loss.backward()
+                self.gradnorm_optimiser.step()
+
+                with torch.no_grad():
+                    for p in self.loss_weights.values():
+                        p.clamp_(min=0.0)
+
+                # Renormalize weights to sum = number of losses
+                with torch.no_grad():
+                    total_w = sum(p.item() for p in self.loss_weights.values())
+                    N = sum(self.importance[k] for k in self.loss_weights.keys())
+                    for p in self.loss_weights.values():
+                        p.mul_(N / total_w)
+
+
+            if self.scheduler is not None:
+                self.scheduler.step()
+
+             # Log training in Tensorboard
             if self.logger is not None:
                 self.logger.log_losses(loss_dict, full_loss, epoch)
                 self.logger.log_h_full(h_full, epoch)
@@ -103,20 +167,15 @@ class Train:
                                                    est_dict['uncertainty'] if 'uncertainty' in self.perceptual_dict else None, 
                                                    est_dict['coloration'] if 'coloration' in self.perceptual_dict else None, 
                                                    epoch)
-
-            # Optimize
-            self.optimiser.zero_grad()
-            full_loss.backward()
-            self.optimiser.step()
+                if self.gradnorm:
+                    self.logger.log_weights(weight_dict=self.loss_weights, epoch=epoch)
+                    self.logger.log_gradnorms(gradnorms = gradnorms, epoch=epoch)
+                    self.logger.log_r(r,epoch=epoch)
             
             # Print progress
-            # print(f'Iter: {epoch} ¦¦ Loss: {loss.item()} ¦¦ Loc: {estimated_localization.mean().item()} ¦¦ Unc: {estimated_uncertainty.mean().item()} ¦¦ Color: {loss_coloration.item()}' )
             print(
             f"\rIter: {epoch:<4d} ¦¦ "
             f"Loss: {full_loss.item():<10.4f} ¦¦ ",
-            # f"Loc: {estimated_localization.mean().item():<8.4f} ¦¦ "
-            # f"Unc: {estimated_uncertainty.mean().item():<8.4f} ¦¦ "
-            # f"Color: {loss_coloration.item():<8.4f}",
             end="",
             flush=True
             )
@@ -147,24 +206,34 @@ class Train:
             loss_dict['regularisation_l'] = self.regularisation.compute_loss(h_l) / self.regularisation.loss_norm
             loss_dict['regularisation_r'] = self.regularisation.compute_loss(h_r) / self.regularisation.loss_norm
 
-        # # Get curriculum weighted loss
-        # weights, _ = curriculum_weights(epoch, self.n_epoch, self.optimiser, h_l, h_r, loss_dict['localization'], loss_dict['uncertainty'], loss_dict['coloration'])
-        weights = {'localisation': 1.0, 'uncertainty': 1.0, 'coloration': 1.0}#, 'regularisation_l': 1.0, 'regularisation_r': 1.0} # Temporary fixed weights
+        # Log training in Tensorboard
+            if self.logger is not None:
+                self.logger.log_losses(loss_dict, full_loss, epoch+1)
+                self.logger.log_h_full(h_full, epoch+1)
 
-        if self.reg:
-            weights = {'localisation': 1.0, 'uncertainty': 1.0, 'coloration': 1.0, 'regularisation_l': 1.0, 'regularisation_r': 1.0} # Temporary fixed weights
-
-        # Compute full loss
-        full_loss = 0
-        for key in loss_dict.keys():
-            full_loss += weights.get(key, 0) * loss_dict[key]
-
-        if self.logger is not None:
-            self.logger.log_losses(loss_dict, full_loss, epoch+1)
-            self.logger.log_h_full(h_l, h_r, h_full, epoch+1)
-            if 'localisation' in self.perceptual_dict or 'uncertainty' in self.perceptual_dict:
+                if 'localisation' in self.perceptual_dict or 'uncertainty' in self.perceptual_dict:
                     self.logger.log_bin_cues(bin_stim, epoch+1)
-            self.logger.close()
+
+                if 'localisation' in self.perceptual_dict:
+                    if self.perceptual_dict['localisation'].lstn_pos_conf is not None:
+                        self.logger.log_plot_arrows(self.prop.lstn_pos, 
+                                                   self.prop.spk_pos, 
+                                                   est_dict['localisation'], 
+                                                   est_dict['uncertainty'] if 'uncertainty' in self.perceptual_dict else None, 
+                                                   est_dict['coloration'] if 'coloration' in self.perceptual_dict else None, 
+                                                   epoch+1, 
+                                                   loc_target=self.perceptual_dict['localisation'].target[0])
+                    else:
+                        self.logger.log_plot_arrows(self.prop.lstn_pos, 
+                                                   self.prop.spk_pos, 
+                                                   est_dict['localisation'], 
+                                                   est_dict['uncertainty'] if 'uncertainty' in self.perceptual_dict else None, 
+                                                   est_dict['coloration'] if 'coloration' in self.perceptual_dict else None, 
+                                                   epoch+1)
+                if self.gradnorm:
+                    self.logger.log_weights(weight_dict=self.loss_weights, epoch=epoch+1)
+                    self.logger.log_gradnorms(gradnorms = gradnorms, epoch=epoch+1)
+                    self.logger.log_r(r,epoch=epoch+1)
 
 
     def evaluate(self):

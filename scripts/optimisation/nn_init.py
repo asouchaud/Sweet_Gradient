@@ -35,3 +35,13 @@ def load_NN(n_samples = 128, device = 'cuda', dtype = torch.float, init = 1):
                 NN[0].weight[0, 0] = 1.0
 
     return NN
+
+def load_scheduler(optimiser, n_epochs):
+    
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    optimiser,
+    T_max=n_epochs,     # total epochs
+    eta_min=1e-5    # final LR
+    )   
+    
+    return scheduler

@@ -45,7 +45,7 @@ def save_symetric(args):
 
     
 argparser = argparse.ArgumentParser()
-argparser.add_argument("--path", type=str, default= "playground/battery/results/r0_i2_n64_260216_102400",help="Path to the experiment folder containing the position and angle subfolders with the np_files and wav_files folders inside.")
+argparser.add_argument("--path", type=str, default= "playground/battery/results/r2_i2_n128_ff_260225_103449",help="Path to the experiment folder containing the position and angle subfolders with the np_files and wav_files folders inside.")
 args = argparser.parse_args()
 
 if __name__ == "__main__":
