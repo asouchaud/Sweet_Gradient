@@ -54,7 +54,7 @@ def main(args):
     fs = 48000
 
     # Set random seed for reproducibility
-    if args.seed:
+    if args.seed is not None:
         set_seed(seed=args.seed)
 
     # Training parameters

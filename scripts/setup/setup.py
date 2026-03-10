@@ -5,6 +5,7 @@ import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__))))
 
+import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F 
@@ -18,22 +19,21 @@ from scripts.perceptual_models.desena2020.desena2020_estimateinterauralcues impo
 
 
 
-def set_seed(set = 0, seed=44):
-    if  set:
-        seed = 44
-        # Set seeds
-        torch.manual_seed(seed)
-        np.random.seed(seed)
+def set_seed(seed=44):
+    """Set random seeds for reproducibility (PyTorch, NumPy, Python random)."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
-        # For CUDA (if using GPU)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed(seed)
-            torch.cuda.manual_seed_all(seed)  # for multi-GPU
+    # For CUDA (if using GPU)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)  # for multi-GPU
 
-        # # Optional: Make operations determinisstic (can impact performance)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-        torch.use_deterministic_algorithms(True)
+    # Make operations deterministic (can impact performance)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.use_deterministic_algorithms(True)
 
 
 def load_stim(fs, device, dtype, selected_stim = 'random'):
