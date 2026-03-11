@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import sofar as sf
 import numpy as np
 
-from scripts.setup.helpers import math_conv1d 
+from scripts.setup.helpers import true_conv1d 
 
 ## Stereo anechoic class definition
 
@@ -102,11 +102,11 @@ class stereo_anechoic(nn.Module):
         L_spk_filter = spk_filters[:, 0:1, :]
         R_spk_filter = spk_filters[:, 1:2, :]
 
-        L_spk_signal = math_conv1d(self.stim,L_spk_filter, padding = 'same').permute(1, 0, 2)
-        R_spk_signal = math_conv1d(self.stim,R_spk_filter, padding = 'same').permute(1, 0, 2)
+        L_spk_signal = true_conv1d(self.stim,L_spk_filter).permute(1, 0, 2)
+        R_spk_signal = true_conv1d(self.stim,R_spk_filter).permute(1, 0, 2)
 
-        L_ear_signals = math_conv1d(L_spk_signal, self.hrirs[:, 0, 0:1, :], padding = 'same') + math_conv1d(R_spk_signal, self.hrirs[:, 1, 0:1, :], padding = 'same')
-        R_ear_signals = math_conv1d(L_spk_signal, self.hrirs[:, 0, 1:2, :], padding = 'same') + math_conv1d(R_spk_signal, self.hrirs[:, 1, 1:2, :], padding = 'same')
+        L_ear_signals = true_conv1d(L_spk_signal, self.hrirs[:, 0, 0:1, :]) + true_conv1d(R_spk_signal, self.hrirs[:, 1, 0:1, :])
+        R_ear_signals = true_conv1d(L_spk_signal, self.hrirs[:, 0, 1:2, :]) + true_conv1d(R_spk_signal, self.hrirs[:, 1, 1:2, :])
         bin_stim = torch.cat([L_ear_signals.unsqueeze(2), R_ear_signals.unsqueeze(2)], dim=2)
 
         return bin_stim

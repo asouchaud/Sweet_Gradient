@@ -9,7 +9,7 @@ import torchaudio.functional as TF
 
 from scripts.perceptual_models.spectral_matching.spectral_matching_helpers import near_field_target
 from scripts.perceptual_models.spectral_matching.spectral_matching_helpers import near_field_comp_angles
-from scripts.setup.helpers import math_conv1d
+from scripts.setup.helpers import true_conv1d
 
 
 class spectral_matching(nn.Module):
@@ -29,7 +29,7 @@ class spectral_matching(nn.Module):
         if isinstance(lstn_pos_conf, type(None)):
             
             self.reference_hrir = self.get_IR(self.sofa_find(self.target_angle)).view(2,1,-1).to(dtype=self.dtype, device=self.device)
-            self.reference_stim = math_conv1d(self.stim, self.reference_hrir, padding = 'same').permute(1, 0, 2)
+            self.reference_stim = true_conv1d(self.stim, self.reference_hrir).permute(1, 0, 2)
             self.reference_fft = 20*torch.log(torch.abs(torch.fft.rfft(self.reference_stim, n=n_fft, dim = -1))).permute(1,0,2)
 
             low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
@@ -41,7 +41,7 @@ class spectral_matching(nn.Module):
             self.target_angle = near_field_comp_angles(near_field_loc, lstn_pos_conf)
 
             self.reference_hrir = self.get_IR(self.sofa_find(self.target_angle)).view(2*len(lstn_pos_conf),1,-1).to(dtype=self.dtype, device=self.device)
-            self.reference_stim = math_conv1d(self.stim, self.reference_hrir, padding = 'same').permute(1, 0, 2)
+            self.reference_stim = true_conv1d(self.stim, self.reference_hrir).permute(1, 0, 2)
             self.reference_fft = 20*torch.log(torch.abs(torch.fft.rfft(self.reference_stim, n=n_fft, dim = -1))).permute(1,0,2).view(len(lstn_pos_conf), 2, -1)
 
             low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
