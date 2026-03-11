@@ -5,7 +5,7 @@ import numpy as np
 from scripts.perceptual_models.llado2025.llado2025_helpers import hilbert_transform
 from scripts.perceptual_models.llado2025.llado2025_helpers import softmax_st
 
-from scripts.setup.helpers import math_conv1d
+from scripts.setup.helpers import true_conv1d
 
 
 def llado2025_estimateinterauralcues(bin_stim,fs,gtfb, tau_IACC=0.01):
@@ -35,18 +35,16 @@ def llado2025_estimateinterauralcues(bin_stim,fs,gtfb, tau_IACC=0.01):
     device = bin_stim.device
     dtype = bin_stim.dtype
 
-    # Pad for Torch Conv1d
-    bin_stim_reshaped = F.pad(bin_stim.view(N_signals, 2, L_signal),(2048,0)) # Must pad by half of lenght of kernel to get desired output ¦ bin_stim_reshaped.shape = (N_signals=batch_size*n_listners, left/right ear, signal_len_padded)
+    bin_stim_reshaped = bin_stim.view(N_signals, 2, L_signal)
 
     ## Peripheral Processing
-    
     # Compute Lag values
     maxLag = np.floor(0.001*fs)
     lagValues = torch.arange(-maxLag, maxLag + 1, 1, dtype=dtype, device=device) / fs
 
     # Gamma Tone Filter Bank Filtering (gtfbout_left/right shape: batch_size, N_banks, signal_len)
-    gtfbout_left = math_conv1d(bin_stim_reshaped[:, 0:1, :], gtfb, padding='same')[:,:,:-2048] # Must flip kernel to get desired output
-    gtfbout_right = math_conv1d(bin_stim_reshaped[:, 1:2, :], gtfb, padding='same')[:,:,:-2048]
+    gtfbout_left = true_conv1d(bin_stim_reshaped[:, 0:1, :], gtfb)
+    gtfbout_right = true_conv1d(bin_stim_reshaped[:, 1:2, :], gtfb)
 
     # Half-Wave Rectification Low Frequency (rectified_left/right_LF shape: batch_size, N_banks < 1.5 kHz, signal_len)
     rectified_left_LF = torch.max(gtfbout_left[:,:11,:], torch.zeros_like(gtfbout_left[:,:11,:]))

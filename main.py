@@ -31,7 +31,7 @@ from scripts.perceptual_models.spectral_matching.spectral_matching import spectr
 # Import neural network related scripts
 from scripts.optimisation.nn_init import load_NN
 from scripts.optimisation.nn_init import load_optimiser
-from scripts.optimisation.nn_init import load_scheduler
+# from scripts.optimisation.nn_init import load_scheduler
 
 # Import training script
 from scripts.train.train import Train
@@ -103,7 +103,7 @@ def main(args):
     # Initialise neural network
     nn_model = load_NN(n_samples=args.n_samples, device=device, dtype=dtype, init = args.init) # Load neural network ICLD or FIR
     nn_optimiser = load_optimiser(nn_model, lr=args.lr) # Load optimiser for neural network
-    nn_scheduler = load_scheduler(nn_optimiser, epochs)
+    # nn_scheduler = load_scheduler(nn_optimiser, epochs)
 
 ## Initliase saving folder and logger
 
@@ -120,7 +120,7 @@ def main(args):
                     optimiser=nn_optimiser,
                     reg = args.reg,
                     loggers = [logger, None], 
-                    scheduler=nn_scheduler) # Initialize training class
+                    ) # Initialize training class
 
     trainer.train()
 
@@ -148,12 +148,12 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--near_field", type = int, default = 1, help = "Optimise for source in the near-field (1) and far-field (0)")
-    parser.add_argument("--epochs", type=int, default=3000)
+    parser.add_argument("--epochs", type=int, default=300)
     parser.add_argument("--n_samples", type=int, default=128)
     parser.add_argument("--target_angle", type=float, default=00.0)
     parser.add_argument("--stimulus", type=str, default="random")
     parser.add_argument("--sofa_path", type=str, default=str(default_sofa_path))
-    parser.add_argument("--lstn_pos_conf", type=int, default=3, help="Listener position configuration index (0: 1 pos, 1: 3 pos, 2: 5 pos, 3: 9 pos)")
+    parser.add_argument("--lstn_pos_conf", type=int, default=0, help="Listener position configuration index (0: 1 pos, 1: 3 pos, 2: 5 pos, 3: 9 pos)")
     parser.add_argument("--lr", type=float, default=0.1)
     parser.add_argument("--init", type=int, default=0, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
     parser.add_argument("--reg", type=int, default=1, help="If 1, use first moment or 2 for second moment regularisation during training")
