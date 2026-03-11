@@ -43,8 +43,8 @@ def desena2020_estimateinterauralcues(bin_stim,fs,gtfb, tau_IACC=0.01):
     lagValues = torch.arange(-maxLag, maxLag + 1, 1, dtype=dtype, device=device) / fs
 
     # Gamma Tone Filter Bank Filtering (gtfbout_left/right shape: batch_size, N_banks, signal_len)
-    gtfbout_left = true_conv1d(bin_stim[:, 0:1, :], gtfb) 
-    gtfbout_right = true_conv1d(bin_stim[:, 1:2, :], gtfb)
+    gtfbout_left = true_conv1d(bin_stim_reshaped[:, 0:1, :], gtfb)
+    gtfbout_right = true_conv1d(bin_stim_reshaped[:, 1:2, :], gtfb)
 
     # Half-Wave Rectification Low Frequency (rectified_left/right_LF shape: batch_size, N_banks < 1.5 kHz, signal_len)
     rectified_left_LF = torch.max(gtfbout_left[:,:11,:], torch.zeros_like(gtfbout_left[:,:11,:]))
