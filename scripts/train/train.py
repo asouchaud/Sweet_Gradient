@@ -1,4 +1,5 @@
 import torch
+import time
 
 from scripts.optimisation.curriculum import gradnorm
 from scripts.optimisation.regularisation import select_regularistion
@@ -73,7 +74,8 @@ class Train:
 
     def train(self):
         for epoch in range(self.n_epoch):
-        
+            time_epoch_start = time.time()
+
             # Estimate FIRs 
             h = self.nn(torch.ones(1,1, device=self.device, dtype=self.dtype))
             h_l = h[:,:self.n_samples].unsqueeze(1)
@@ -172,10 +174,12 @@ class Train:
                     self.logger.log_gradnorms(gradnorms = gradnorms, epoch=epoch)
                     self.logger.log_r(r,epoch=epoch)
             
+            time_epoch = time.time() - time_epoch_start
             # Print progress
             print(
             f"\rIter: {epoch:<4d} ¦¦ "
-            f"Loss: {full_loss.item():<10.4f} ¦¦ ",
+            f"Loss: {full_loss.item():<10.5f} ¦¦ ",
+            f"Time: {time_epoch:.3f} seconds¦¦",
             end="",
             flush=True
             )

@@ -40,6 +40,6 @@ class desena2020(nn.Module):
         distance = desena2020_loudnessweighting(interauralcues, distance)
 
         # Estimate Uncertainty
-        uncertainty = desena2020_estimateuncertainty(distance, self.Hmin)
+        uncertainty = desena2020_estimateuncertainty(distance, self.template['azimuths'], self.Hmin)
 
         return uncertainty

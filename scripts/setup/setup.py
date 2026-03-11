@@ -18,29 +18,30 @@ from scripts.perceptual_models.desena2020.desena2020_estimateinterauralcues impo
 
 
 
-def set_seed(set = 0, seed=44):
-    if  set:
-        seed = 44
-        # Set seeds
-        torch.manual_seed(seed)
-        np.random.seed(seed)
+def set_seed(seed=44):
+    # Set seeds
+    torch.manual_seed(seed)
+    np.random.seed(seed)
 
-        # For CUDA (if using GPU)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed(seed)
-            torch.cuda.manual_seed_all(seed)  # for multi-GPU
+    # For CUDA (if using GPU)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)  # for multi-GPU
 
-        # # Optional: Make operations determinisstic (can impact performance)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-        torch.use_deterministic_algorithms(True)
+        # Ensure deterministic CuBLAS operations
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+
+    # # Optional: Make operations determinisstic (can impact performance)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.use_deterministic_algorithms(True)
 
 
 def load_stim(fs, device, dtype, selected_stim = 'random'):
     if selected_stim == 'random':
-        stim = torch.randn(1,1,int(0.5*fs), device=device, dtype=dtype)
+        stim = torch.randn(1,1,int(0.1*fs), device=device, dtype=dtype)
     elif selected_stim == 'sine':
-        stim = torch.sin(2*np.pi*440*torch.arange(0, int(0.5*fs), device=device, dtype=dtype)/fs).view(1,1,-1)
+        stim = torch.sin(2*np.pi*440*torch.arange(0, int(0.01*fs), device=device, dtype=dtype)/fs).view(1,1,-1)
     elif selected_stim == 'male_speech':
         stim_48 = scipy.io.wavfile.read('./data/stimulus/EBU_MaleSpeech.wav')
         stim = torch.tensor(scipy.signal.resample(stim_48[1], int(len(stim_48[1])*fs/stim_48[0])), device=device, dtype=dtype).view(1,1,-1)

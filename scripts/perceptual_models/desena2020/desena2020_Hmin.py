@@ -20,7 +20,7 @@ def desena2020_Hmin(template):
 
     distance = desena2020_loudnessweighting(template_target, distance)
 
-    estimated_uncertainty = desena2020_estimateuncertainty(distance, 0)
+    estimated_uncertainty = desena2020_estimateuncertainty(distance, template['azimuths'], 0)
 
     Hmin = torch.min(estimated_uncertainty)
 

@@ -39,6 +39,9 @@ from scripts.train.train import Train
 # Import saving class
 from scripts.saving.save_results import saver
 
+# Import time
+import time
+
 
 def main(args):
 
@@ -54,7 +57,7 @@ def main(args):
     fs = 48000
 
     # Set random seed for reproducibility
-    if args.seed:
+    if args.seed is not None:
         set_seed(seed=args.seed)
 
     # Training parameters
@@ -122,9 +125,10 @@ def main(args):
                     loggers = [logger, None], 
                     scheduler=None,
                     gradnorm=args.gradnorm) # Initialize training class
-
+    time_train_start = time.time()
     trainer.train()
-
+    time_train = time.time() - time_train_start
+    print("Time for full optimisation:{time_train:.2f}")
 ## Print and Plot results
 
     # Evaluate final neural network FIRs
