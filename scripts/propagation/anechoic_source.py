@@ -30,16 +30,16 @@ class anechoic_source(nn.Module):
         source_vec = self.source_pos[None, :] - self.lstn_pos
 
         # Angle from listener to source (degrees, 0–360)
-        spk_angle = torch.remainder(
-            self._calculate_loudspeaker_angle_2D(source_vec),
+        source_angle = torch.remainder(
+            self._calculate_source_angle_2D(source_vec),
             torch.tensor(360.0, device=self.device)
         ).unsqueeze(1)
 
         # SOFA index per listener
-        spk_idx = self._sofa_find(spk_angle)
+        src_idx = self._sofa_find(source_angle)
 
         # HRIRs: (n_listeners, 2, ir_len) — 2 = left ear, right ear
-        hrirs = self._get_IRs(spk_idx).to(dtype=self.dtype, device=self.device)
+        hrirs = self._get_IRs(src_idx).to(dtype=self.dtype, device=self.device)
         # Pad to match stimulus length (same as stereo_anechoic: concat with zeros)
         self.hrirs = torch.concat(
             (hrirs, torch.zeros_like(hrirs, dtype=self.dtype)), dim=-1
@@ -53,32 +53,32 @@ class anechoic_source(nn.Module):
                     self.hrirs[i, 0, :] = torch.roll(self.hrirs[i, 0, :], d, dims=0)
                     self.hrirs[i, 1, :] = torch.roll(self.hrirs[i, 1, :], d, dims=0)
 
-    def _sofa_find(self, spk_angle):
+    def _sofa_find(self, source_angle):
         pos = torch.tensor(
             self.sofaile.SourcePosition[:, :2],
             device=self.device,
             dtype=torch.float32,
         )
-        spk_angle = torch.concat(
-            (spk_angle, torch.zeros_like(spk_angle)), dim=1
+        source_angle = torch.concat(
+            (source_angle, torch.zeros_like(source_angle)), dim=1
         ).to(self.device, dtype=torch.float32)
-        diff = spk_angle[:, None, :] - pos[None, :, :]
+        diff = source_angle[:, None, :] - pos[None, :, :]
         dists = torch.linalg.vector_norm(diff, dim=2)
         return torch.argmin(dists, dim=1)
 
-    def _calculate_loudspeaker_angle_2D(self, vec1):
+    def _calculate_source_angle_2D(self, vec1):
         vec1_i = vec1[:, 0] + 1j * vec1[:, 1]
         theta = torch.rad2deg(torch.angle(vec1_i))
         return theta.to(self.device)
 
-    def _get_IRs(self, spk_idx):
+    def _get_IRs(self, src_idx):
         left_ear_IR = torch.tensor(
-            self.sofaile.Data_IR[spk_idx.cpu().numpy(), 0],
+            self.sofaile.Data_IR[src_idx.cpu().numpy(), 0],
             device=self.device,
             dtype=self.dtype,
         )
         right_ear_IR = torch.tensor(
-            self.sofaile.Data_IR[spk_idx.cpu().numpy(), 1],
+            self.sofaile.Data_IR[src_idx.cpu().numpy(), 1],
             device=self.device,
             dtype=self.dtype,
         )
@@ -89,7 +89,7 @@ class anechoic_source(nn.Module):
         source_filter: (batch, 1, filter_len)
         Returns: (batch, n_listeners, 2, T) — 2 = L/R ear.
         """
-        spk_signal = true_conv1d(self.stim, source_filter).permute(1, 0, 2)
-        L_ear = true_conv1d(spk_signal, self.hrirs[:, 0:1, :])
-        R_ear = true_conv1d(spk_signal, self.hrirs[:, 1:2, :])
+        src_signal = true_conv1d(self.stim, source_filter).permute(1, 0, 2)
+        L_ear = true_conv1d(src_signal, self.hrirs[:, 0:1, :])
+        R_ear = true_conv1d(src_signal, self.hrirs[:, 1:2, :])
         return torch.cat([L_ear.unsqueeze(2), R_ear.unsqueeze(2)], dim=2)
