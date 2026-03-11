@@ -47,7 +47,7 @@ def test_reference_10_epoch_near_field_run_matches_known_output() -> None:
     n_samples = 10
     target_angle = 15.0
     stimulus = "random"
-    lstn_pos = [[0.0, 0.5]]
+    lstn_pos = [[0.0, 0], [0.0, 0.5], [0.0, -0.5]]
     spk_pos = [[1.732, 1.0], [1.732, -1.0]]
     lr = 0.001
     init_type = 1
@@ -128,39 +128,42 @@ def test_reference_10_epoch_near_field_run_matches_known_output() -> None:
     expected_filters = np.array(
         [
             [
-                9.9000090e-01,
-                9.6745454e-03,
-                6.8768566e-03,
-                6.7225576e-04,
-                8.5663784e-04,
-                5.4842647e-04,
-                5.1450089e-04,
-                5.0646067e-04,
-                -5.1192031e-04,
-                4.9026869e-04,
+                9.9004465e-01,
+                -8.9720655e-03,
+                1.4326015e-03, 
+                9.4809802e-04,
+                6.2107487e-04,
+                -4.4117944e-04,
+                -4.4392698e-04,
+                6.5900135e-04,
+                5.2877783e-04,
+                5.2544044e-04,
             ],
             [
-                9.9001008e-01,
-                -9.8081762e-03,
-                -5.0065003e-04,
-                -7.0657046e-04,
-                3.0871241e-03,
-                -7.8785414e-04,
-                -4.9693452e-04,
-                -7.7862071e-04,
-                7.0135738e-04,
-                5.0342333e-04,
+                9.8999721e-01,  
+                9.6550267e-03,  
+                5.2750986e-03, 
+                -1.1142826e-03,
+                2.3138886e-03,
+                -8.6717901e-04,
+                4.6243961e-04,
+                -5.0887483e-04,
+                6.6803687e-04,  
+                4.9884320e-04,
             ],
         ],
         dtype=np.float32,
     )
 
     # These scalar reference values are also taken directly from the user's provided output.
-    expected_localisation = 18.125
-    expected_colouration = 134.46231079101562
+    expected_localisation = [ 0.625, 16.041666, -18.333334 ]
+    expected_colouration = 282.60693359375
 
     # We use tight numerical tolerances because this is intended as a regression test for a known,
     # deterministic CPU run rather than a broad behavioural test.
-    np.testing.assert_allclose(est_filters, expected_filters, rtol=1e-6, atol=1e-6)
-    assert float(estimation_dict["localisation"]) == pytest.approx(expected_localisation, abs=1e-6)
+    filters_np = est_filters.cpu().numpy() if isinstance(est_filters, torch.Tensor) else est_filters
+    np.testing.assert_allclose(filters_np, expected_filters, rtol=1e-6, atol=1e-6)
+    loc = estimation_dict["localisation"]
+    loc_np = np.asarray(loc)
+    np.testing.assert_allclose(loc_np, expected_localisation, rtol=1e-6, atol=1e-6)
     assert float(estimation_dict["colouration"]) == pytest.approx(expected_colouration, abs=1e-6)
