@@ -177,6 +177,12 @@ class saver():
             except Exception:
                 results[key] = str(value)
 
+        # Include final estimated source filters as well (same as artifacts/est_filters.npy)
+        try:
+            results["est_filters"] = np.asarray(est_filters).tolist()
+        except Exception:
+            results["est_filters"] = str(est_filters)
+
         with open(self.run_dir / "results.json", "w") as f:
             json.dump(results, f, indent=4)
 
