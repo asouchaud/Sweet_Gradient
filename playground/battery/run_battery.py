@@ -32,7 +32,14 @@ from scripts.train.train import Train
 # Import saving functions
 from playground.battery.scripts.saving.save_results import saver
 
+# Import time measure
 from datetime import datetime
+
+# Import plotting functions
+from scripts.plotting.dense_arrows_plot import plot_arrows
+from scripts.plotting.graph_plot import plot_time
+from scripts.plotting.graph_plot import plot_freq
+from scripts.plotting.graph_plot import plot_color
 
 
 def run_battery(args):
@@ -110,9 +117,40 @@ def run_battery(args):
                 trainer.train()
 
                 # Evaluate 
-                est_filters, estimation_dict = trainer.evaluate()
+                if args.near_field:
+                    full_perceptual_dict = init_perc_model(dict_subsets[-1], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb, lstn_pos_conf[lstn_pos_conf_idx]) ## CHANGE THIS BACK TO DICT_SUB_IDX
+                else:
+                    full_perceptual_dict = init_perc_model(dict_subsets[-1], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb) ## CHANGE THIS BACK TO DICT_SUB_IDX
+                
+                est_filters, estimation_dict, bin_stim = trainer.evaluate(full_perceptual_dict)
 
                 saver_obj.save_results(estimation_dict, est_filters)
+
+                with torch.no_grad():
+                    time_plot = plot_time(est_filters, show=False)
+                    freq_plot = plot_freq(est_filters, fs, show=False)
+                    arrow_plot = None
+                    if 'localisation' in full_perceptual_dict:
+                        if full_perceptual_dict['localisation'].lstn_pos_conf is not None:
+                            arrow_plot = plot_arrows(stereo_prop.lstn_pos, 
+                                                        stereo_prop.spk_pos, 
+                                                        torch.tensor(estimation_dict['localisation'], device=device, dtype=dtype), 
+                                                        torch.tensor(estimation_dict['uncertainty'], device=device, dtype=dtype) if 'uncertainty' in estimation_dict else None, 
+                                                        torch.tensor(estimation_dict['coloration'],device=device, dtype=dtype) if 'coloration' in estimation_dict else None, 
+                                                        loc_target=torch.tensor(args.target_angle),
+                                                        show=False
+                            )
+                        else:
+                            arrow_plot = plot_arrows(stereo_prop.lstn_pos, 
+                                                        stereo_prop.spk_pos, 
+                                                        torch.tensor(estimation_dict['localisation'], device=device,dtype=dtype), 
+                                                        torch.tensor(estimation_dict['uncertainty'],device=device,dtype=dtype) if 'uncertainty' in estimation_dict else None, 
+                                                        torch.tensor(estimation_dict['coloration'],device=device,dtype=dtype) if 'coloration' in estimation_dict else None, 
+                                                        show=False
+                            )
+                        color_l_plot, color_r_plot = plot_color(bin_stim, full_perceptual_dict['colouration'].reference_fft, stereo_prop.lstn_pos, show=False)
+                    
+                    saver_obj.save_plots(time_plot,freq_plot,arrow_plot,color_l_plot,color_r_plot)
     
     saver_obj.save_config(nf=args.near_field,
                           epochs=args.epochs,
@@ -131,13 +169,13 @@ default_sofa_path = repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--near_field", type = int, default = 0, help = "Optimise for source in the near-field (0) and far-field (1)")
-parser.add_argument("--epochs", type=int, default=1500)
+parser.add_argument("--epochs", type=int, default=10)
 parser.add_argument("--n_samples", type=int, default=128)
 parser.add_argument("--stimulus", type=str, default="random")
 parser.add_argument("--sofa_path", type=str, default=str(default_sofa_path))
 parser.add_argument("--lr", type=float, default=0.01)
 parser.add_argument("--init", type=int, default=1, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
-parser.add_argument("--reg", type=int, default=0, help="If 1, use first moment or 2 for second moment regularisation during training")
+parser.add_argument("--reg", type=int, default=1, help="If 1, use first moment or 2 for second moment regularisation during training")
 parser.add_argument("--gradnorm", type=int, default=1, help="If 1, dynamically normalise weighting of losses using the GradNorm method")
 parser.add_argument("--alpha", type=float, default=1.5)
 parser.add_argument("--seed", type=int, default=52, help="Random seed for reproducibility")

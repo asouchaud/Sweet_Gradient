@@ -3,6 +3,7 @@ import json
 import numpy as np
 from datetime import datetime
 import scipy.io as sio
+import matplotlib.pyplot as plt
 
 from scripts.saving.save_normalise import normalise_max
 
@@ -116,3 +117,19 @@ class saver():
             json.dump(results, f, indent=4)
 
         print(f"\n✅ Results saved to {self.run_dir}")
+
+    def save_plots(self, time_plot, freq_plot, arrows_plot = None, color_l = None, color_r = None):
+
+        plot_folder = self.run_dir / "plots"
+        plot_folder.mkdir(parents=True)
+
+        time_plot.savefig(plot_folder / "time_filters.png")
+        freq_plot.savefig(plot_folder / "freq_filters.png")
+
+        if arrows_plot is not None:
+            arrows_plot.savefig(plot_folder / "arrow_plot.png")
+
+        if color_l is not None and color_r is not None:
+            color_l.savefig(plot_folder / "color_left.png")
+            color_r.savefig(plot_folder / "color_right.png")
+        

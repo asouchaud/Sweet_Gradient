@@ -28,8 +28,6 @@ class TensorboardLogger:
         if epoch % self.h_log_interval != 0:
             return
         
-        print("Logging filters")
-        
         h_full = h_full.squeeze(0).detach().cpu().numpy()
 
         # Histograms

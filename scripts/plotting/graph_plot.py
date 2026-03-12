@@ -68,7 +68,7 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None,
         col = col.detach().cpu().numpy().squeeze().reshape(-1)
 
         fig_arrow, ax = plt.subplots(figsize=(6,6))
-        ax.scatter(spk_pos[0], spk_pos[1], c='red', label='Speaker')
+        ax.scatter(spk_pos[:,0], spk_pos[:,1], c='red', label='Speaker')
         ax.scatter(lstn_pos[:,0], lstn_pos[:,1], c='blue', label='Listener positions')
 
         if loc_target is not None:
@@ -85,8 +85,8 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None,
             ax.arrow(float(x), float(y), float(dx), float(dy),
                     head_width=0.05, head_length=0.08, fc='orange', ec='orange')    
 
-        ax.set_ylim(-1.5,1.5)
-        ax.set_xlim(-1.5,1.5)
+        ax.set_ylim(-1.25,1.25)
+        ax.set_xlim(-0.5,2.0)
         ax.grid()
         ax.set_ylabel('Y position (m)')
         ax.set_xlabel('X position (m)')
@@ -141,4 +141,75 @@ def plot_bin_cues(bin_stim, fs, gtfb, show = True):
         plt.show()
 
     return fig_bin_cues
+
+def plot_color(bin_stim, ref_fft, lstn_pos, show = True):
+
+    bin_stim_fft = 20*np.log(np.abs(np.fft.rfft(bin_stim, n=ref_fft.shape[-1]*2-1, axis = -1)))
+
+    ref_fft = ref_fft.detach().cpu().numpy()
+    if ref_fft.shape[0] == 1:
+        ref_fft = np.repeat(ref_fft, bin_stim_fft.shape[0], axis=0)
+
+    freq = np.fft.rfftfreq(ref_fft.shape[-1], 1/48000)
+   
+    lstn_pos = lstn_pos.detach().cpu().numpy().squeeze().reshape(-1, 2)
+
+    n_pos = lstn_pos.shape[0]
+
+    # Compute number of rows and columns
+    cols = np.ceil(np.sqrt(n_pos)).astype(int)      # try to make square-ish
+    rows = np.ceil(n_pos / cols).astype(int)  
+
+    # Create subplots
+    fig_l, axes_l = plt.subplots(rows, cols, figsize=(cols*5, rows*3))
+
+    ## Left ear
+
+    # Flatten axes array for easy indexing (in case of multiple rows/cols)
+    axes_l = axes_l.flatten() if n_pos > 1 else [axes_l]
+
+    for i in range(n_pos):
+        axes_l[i].semilogx(bin_stim_fft[i,0], label = "Estimated Signal")  
+        axes_l[i].semilogx(ref_fft[i,0], label = "Reference Signal")
+        axes_l[i].set_title(f"Position {lstn_pos[i]}")
+        axes_l[i].legend()
+        axes_l[i].set_ylabel('Magnitude [dB]')
+        axes_l[i].set_xlabel('Frequency [Hz]')
+        axes_l[i].grid()
+
+    # Hide any unused subplots
+    for j in range(n_pos, len(axes_l)):
+        axes_l[j].axis('off')
+
+    plt.tight_layout()
+
+    ## Right ear
+
+    # Create subplots
+    fig_r, axes_r = plt.subplots(rows, cols, figsize=(cols*5, rows*3))
+
+    # Flatten axes array for easy indexing (in case of multiple rows/cols)
+    axes_r = axes_r.flatten() if n_pos > 1 else [axes_r]
+
+    for i in range(n_pos):
+        axes_r[i].semilogx(bin_stim_fft[i,1], label = "Estimated Signal")  
+        axes_r[i].semilogx(ref_fft[i,1], label = "Reference Signal")
+        axes_r[i].set_title(f"Position {lstn_pos[i]}")
+        axes_r[i].legend()
+        axes_r[i].set_ylabel('Magnitude [dB]')
+        axes_r[i].set_xlabel('Frequency [Hz]')#
+        axes_r[i].grid()
+
+
+    # Hide any unused subplots
+    for j in range(n_pos, len(axes_r)):
+        axes_r[j].axis('off')
+
+    plt.tight_layout()
+
+    if show:
+        plt.show()
+
+    return(fig_l, fig_r)
+    
     

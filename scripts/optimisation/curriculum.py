@@ -73,7 +73,7 @@ def gradnorm(nn, loss_dict, weight_dict, importance=None, alpha = 2):
 
     gradnorm_loss = 0
     for key in grad_norms:
-        target = G_avg
+        target = G_avg * (r[key]**alpha)
         if importance is not None:
             target = importance[key] * G_avg * (r[key]**alpha)  # scale target by importance
         gradnorm_loss += torch.abs(grad_norms[key] - target.detach())

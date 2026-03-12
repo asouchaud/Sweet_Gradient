@@ -17,16 +17,20 @@ from scripts.perceptual_models.llado2025.llado2025 import llado2025
 from scripts.perceptual_models.desena2020.desena2020 import desena2020
 from scripts.perceptual_models.spectral_matching.spectral_matching import spectral_matching
 
+from scripts.perceptual_models.llado2025.llado2025_helpers import near_field_comp_angles
+
 DTYPE = torch.float32
 
 def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None, show = True, vbap_values = None):
+        
+        unc_was_none = unc is None
+        col_was_none = col is None
         
         if unc is None:
             unc = torch.zeros_like(loc, device=loc.device, dtype=loc.dtype)
         
         if col is None:
-            col = torch.zeros_like(loc, device=loc.device, dtype=loc.dtype)
-    
+            col = torch.zeros_like(loc, device=loc.device, dtype=loc.dtype)    
         
         lstn_pos = lstn_pos.detach().cpu().numpy().squeeze().reshape(-1, 2) # WORKS ONLY FOR BATCH SIZE 1
         spk_pos = spk_pos.detach().cpu().numpy().squeeze()
@@ -37,17 +41,20 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None,
         fig_arrow, ax = plt.subplots(figsize=(6,6))
         ax.scatter(spk_pos[:,0], spk_pos[:,1], c='red', label='Speaker')
         ax.scatter(lstn_pos[:,0], lstn_pos[:,1], c='blue', label='Listener positions')
-
+        
+        target_angle = None
         if loc_target is not None:
             loc_pos = [1.732, 1.732*np.tan(np.deg2rad(loc_target.item()))]
             ax.scatter(loc_pos[0], loc_pos[1], c='green', label='Target position')
 
+            target_angle = near_field_comp_angles(torch.tensor(loc_pos), lstn_pos)
+            target_angle = target_angle.detach().cpu().numpy().squeeze().reshape(-1)
         
         arrow_len = 0.2
-        for x, y, ang, unc in zip(lstn_pos[:,0], lstn_pos[:,1], loc, unc):  
+        for x, y, ang, leng in zip(lstn_pos[:,0], lstn_pos[:,1], loc, unc):  
 
-            dx = (1-unc)*arrow_len * np.cos(np.deg2rad(ang))
-            dy = (1-unc)*arrow_len * np.sin(np.deg2rad(ang))
+            dx = (1-leng)*arrow_len * np.cos(np.deg2rad(ang))
+            dy = (1-leng)*arrow_len * np.sin(np.deg2rad(ang))
 
             ax.arrow(float(x), float(y), float(dx), float(dy),
                     head_width=0.05, head_length=0.08, fc='orange', ec='orange')    
@@ -61,10 +68,10 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None,
             col_vbap = col_vbap.detach().cpu().numpy().squeeze().reshape(-1)
 
             arrow_len = 0.2
-            for x, y, ang, unc in zip(lstn_pos[:,0], lstn_pos[:,1], loc_vbap, unc_vbap):  
+            for x, y, ang, leng in zip(lstn_pos[:,0], lstn_pos[:,1], loc_vbap, unc_vbap):  
 
-                dx = (1-unc)*arrow_len * np.cos(np.deg2rad(ang))
-                dy = (1-unc)*arrow_len * np.sin(np.deg2rad(ang))
+                dx = (1-leng)*arrow_len * np.cos(np.deg2rad(ang))
+                dy = (1-leng)*arrow_len * np.sin(np.deg2rad(ang))
 
                 ax.arrow(float(x), float(y), float(dx), float(dy),
                         head_width=0.05, head_length=0.08, fc='purple', ec='purple')
@@ -82,11 +89,37 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None,
         ax.legend(handles=ax.get_legend_handles_labels()[0] + legend_elements,
                 labels=ax.get_legend_handles_labels()[1] + [le.get_label() for le in legend_elements])
 
-        ax.set_ylim(-2,2)
-        ax.set_xlim(-2,2)
+        ax.set_ylim(-1.25,1.25)
+        ax.set_xlim(-0.5,2.0)
         ax.grid()
         ax.set_ylabel('Y position (m)')
         ax.set_xlabel('X position (m)')
+
+        # --- format caption text ---
+        parts = [f"loc: {np.array2string(loc, precision=2, separator=', ')}"]
+
+        if target_angle is not None:
+            parts.append(f"target: {np.array2string(target_angle, precision=2, separator=', ')}")
+
+        if not unc_was_none:
+            parts.append(f"unc: {np.array2string(unc, precision=2, separator=', ')}")
+
+        if not col_was_none:
+            parts.append(f"col: {np.array2string(col, precision=2, separator=', ')}")
+
+        caption = " | ".join(parts)
+
+        # make space for caption
+        fig_arrow.subplots_adjust(bottom=0.22)
+
+        # add caption
+        fig_arrow.text(
+            0.5, 0.02, caption,
+            ha='center',
+            va='bottom',
+            fontsize=9,
+            wrap=True
+        )
 
 
         if show:
@@ -189,24 +222,24 @@ def vbap_stereo_gains(source_azimuth_deg, ls_azimuths_deg=(-30, 30)):
 
     return g
 
-
 repo_root = Path(__file__).resolve().parent
 default_sofa_path = repo_root / ".." / ".."/ "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"
 default_sofa_idx = repo_root  / ".." / ".."/ "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"
 vbap_values = None
 
-parser = argparse.ArgumentParser(description='Plot dense arrows')
-parser.add_argument('--folder_path', type=str, required=True, help='Path to the run folder')
-parser.add_argument('--sofa_path', type = str, default= default_sofa_path)
-parser.add_argument('--sofa_idx', type = str, default= default_sofa_idx)
-parser.add_argument("--vbap_comp", type = int, default=1, help = "Display VBAP localisation for desired angle")
-
-args = parser.parse_args()
-
-if args.sofa_path and args.sofa_idx is None:
-    parser.error("--sofa_path requires --sofa_idx")
 
 if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description='Plot dense arrows')
+    parser.add_argument('--folder_path', type=str, required=True, help='Path to the run folder')
+    parser.add_argument('--sofa_path', type = str, default= default_sofa_path)
+    parser.add_argument('--sofa_idx', type = str, default= default_sofa_idx)
+    parser.add_argument("--vbap_comp", type = int, default=1, help = "Display VBAP localisation for desired angle")
+
+    args = parser.parse_args()
+
+    if args.sofa_path and args.sofa_idx is None:
+        parser.error("--sofa_path requires --sofa_idx")
     
     filters, opt_lstn_pos, spk_pos, target_angle, stim_type, fs, device = load_data(args.folder_path)
 

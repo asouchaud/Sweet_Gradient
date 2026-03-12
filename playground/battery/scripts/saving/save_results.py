@@ -3,6 +3,7 @@ import numpy as np
 import json
 from datetime import datetime
 import scipy.io.wavfile as wav
+import matplotlib.pyplot as plt
 
 class saver():
     def __init__(self, current_date, current_time, reg_idx, init_idx, n_samples, nf_idx, angle, lstn_len, curr_idx):
@@ -145,5 +146,29 @@ class saver():
             json.dump(config, f, indent=4)
 
         print(f"\n✅ Config saved to {self.folder_path / 'config.json'}")
+
+    
+    def save_plots(self, time_plot, freq_plot, arrows_plot = None, color_l = None, color_r = None):
+
+        plot_folder = self.run_dir / "plots" / self.file_name[:3]
+        plot_folder.mkdir(parents=True, exist_ok=True)
+
+        time_plot.savefig(plot_folder / "time_filters.png")
+        plt.close(time_plot)  # Close after saving
+
+        freq_plot.savefig(plot_folder / "freq_filters.png")
+        plt.close(freq_plot)
+
+        if arrows_plot is not None:
+            arrows_plot.savefig(plot_folder / "arrow_plot.png")
+            plt.close(arrows_plot)
+
+        if color_l is not None and color_r is not None:
+            color_l.savefig(plot_folder / "color_left.png")
+            plt.close(color_l)
+
+            color_r.savefig(plot_folder / "color_right.png")
+            plt.close(color_r)
+        
     
 

@@ -27,6 +27,7 @@ def set_seed(seed=44):
 
     # For CUDA (if using GPU)
     if torch.cuda.is_available():
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)  # for multi-GPU
 
@@ -38,7 +39,7 @@ def set_seed(seed=44):
 
 def load_stim(fs, device, dtype, selected_stim = 'random'):
     if selected_stim == 'random':
-        stim = torch.randn(1,1,int(0.1*fs), device=device, dtype=dtype)
+        stim = torch.randn(1,1,int(0.01*fs), device=device, dtype=dtype)
     elif selected_stim == 'sine':
         stim = torch.sin(2*np.pi*440*torch.arange(0, int(0.01*fs), device=device, dtype=dtype)/fs).view(1,1,-1)
     elif selected_stim == 'male_speech':
