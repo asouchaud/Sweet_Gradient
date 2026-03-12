@@ -1,6 +1,8 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+import matplotlib.colors as colors
 
 from scripts.perceptual_models.llado2025.llado2025_estimateinterauralcues import llado2025_estimateinterauralcues
 
@@ -52,50 +54,107 @@ def plot_freq(est_filters, fs, show = True):
 
     return fig_freq   
 
-def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None, show = True):
+def plot_arrows(lstn_pos, spk_pos, loc, unc=None, col=None, loc_target=None, show=True):
+
+    if unc is None:
+        unc = torch.zeros_like(loc, device=loc.device, dtype=loc.dtype)
+
+    if col is None:
+        col = torch.zeros_like(loc, device=loc.device, dtype=loc.dtype)
+
+    # Convert to numpy
+    lstn_pos = lstn_pos.detach().cpu().numpy().squeeze().reshape(-1, 2) 
+    spk_pos = spk_pos.detach().cpu().numpy().squeeze()
+    loc = loc.detach().cpu().numpy().squeeze().reshape(-1)
+    unc = unc.detach().cpu().numpy().squeeze().reshape(-1)
+    col = col.detach().cpu().numpy().squeeze().reshape(-1)
+
+    fig_arrow, ax = plt.subplots(figsize=(6,6))
+    ax.scatter(spk_pos[:,0], spk_pos[:,1], c='red', label='Speaker')
+    ax.scatter(lstn_pos[:,0], lstn_pos[:,1], c='blue', label='Listener positions')
+
+    if loc_target is not None:
+        loc_pos = [1.732, np.tan(np.deg2rad(loc_target.item()))]
+        ax.scatter(loc_pos[0], loc_pos[1], c='green', label='Target position')
+
+    arrow_len = 0.2
+
+    # Create a colormap with log scaling
+    max_col = 18.5
+    norm = colors.LogNorm(vmin=1e-3, vmax=max_col)  # avoid zero
+    cmap = cm.viridis
+
+    for x, y, ang, unc_val, col_val in zip(lstn_pos[:,0], lstn_pos[:,1], loc, unc, col):
+        dx = (1-unc_val)*arrow_len * np.cos(np.deg2rad(ang))
+        dy = (1-unc_val)*arrow_len * np.sin(np.deg2rad(ang))
+
+        color = cmap(norm(max(col_val, 1e-3)))  # avoid zero for log scale
+
+        ax.arrow(float(x), float(y), float(dx), float(dy),
+                 head_width=0.05, head_length=0.08, fc=color, ec=color)
+
+    # Add colorbar
+    sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    cbar = fig_arrow.colorbar(sm, ax=ax)
+    cbar.set_label("Colouration / Loss")
+
+    ax.set_ylim(-1.25,1.25)
+    ax.set_xlim(-0.5,2.0)
+    ax.grid()
+    ax.set_ylabel('Y position (m)')
+    ax.set_xlabel('X position (m)')
+    ax.legend()
+
+    if show:
+        plt.show()
+
+    return fig_arrow
+
+# def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None, show = True):
+
+#         if unc is None:
+#             unc = torch.zeros_like(loc, device=loc.device, dtype=loc.dtype)
         
-        if unc is None:
-            unc = torch.zeros_like(loc, device=loc.device, dtype=loc.dtype)
-        
-        if col is None:
-            col = torch.zeros_like(loc, device=loc.device, dtype=loc.dtype)
+#         if col is None:
+#             col = torch.zeros_like(loc, device=loc.device, dtype=loc.dtype)
     
         
-        lstn_pos = lstn_pos.detach().cpu().numpy().squeeze().reshape(-1, 2) # WORKS ONLY FOR BATCH SIZE 1
-        spk_pos = spk_pos.detach().cpu().numpy().squeeze()
-        loc = loc.detach().cpu().numpy().squeeze().reshape(-1)
-        unc = unc.detach().cpu().numpy().squeeze().reshape(-1)
-        col = col.detach().cpu().numpy().squeeze().reshape(-1)
+#         lstn_pos = lstn_pos.detach().cpu().numpy().squeeze().reshape(-1, 2) # WORKS ONLY FOR BATCH SIZE 1
+#         spk_pos = spk_pos.detach().cpu().numpy().squeeze()
+#         loc = loc.detach().cpu().numpy().squeeze().reshape(-1)
+#         unc = unc.detach().cpu().numpy().squeeze().reshape(-1)
+#         col = col.detach().cpu().numpy().squeeze().reshape(-1)
 
-        fig_arrow, ax = plt.subplots(figsize=(6,6))
-        ax.scatter(spk_pos[:,0], spk_pos[:,1], c='red', label='Speaker')
-        ax.scatter(lstn_pos[:,0], lstn_pos[:,1], c='blue', label='Listener positions')
+#         fig_arrow, ax = plt.subplots(figsize=(6,6))
+#         ax.scatter(spk_pos[:,0], spk_pos[:,1], c='red', label='Speaker')
+#         ax.scatter(lstn_pos[:,0], lstn_pos[:,1], c='blue', label='Listener positions')
 
-        if loc_target is not None:
-            loc_pos = [1, np.tan(np.deg2rad(loc_target.item()))]
-            ax.scatter(loc_pos[0], loc_pos[1], c='green', label='Target position')
+#         if loc_target is not None:
+#             loc_pos = [1.732, np.tan(np.deg2rad(loc_target.item()))]
+#             ax.scatter(loc_pos[0], loc_pos[1], c='green', label='Target position')
 
         
-        arrow_len = 0.2
-        for x, y, ang, unc in zip(lstn_pos[:,0], lstn_pos[:,1], loc, unc):  
+#         arrow_len = 0.2
+#         for x, y, ang, unc in zip(lstn_pos[:,0], lstn_pos[:,1], loc, unc):  
 
-            dx = (1-unc)*arrow_len * np.cos(np.deg2rad(ang))
-            dy = (1-unc)*arrow_len * np.sin(np.deg2rad(ang))
+#             dx = (1-unc)*arrow_len * np.cos(np.deg2rad(ang))
+#             dy = (1-unc)*arrow_len * np.sin(np.deg2rad(ang))
 
-            ax.arrow(float(x), float(y), float(dx), float(dy),
-                    head_width=0.05, head_length=0.08, fc='orange', ec='orange')    
+#             ax.arrow(float(x), float(y), float(dx), float(dy),
+#                     head_width=0.05, head_length=0.08, fc='orange', ec='orange')    
 
-        ax.set_ylim(-1.25,1.25)
-        ax.set_xlim(-0.5,2.0)
-        ax.grid()
-        ax.set_ylabel('Y position (m)')
-        ax.set_xlabel('X position (m)')
-        ax.legend()
+#         ax.set_ylim(-1.25,1.25)
+#         ax.set_xlim(-0.5,2.0)
+#         ax.grid()
+#         ax.set_ylabel('Y position (m)')
+#         ax.set_xlabel('X position (m)')
+#         ax.legend()
 
-        if show:
-            plt.show()
+#         if show:
+#             plt.show()
         
-        return fig_arrow
+#         return fig_arrow
 
 def plot_bin_cues(bin_stim, fs, gtfb, show = True):
 
@@ -142,15 +201,18 @@ def plot_bin_cues(bin_stim, fs, gtfb, show = True):
 
     return fig_bin_cues
 
-def plot_color(bin_stim, ref_fft, lstn_pos, show = True):
+def plot_color(bin_stim, ref_stim, lstn_pos, show = True):
 
-    bin_stim_fft = 20*np.log(np.abs(np.fft.rfft(bin_stim, n=ref_fft.shape[-1]*2-1, axis = -1)))
+    ref_stim_np = ref_stim.detach().cpu().numpy()
+    n_fft = 4096
 
-    ref_fft = ref_fft.detach().cpu().numpy()
+    bin_stim_fft = 20*np.log(np.abs(np.fft.rfft(bin_stim, n=n_fft, axis = -1)))
+    ref_fft = 20*np.log(np.abs(np.fft.rfft(ref_stim_np, n=n_fft, axis = -1)))
+
     if ref_fft.shape[0] == 1:
         ref_fft = np.repeat(ref_fft, bin_stim_fft.shape[0], axis=0)
 
-    freq = np.fft.rfftfreq(ref_fft.shape[-1], 1/48000)
+    freq = np.fft.rfftfreq(n_fft, 1/48000)
    
     lstn_pos = lstn_pos.detach().cpu().numpy().squeeze().reshape(-1, 2)
 
@@ -169,8 +231,8 @@ def plot_color(bin_stim, ref_fft, lstn_pos, show = True):
     axes_l = axes_l.flatten() if n_pos > 1 else [axes_l]
 
     for i in range(n_pos):
-        axes_l[i].semilogx(bin_stim_fft[i,0], label = "Estimated Signal")  
-        axes_l[i].semilogx(ref_fft[i,0], label = "Reference Signal")
+        axes_l[i].semilogx(freq[9:], bin_stim_fft[i,0,9:], label = "Estimated Signal")  
+        axes_l[i].semilogx(freq[9:], ref_fft[i,0,9:], label = "Reference Signal")
         axes_l[i].set_title(f"Position {lstn_pos[i]}")
         axes_l[i].legend()
         axes_l[i].set_ylabel('Magnitude [dB]')
@@ -192,8 +254,8 @@ def plot_color(bin_stim, ref_fft, lstn_pos, show = True):
     axes_r = axes_r.flatten() if n_pos > 1 else [axes_r]
 
     for i in range(n_pos):
-        axes_r[i].semilogx(bin_stim_fft[i,1], label = "Estimated Signal")  
-        axes_r[i].semilogx(ref_fft[i,1], label = "Reference Signal")
+        axes_r[i].semilogx(freq[9:], bin_stim_fft[i,1,9:], label = "Estimated Signal")  
+        axes_r[i].semilogx(freq[9:], ref_fft[i,1,9:], label = "Reference Signal")
         axes_r[i].set_title(f"Position {lstn_pos[i]}")
         axes_r[i].legend()
         axes_r[i].set_ylabel('Magnitude [dB]')

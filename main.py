@@ -102,9 +102,9 @@ def main(args):
     unc_model = desena2020(loss = unc_loss, target = unc_target, hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # De Sena et al. 2020 model
     
 
-    perceptual_dict = {'localisation': loc_model,}
-                         #'uncertainty': unc_model,}
-                         #'colouration': col_model}
+    perceptual_dict = {'localisation': loc_model,
+                         'uncertainty': unc_model,
+                         'colouration': col_model}
 
     # Initialise neural network
     nn_model = load_NN(n_samples=args.n_samples, device=device, dtype=dtype, init = args.init) # Load neural network ICLD or FIR
@@ -150,13 +150,13 @@ def main(args):
     time_plot = plot_time(est_filters, show=False)
     freq_plot = plot_freq(est_filters, fs, show=False)
     arrow_plot = None
-    if 'localisation' in perceptual_dict:
-        if perceptual_dict['localisation'].lstn_pos_conf is not None:
+    if 'localisation' in full_perceptual_dict:
+        if full_perceptual_dict['localisation'].lstn_pos_conf is not None:
             arrow_plot = plot_arrows(stereo_prop.lstn_pos, 
                                         stereo_prop.spk_pos, 
                                         torch.tensor(estimation_dict['localisation'], device=device, dtype=dtype), 
                                         torch.tensor(estimation_dict['uncertainty'], device=device, dtype=dtype) if 'uncertainty' in estimation_dict else None, 
-                                        torch.tensor(estimation_dict['coloration'],device=device, dtype=dtype) if 'coloration' in estimation_dict else None, 
+                                        torch.tensor(estimation_dict['colouration'],device=device, dtype=dtype) if 'colouration' in estimation_dict else None, 
                                         loc_target=torch.tensor(args.target_angle),
                                         show=False
             )
@@ -165,11 +165,11 @@ def main(args):
                                         stereo_prop.spk_pos, 
                                         torch.tensor(estimation_dict['localisation'], device=device,dtype=dtype), 
                                         torch.tensor(estimation_dict['uncertainty'],device=device,dtype=dtype) if 'uncertainty' in estimation_dict else None, 
-                                        torch.tensor(estimation_dict['coloration'],device=device,dtype=dtype) if 'coloration' in estimation_dict else None, 
+                                        torch.tensor(estimation_dict['colouration'],device=device,dtype=dtype) if 'colouration' in estimation_dict else None, 
                                         show=False
             )
-        color_l_plot, color_r_plot = plot_color(bin_stim, col_model.reference_fft, stereo_prop.lstn_pos)
-        plt.show()
+    color_l_plot, color_r_plot = plot_color(bin_stim, col_model.reference_stim, stereo_prop.lstn_pos)
+    plt.show()
 
 ## Save results
 
@@ -184,7 +184,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--near_field", type = int, default = 0, help = "Optimise for source in the near-field (1) and far-field (0)")
-    parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--epochs", type=int, default=1000)
     parser.add_argument("--n_samples", type=int, default=128)
     parser.add_argument("--target_angle", type=float, default=00.0)
     parser.add_argument("--stimulus", type=str, default="random")
@@ -194,7 +194,7 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=0.001)
     parser.add_argument("--init", type=int, default=1, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and 0s at right speaker")
     parser.add_argument("--reg", type=int, default=2, help="If 1, use first moment or 2 for second moment regularisation during training")
-    parser.add_argument("--gradnorm", type=int, default=1, help="If 1, dynamically normalise weighting of losses using the GradNorm method")
+    parser.add_argument("--gradnorm", type=int, default=0, help="If 1, dynamically normalise weighting of losses using the GradNorm method")
     parser.add_argument("--alpha", type=float, default=1.5)
     parser.add_argument("--seed", type=int, default = 46, help="Random seed for reproducibility")
     parser.add_argument("--log", type=int, default=1, help="If 1, will log the training in Tensorboard, to view run in terminal | tensorboard --logdir runs | ")

@@ -2,6 +2,8 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+import matplotlib.cm as cm
+import matplotlib.colors as colors
 import argparse
 import json
 import os
@@ -51,13 +53,27 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None,
             target_angle = target_angle.detach().cpu().numpy().squeeze().reshape(-1)
         
         arrow_len = 0.2
-        for x, y, ang, leng in zip(lstn_pos[:,0], lstn_pos[:,1], loc, unc):  
+
+            # Create a colormap with log scaling
+        max_col = 18.5
+        norm = colors.Normalize(vmin=0, vmax=max_col)  # avoid zero
+        cmap = cm.viridis
+        for x, y, ang, leng, col_val in zip(lstn_pos[:,0], lstn_pos[:,1], loc, unc, col):  
 
             dx = (1-leng)*arrow_len * np.cos(np.deg2rad(ang))
             dy = (1-leng)*arrow_len * np.sin(np.deg2rad(ang))
 
+            color = cmap(norm(max(col_val, 1e-3)))  # avoid zero for log scale
+
             ax.arrow(float(x), float(y), float(dx), float(dy),
-                    head_width=0.05, head_length=0.08, fc='orange', ec='orange')    
+                    head_width=0.05, head_length=0.08, fc=color, ec=color)    
+
+            # Add colorbar
+        sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+        cbar = fig_arrow.colorbar(sm, ax=ax)
+        cbar.set_label("LSD")
+
 
         if vbap_values is not None:
 
