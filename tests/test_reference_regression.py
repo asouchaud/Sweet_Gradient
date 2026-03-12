@@ -25,12 +25,12 @@ def test_reference_10_epoch_near_field_run_matches_known_output() -> None:
     # setup -> propagation -> perceptual models -> training -> evaluation.
     #
     # The expected values below come directly from the reference output supplied in the prompt for:
-    # - near-field mode
+    # - the default `main.py` configuration (far-field, unless explicitly enabled)
     # - 10 epochs
     # - 10 FIR samples
     # - target angle 15 degrees
     # - random stimulus with seed 46
-    # - one listener position at [0.0, 0.5]
+    # - 3 listener positions (main.py lstn_pos_conf=1)
     #
     # To keep the run deterministic across environments, the test forces CPU execution instead of
     # relying on CUDA/MPS availability.
@@ -42,7 +42,6 @@ def test_reference_10_epoch_near_field_run_matches_known_output() -> None:
     device = torch.device("cpu")
     fs = 48000
 
-    near_field = 1
     epochs = 10
     n_samples = 10
     target_angle = 15.0
@@ -52,7 +51,8 @@ def test_reference_10_epoch_near_field_run_matches_known_output() -> None:
     lr = 0.001
     init_type = 1
     reg_type = 2
-    gradnorm = 0
+    # `main.py` enables GradNorm by default.
+    gradnorm = 1
     seed = 46
 
     # The seed is part of the reference configuration and is required because the stimulus and some
@@ -77,7 +77,6 @@ def test_reference_10_epoch_near_field_run_matches_known_output() -> None:
         hrirs=hrirs,
         fs=fs,
         gtfb=gtfb,
-        lstn_pos_conf=lstn_pos,
     ).to(device=device, dtype=dtype)
 
     col_model = spectral_matching(
@@ -87,8 +86,6 @@ def test_reference_10_epoch_near_field_run_matches_known_output() -> None:
         hrirs=hrirs,
         target_angle=target_angle,
         fs=fs,
-        lstn_pos_conf=lstn_pos,
-        sofa_path=str(sofa_path),
     ).to(device=device, dtype=dtype)
 
     # The reference script instantiates desena2020 as well, even though it is not added to the
@@ -101,10 +98,8 @@ def test_reference_10_epoch_near_field_run_matches_known_output() -> None:
         gtfb=gtfb,
     ).to(device=device, dtype=dtype)
 
-    perceptual_dict = {
-        "localisation": loc_model,
-        "colouration": col_model,
-    }
+    # Mirror `main.py`: train using localisation only (colouration is evaluated afterwards).
+    perceptual_dict = {"localisation": loc_model}
 
     nn_model = load_NN(n_samples=n_samples, device=device, dtype=dtype, init=init_type)
     nn_optimiser = load_optimiser(nn_model, lr=lr)
@@ -122,42 +117,49 @@ def test_reference_10_epoch_near_field_run_matches_known_output() -> None:
     )
 
     trainer.train()
-    est_filters, estimation_dict, _bin_stim = trainer.evaluate()
+    # Mirror `main.py`: evaluate with the full perceptual set (including colouration),
+    # even though training used localisation only.
+    full_perceptual_dict = {
+        "localisation": loc_model,
+        "uncertainty": _unc_model,
+        "colouration": col_model,
+    }
+    est_filters, estimation_dict, _bin_stim = trainer.evaluate(full_perceptual_dict)
 
     # These expected FIR coefficients are copied from the user's provided reference output.
     expected_filters = np.array(
         [
             [
-                9.9004465e-01,
-                -8.9720655e-03,
-                1.4326015e-03, 
-                9.4809802e-04,
-                6.2107487e-04,
-                -4.4117944e-04,
-                -4.4392698e-04,
-                6.5900135e-04,
-                5.2877783e-04,
-                5.2544044e-04,
+            1.0108615159988403,
+            0.004902565423846245,
+            0.0003747918788623804,
+            0.00023912532306797802,
+            0.0003370926063975692,
+            0.0003758000105891377,
+            0.00038051412903778255,
+            0.0003864263086117804,
+            0.0003916759536502516,
+            0.0003917338339050114,
             ],
             [
-                9.8999721e-01,  
-                9.6550267e-03,  
-                5.2750986e-03, 
-                -1.1142826e-03,
-                2.3138886e-03,
-                -8.6717901e-04,
-                4.6243961e-04,
-                -5.0887483e-04,
-                6.6803687e-04,  
-                4.9884320e-04,
-            ],
+            0.9890888333320618,
+            -0.004881629683822393,
+            -0.00037801504320442677,
+            -0.00020932632171522886,
+            -0.00030668729031406343,
+            -0.0003522062035461515,
+            -0.0003605461694854492,
+            -0.00036708073439002037,
+            -0.0003727798227599263,
+            -0.00037368852891094923,
+            ]
         ],
         dtype=np.float32,
     )
 
     # These scalar reference values are also taken directly from the user's provided output.
-    expected_localisation = [ 0.625, 16.041666, -18.333334 ]
-    expected_colouration = 282.60693359375
+    expected_localisation = [ 1.0416666269302368, 20.0, -19.79166603088379 ]
+    expected_colouration = 295.8575439453125
 
     # We use tight numerical tolerances because this is intended as a regression test for a known,
     # deterministic CPU run rather than a broad behavioural test.
