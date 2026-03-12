@@ -128,7 +128,8 @@ def main(args):
     time_train_start = time.time()
     trainer.train()
     time_train = time.time() - time_train_start
-    print("Time for full optimisation:{time_train:.2f}")
+    print(f"Time for full optimisation:{time_train:.2f}")
+    
 ## Print and Plot results
 
     # Evaluate final neural network FIRs

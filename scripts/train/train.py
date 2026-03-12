@@ -46,15 +46,6 @@ class Train:
                             }
             self.alpha = alpha
 
-            # N = len(self.importance)
-            # scale = N / sum(self.importance.values())
-            # for key in self.importance:
-            #     self.importance[key] *= scale
-            
-            # self.initial_losses = {
-            #             key: torch.tensor(1, dtype=self.dtype, device=self.device).detach() for key in perceptual_dict
-            #         }
-
         self.nn = nn
         self.prop = prop
         self.perceptual_dict = perceptual_dict
@@ -119,11 +110,7 @@ class Train:
 
             # Optimise weigths 
             if self.gradnorm:
-                # if epoch == 0:
-                #     self.initial_losses = {
-                #         key: loss_dict[key].detach() + 1e-2 for key in loss_dict
-                #     }
-                
+
                 gradnorm_loss, gradnorms, r = gradnorm(self.nn, loss_dict, self.loss_weights, self.importance, alpha = self.alpha)
                 
                 self.gradnorm_optimiser.zero_grad()
@@ -135,7 +122,6 @@ class Train:
                         p.clamp_(min=0.0)
 
                 # Renormalize weights to sum = number of losses
-                with torch.no_grad():
                     total_w = sum(p.item() for p in self.loss_weights.values())
                     N = sum(self.importance[k] for k in self.loss_weights.keys())
                     for p in self.loss_weights.values():
@@ -145,7 +131,7 @@ class Train:
             if self.scheduler is not None:
                 self.scheduler.step()
 
-             # Log training in Tensorboard
+            # Log training in Tensorboard
             if self.logger is not None:
                 self.logger.log_losses(loss_dict, full_loss, epoch)
                 self.logger.log_h_full(h_full, epoch)
@@ -196,6 +182,7 @@ class Train:
 
         # Get perceptual estimations and compute losses
         loss_dict = {}
+        est_dict = {}
         for entry in self.perceptual_dict.items():
             model = entry[1] # Get model
             model_target = model.target # Get target
@@ -204,6 +191,8 @@ class Train:
             model_estimation = model(bin_stim) # Get model estimation
             loss = model_loss(model_estimation, torch.tensor(model_target, device=self.device, dtype=self.dtype).expand_as(model_estimation)) # Calculate loss
             loss_dict[entry[0]] = loss / model.loss_norm # Store loss in dictionary
+            est_dict[entry[0]] = model_estimation # Store estimation in dictionary
+
 
         # Compute regularisation loss
         if self.reg:
@@ -211,33 +200,33 @@ class Train:
             loss_dict['regularisation_r'] = self.regularisation.compute_loss(h_r) / self.regularisation.loss_norm
 
         # Log training in Tensorboard
-            if self.logger is not None:
-                self.logger.log_losses(loss_dict, full_loss, epoch+1)
-                self.logger.log_h_full(h_full, epoch+1)
+        if self.logger is not None:
+            self.logger.log_losses(loss_dict, full_loss, epoch+1)
+            self.logger.log_h_full(h_full, epoch+1)
 
-                if 'localisation' in self.perceptual_dict or 'uncertainty' in self.perceptual_dict:
-                    self.logger.log_bin_cues(bin_stim, epoch+1)
+            if 'localisation' in self.perceptual_dict or 'uncertainty' in self.perceptual_dict:
+                self.logger.log_bin_cues(bin_stim, epoch+1)
 
-                if 'localisation' in self.perceptual_dict:
-                    if self.perceptual_dict['localisation'].lstn_pos_conf is not None:
-                        self.logger.log_plot_arrows(self.prop.lstn_pos, 
-                                                   self.prop.spk_pos, 
-                                                   est_dict['localisation'], 
-                                                   est_dict['uncertainty'] if 'uncertainty' in self.perceptual_dict else None, 
-                                                   est_dict['coloration'] if 'coloration' in self.perceptual_dict else None, 
-                                                   epoch+1, 
-                                                   loc_target=self.perceptual_dict['localisation'].target[0])
-                    else:
-                        self.logger.log_plot_arrows(self.prop.lstn_pos, 
-                                                   self.prop.spk_pos, 
-                                                   est_dict['localisation'], 
-                                                   est_dict['uncertainty'] if 'uncertainty' in self.perceptual_dict else None, 
-                                                   est_dict['coloration'] if 'coloration' in self.perceptual_dict else None, 
-                                                   epoch+1)
-                if self.gradnorm:
-                    self.logger.log_weights(weight_dict=self.loss_weights, epoch=epoch+1)
-                    self.logger.log_gradnorms(gradnorms = gradnorms, epoch=epoch+1)
-                    self.logger.log_r(r,epoch=epoch+1)
+            if 'localisation' in self.perceptual_dict:
+                if self.perceptual_dict['localisation'].lstn_pos_conf is not None:
+                    self.logger.log_plot_arrows(self.prop.lstn_pos, 
+                                                self.prop.spk_pos, 
+                                                est_dict['localisation'], 
+                                                est_dict['uncertainty'] if 'uncertainty' in self.perceptual_dict else None, 
+                                                est_dict['coloration'] if 'coloration' in self.perceptual_dict else None, 
+                                                epoch+1, 
+                                                loc_target=self.perceptual_dict['localisation'].target[0])
+                else:
+                    self.logger.log_plot_arrows(self.prop.lstn_pos, 
+                                                self.prop.spk_pos, 
+                                                est_dict['localisation'], 
+                                                est_dict['uncertainty'] if 'uncertainty' in self.perceptual_dict else None, 
+                                                est_dict['coloration'] if 'coloration' in self.perceptual_dict else None, 
+                                                epoch+1)
+            if self.gradnorm:
+                self.logger.log_weights(weight_dict=self.loss_weights, epoch=epoch+1)
+                self.logger.log_gradnorms(gradnorms = gradnorms, epoch=epoch+1)
+                self.logger.log_r(r,epoch=epoch+1)
 
 
     def evaluate(self):

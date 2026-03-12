@@ -27,6 +27,7 @@ def set_seed(seed=44):
 
     # For CUDA (if using GPU)
     if torch.cuda.is_available():
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)  # for multi-GPU
 
