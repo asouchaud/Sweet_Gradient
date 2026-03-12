@@ -21,7 +21,7 @@ class llado2025(nn.Module):
         self.lstn_pos_conf = lstn_pos_conf
 
         self.template = llado2025_estimateinterauralcues(hrirs, fs, gtfb, tau_IACC)
-        self.template['azimuths'] = torch.arange(-90,95,5,dtype=self.dtype, device=self.device, requires_grad=True).view(-1,1)
+        self.template['azimuths'] = torch.arange(-90,95,5,dtype=self.dtype, device=self.device).view(-1,1)
         self.template['ild'] = self.template['ild'].squeeze()
         self.template['itd'] = self.template['itd'].squeeze()
         
