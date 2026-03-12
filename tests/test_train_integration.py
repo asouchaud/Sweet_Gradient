@@ -56,9 +56,9 @@ def test_train_moves_estimate_towards_target() -> None:
         gradnorm=0,
     )
 
-    _, initial_estimates = trainer.evaluate()
+    _, initial_estimates, _ = trainer.evaluate()
     trainer.train()
-    _, final_estimates = trainer.evaluate()
+    _, final_estimates, _ = trainer.evaluate()
 
     initial_error = abs(float(initial_estimates["localisation"]) - 1.0)
     final_error = abs(float(final_estimates["localisation"]) - 1.0)

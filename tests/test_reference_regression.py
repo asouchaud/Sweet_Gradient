@@ -122,7 +122,7 @@ def test_reference_10_epoch_near_field_run_matches_known_output() -> None:
     )
 
     trainer.train()
-    est_filters, estimation_dict = trainer.evaluate()
+    est_filters, estimation_dict, bin_stim = trainer.evaluate()
 
     # These expected FIR coefficients are copied from the user's provided reference output.
     expected_filters = np.array(
