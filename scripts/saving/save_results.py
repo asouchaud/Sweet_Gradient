@@ -51,6 +51,70 @@ class saver():
         self.run_dir = run_dir
         self.run_name = run_name
         self.now = now
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+
+    def save_filter_video(self, h_history, source_index: int, fps: int = 20):
+        """
+        Save a simple video (GIF) of a single source FIR over epochs.
+
+        Parameters
+        ----------
+        h_history : list/sequence
+            Per-epoch filters, each element shaped (2, n_samples) or (n_samples, 2).
+        source_index : int
+            0 for left, 1 for right.
+        fps : int
+            Frames per second for the GIF.
+        """
+        if h_history is None or len(h_history) == 0:
+            return
+
+        arr = np.asarray(h_history)
+        if arr.ndim != 3:
+            raise ValueError(f"h_history must be 3D, got shape {arr.shape}")
+
+        # Make per-epoch mono FIR array: (n_epoch, n_samples)
+        if arr.shape[1] == 2:
+            h_epoch = arr[:, source_index, :]
+        elif arr.shape[2] == 2:
+            h_epoch = arr[:, :, source_index]
+        else:
+            raise ValueError(f"Expected a stereo filter with a dimension of size 2, got shape {arr.shape}")
+
+        max_abs = float(np.max(np.abs(h_epoch))) if np.size(h_epoch) else 1.0
+        if max_abs == 0.0:
+            max_abs = 1.0
+
+        video_dir = self.run_dir / "videos"
+        video_dir.mkdir(parents=True, exist_ok=True)
+        out_path = video_dir / f"source_{source_index}_filter.gif"
+
+        fig, ax = plt.subplots(figsize=(7, 3))
+        x = np.arange(h_epoch.shape[-1])
+        (line,) = ax.plot(x, h_epoch[0], lw=1.5)
+        ax.set_xlim(0, len(x) - 1)
+        ax.set_ylim(-1.05 * max_abs, 1.05 * max_abs)
+        ax.set_xlabel("Sample")
+        ax.set_ylabel("Amplitude")
+        ax.set_title(f"Source {source_index} FIR — epoch 0")
+        ax.grid(True, alpha=0.25)
+
+        def _update(frame_idx):
+            line.set_ydata(h_epoch[frame_idx])
+            ax.set_title(f"Source {source_index} FIR — epoch {frame_idx}")
+            return (line,)
+
+        from matplotlib.animation import FuncAnimation, PillowWriter
+
+        anim = FuncAnimation(
+            fig,
+            _update,
+            frames=len(h_epoch),
+            interval=1000 / max(int(fps), 1),
+            blit=True,
+        )
+        anim.save(out_path, writer=PillowWriter(fps=fps))
+        plt.close(fig)
 
 
     def save_results(self, args, estimation_dict, est_filters, fs, lstn_pos, spk_pos, trainer):    

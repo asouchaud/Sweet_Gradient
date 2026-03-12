@@ -62,6 +62,7 @@ class Train:
             self.logger = None
 
         self.scheduler = scheduler
+        self.h_history = []
 
     def train(self):
         for epoch in range(self.n_epoch+1):
@@ -73,6 +74,8 @@ class Train:
             h_r = h[:,self.n_samples:].unsqueeze(1)
             h_full = torch.cat([h_l,h_r], dim=1)
             # h_full_normalised = energy_normalisation(h_full)
+            with torch.no_grad():
+                self.h_history.append(h_full.squeeze(0).detach().cpu().numpy())
 
             # Propagate sound from speakers
             bin_stim = self.prop(h_full)
