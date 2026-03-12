@@ -99,7 +99,8 @@ class saver():
             "perceptual_losses": list(estimation_dict.keys()),
             "Gradnorm": args.gradnorm,
             "importance": trainer.importance,
-            "alpha": trainer.alpha
+            "alpha": trainer.alpha,
+            "weights": {k: v.detach().cpu().item() for k, v in trainer.loss_weights.items()}
         }
 
         with open(self.run_dir / "config.json", "w") as f:

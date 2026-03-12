@@ -20,16 +20,25 @@ class Train:
         self.gradnorm = gradnorm
 
         if self.reg:
-            self.loss_weights = torch.nn.ParameterDict({
-                **{key: torch.nn.Parameter(torch.tensor(1.0, device=self.device, dtype=self.dtype))
+            
+            weights = {  ### TEMPORARY QUICK FIX TO TEST AND TRY DIFFERENT WEIGTHINGS DURING TRAINING
+                'localisation': 1.0,
+                'uncertainty': 1.0e1,
+                'colouration': 1.0e-2,
+                'regularisation_l': 1.0e-3,
+                'regularisation_r': 1.0e-3
+            }
+
+            self.loss_weights = torch.nn.ParameterDict({  ### CHANGE BACK HERE WHEN OPTIMAL WEIGHTS FOUND
+                **{key: torch.nn.Parameter(torch.tensor(weights[key], device=self.device, dtype=self.dtype))
                 for key in perceptual_dict.keys()},
-                'regularisation_l': torch.nn.Parameter(torch.tensor(1.0, device=self.device, dtype=self.dtype)),
-                'regularisation_r': torch.nn.Parameter(torch.tensor(1.0, device=self.device, dtype=self.dtype)),
+                'regularisation_l': torch.nn.Parameter(torch.tensor(weights['regularisation_l'], device=self.device, dtype=self.dtype)),
+                'regularisation_r': torch.nn.Parameter(torch.tensor(weights['regularisation_r'], device=self.device, dtype=self.dtype)),
             })
 
         else:
             self.loss_weights = torch.nn.ParameterDict({
-                key: torch.nn.Parameter(torch.tensor(1.0, device=self.device, dtype=self.dtype))
+                key: torch.nn.Parameter(torch.tensor(weights[key], device=self.device, dtype=self.dtype))
                 for key in perceptual_dict.keys()
             })
 
