@@ -90,7 +90,8 @@ def run_battery(args):
                 # Initialise neural network
                 nn_model = load_NN(n_samples=args.n_samples, device=device, dtype=dtype, init = args.init) # Load neural network ICLD or FIR
                 nn_optimiser = load_optimiser(nn_model, lr=0.01) # Load optimiser for neural network
-                nn_scheduler = load_scheduler(nn_optimiser,args.epochs)
+                # nn_scheduler = load_scheduler(nn_optimiser,args.epochs)
+                nn_scheduler = None
 
                 saver_obj = saver(current_date=current_date,
                                   current_time=current_time,
