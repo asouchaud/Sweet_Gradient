@@ -9,6 +9,7 @@ import torchaudio.functional as TF
 
 from scripts.perceptual_models.spectral_matching.spectral_matching_helpers import near_field_target
 from scripts.perceptual_models.spectral_matching.spectral_matching_helpers import near_field_comp_angles
+from scripts.perceptual_models.spectral_matching.spectral_matching_helpers import log_spectral_distortion
 from scripts.setup.helpers import true_conv1d
 
 
@@ -29,11 +30,9 @@ class spectral_matching(nn.Module):
         if isinstance(lstn_pos_conf, type(None)):
             
             self.reference_hrir = self.get_IR(self.sofa_find(self.target_angle)).view(2,1,-1).to(dtype=self.dtype, device=self.device)
-            self.reference_stim = true_conv1d(self.stim, self.reference_hrir).permute(1, 0, 2)
-            self.reference_fft = 20*torch.log(torch.abs(torch.fft.rfft(self.reference_stim, n=n_fft, dim = -1))).permute(1,0,2)
+            self.reference_stim = true_conv1d(self.stim, self.reference_hrir)
 
             low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
-            low_fft = 20*torch.log(torch.abs(torch.fft.rfft(low_stim, n=n_fft, dim = -1))).permute(1,0,2)
 
         elif isinstance(lstn_pos_conf, list):
 
@@ -41,11 +40,9 @@ class spectral_matching(nn.Module):
             self.target_angle = near_field_comp_angles(near_field_loc, lstn_pos_conf)
 
             self.reference_hrir = self.get_IR(self.sofa_find(self.target_angle)).view(2*len(lstn_pos_conf),1,-1).to(dtype=self.dtype, device=self.device)
-            self.reference_stim = true_conv1d(self.stim, self.reference_hrir).permute(1, 0, 2)
-            self.reference_fft = 20*torch.log(torch.abs(torch.fft.rfft(self.reference_stim, n=n_fft, dim = -1))).permute(1,0,2).view(len(lstn_pos_conf), 2, -1)
+            self.reference_stim = true_conv1d(self.stim, self.reference_hrir)
 
             low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
-            low_fft = 20*torch.log(torch.abs(torch.fft.rfft(low_stim, n=n_fft, dim = -1))).permute(1,0,2).view(len(lstn_pos_conf), 2, -1)
         else:
             print("Wrong data type, defaulting for far-field")
             self.target = target_angle
@@ -53,7 +50,7 @@ class spectral_matching(nn.Module):
 
         self.target = target
         self.loss = loss
-        self.loss_norm = torch.nn.functional.mse_loss(self.reference_fft, low_fft) # Maximum possible loss for normalization
+        self.loss_norm = log_spectral_distortion(self.reference_stim, low_stim).item() # Maximum possible loss for normalization
 
     def sofa_find(self, spk_angle):
         # Take out distance coordinate from SOFA source position and add elv = 0 to speaker angles
@@ -79,8 +76,27 @@ class spectral_matching(nn.Module):
         return hrir
 
     def forward(self, bin_stim):
-        
-        bin_stim_fft = 20*torch.log(torch.abs(torch.fft.rfft(bin_stim, n=self.n_fft, dim = -1)))
-        coloration = F.mse_loss(bin_stim_fft, self.reference_fft.expand_as(bin_stim_fft))
 
-        return coloration.view(-1,1)
+        if len(bin_stim.shape) == 4:
+            batch_size = bin_stim.shape[0]
+            N_lstn_pos = bin_stim.shape[1]
+
+        elif len(bin_stim.shape) == 3:
+            batch_size = bin_stim.shape[0]
+            N_lstn_pos = 1
+        
+        elif len(bin_stim.shape) == 2:
+            batch_size = 1
+            N_lstn_pos = 1
+
+        else:
+            print('Expected input of dimensions greater than 1 and lower than 5')
+            return(0)
+    
+        N_signals = batch_size*N_lstn_pos
+        L_signal = bin_stim.shape[-1]
+        bin_stim_reshaped = bin_stim.view(N_signals, 2, L_signal)
+        
+        coloration = log_spectral_distortion(bin_stim_reshaped, self.reference_stim.expand_as(bin_stim_reshaped))
+
+        return coloration.view(-1)
