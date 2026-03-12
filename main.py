@@ -134,8 +134,8 @@ def main(args):
     print(f"Time for full optimisation:{time_train:.2f}")
 
     # Save per-epoch source FIR evolution as videos (one per source)
-    saver_obj.save_filter_video(trainer.h_history, source_index=0)
-    saver_obj.save_filter_video(trainer.h_history, source_index=1)
+    saver_obj.save_filter_video(trainer.h_history, source_index=0, fs=fs)
+    saver_obj.save_filter_video(trainer.h_history, source_index=1, fs=fs)
     
 ## Print and Plot results
 
