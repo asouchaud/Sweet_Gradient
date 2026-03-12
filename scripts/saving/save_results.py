@@ -54,7 +54,15 @@ class saver():
         self.now = now
         self.run_dir.mkdir(parents=True, exist_ok=True)
 
-    def save_filter_video(self, h_history, source_index: int, fs: float, fps: int = 20, hold_last_seconds: float = 2.0):
+    def save_filter_video(
+        self,
+        h_history,
+        source_index: int,
+        fs: float,
+        fps: int = 20,
+        hold_last_seconds: float = 2.0,
+        resolution_scale: float = 0.7,
+    ):
         """
         Save a simple video (GIF) of a single source FIR over epochs.
 
@@ -70,6 +78,9 @@ class saver():
             Frames per second for the GIF.
         hold_last_seconds : float
             Extra time (in seconds) to hold the last frame before looping.
+        resolution_scale : float
+            Scale factor for figure size (and thus output resolution). Use < 1 to reduce
+            file size (e.g. 0.5 gives roughly one quarter the pixels).
         """
         if h_history is None or len(h_history) == 0:
             return
@@ -105,10 +116,11 @@ class saver():
         mag_db_plot = mag_db[:, f_mask]
         phase_plot = phase[:, f_mask]
 
+        scale = max(0.1, float(resolution_scale))
         fig, (ax_t, ax_m, ax_p) = plt.subplots(
             nrows=1,
             ncols=3,
-            figsize=(12, 3),
+            figsize=(12 * scale, 3 * scale),
             gridspec_kw={"width_ratios": [2.0, 1.3, 1.3]},
         )
 
@@ -141,6 +153,8 @@ class saver():
         ax_p.set_ylabel("Phase (rad)")
         ax_p.set_title("Phase")
         ax_p.grid(True, alpha=0.25)
+
+        fig.tight_layout(rect=[0, 0.08, 1, 1])
 
         def _update(frame_idx):
             line_t.set_ydata(h_epoch[frame_idx])
