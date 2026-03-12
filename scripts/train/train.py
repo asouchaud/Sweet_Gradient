@@ -74,7 +74,6 @@ class Train:
             h_full = torch.cat([h_l,h_r], dim=1)
             # h_full_normalised = energy_normalisation(h_full)
 
-
             # Propagate sound from speakers
             bin_stim = self.prop(h_full)
 
@@ -108,11 +107,21 @@ class Train:
             full_loss.backward(retain_graph = True)
             self.optimiser.step()
 
-            # Optimise weigths 
+            # Optimise weights using GradNorm (after network update)
             if self.gradnorm:
+<<<<<<< HEAD
 
                 gradnorm_loss, gradnorms, r = gradnorm(self.nn, loss_dict, self.loss_weights, self.importance, alpha = self.alpha)
                 
+=======
+                gradnorm_loss, gradnorms, r = gradnorm(
+                    self.nn,
+                    loss_dict,
+                    self.loss_weights,
+                    self.importance,
+                    alpha=self.alpha,
+                )
+>>>>>>> Evaluation-plots
                 self.gradnorm_optimiser.zero_grad()
                 gradnorm_loss.backward()
                 self.gradnorm_optimiser.step()
@@ -120,8 +129,11 @@ class Train:
                 with torch.no_grad():
                     for p in self.loss_weights.values():
                         p.clamp_(min=0.0)
+<<<<<<< HEAD
 
                 # Renormalize weights to sum = number of losses
+=======
+>>>>>>> Evaluation-plots
                     total_w = sum(p.item() for p in self.loss_weights.values())
                     N = sum(self.importance[k] for k in self.loss_weights.keys())
                     for p in self.loss_weights.values():
@@ -162,24 +174,34 @@ class Train:
             
             time_epoch = time.time() - time_epoch_start
             # Print progress
-            print(
-            f"\rIter: {epoch:<4d} ¦¦ "
-            f"Loss: {full_loss.item():<10.5f} ¦¦ ",
-            f"Time: {time_epoch:.3f} seconds¦¦",
-            end="",
-            flush=True
-            )
-            print()
+            if epoch % 50 == 0:
+                print(
+                f"\rIter: {epoch+1:<4d} ¦¦ "
+                f"Loss: {full_loss.item():<10.5f} ¦¦ ",
+                # f"Time: {time_epoch:.3f} seconds¦¦",
+                end="",
+                flush=True
+                )
+                print()
+                pass
 
         ##### SAVE EVERYTHING AFTER FINAL BACKPROPAGATION ####
+        with torch.no_grad():
+            h = self.nn(torch.ones(1,1, device=self.device, dtype=self.dtype))
+            h_l = h[:,:self.n_samples].unsqueeze(1)
+            h_r = h[:,self.n_samples:].unsqueeze(1)
+            h_full = torch.cat([h_l,h_r], dim=1)
 
-        h = self.nn(torch.ones(1,1, device=self.device, dtype=self.dtype))
-        h_l = h[:,:self.n_samples].unsqueeze(1)
-        h_r = h[:,self.n_samples:].unsqueeze(1)
-        h_full = torch.cat([h_l,h_r], dim=1)
+            bin_stim = self.prop(h_full)
 
-        bin_stim = self.prop(h_full)
+            # Get perceptual estimations and compute losses
+            loss_dict = {}
+            for entry in self.perceptual_dict.items():
+                model = entry[1] # Get model
+                model_target = model.target # Get target
+                model_loss = model.loss # Get loss function
 
+<<<<<<< HEAD
         # Get perceptual estimations and compute losses
         loss_dict = {}
         est_dict = {}
@@ -193,12 +215,23 @@ class Train:
             loss_dict[entry[0]] = loss / model.loss_norm # Store loss in dictionary
             est_dict[entry[0]] = model_estimation # Store estimation in dictionary
 
+=======
+                model_estimation = model(bin_stim) # Get model estimation
+                loss = model_loss(model_estimation, torch.tensor(model_target, device=self.device, dtype=self.dtype).expand_as(model_estimation)) # Calculate loss
+                loss_dict[entry[0]] = loss / model.loss_norm # Store loss in dictionary
 
-        # Compute regularisation loss
-        if self.reg:
-            loss_dict['regularisation_l'] = self.regularisation.compute_loss(h_l) / self.regularisation.loss_norm
-            loss_dict['regularisation_r'] = self.regularisation.compute_loss(h_r) / self.regularisation.loss_norm
+            # Compute regularisation loss
+            if self.reg:
+                loss_dict['regularisation_l'] = self.regularisation.compute_loss(h_l) / self.regularisation.loss_norm
+                loss_dict['regularisation_r'] = self.regularisation.compute_loss(h_r) / self.regularisation.loss_norm
+>>>>>>> Evaluation-plots
 
+            # Log training in Tensorboard
+                if self.logger is not None:
+                    self.logger.log_losses(loss_dict, full_loss, epoch+1)
+                    self.logger.log_h_full(h_full, epoch+1)
+
+<<<<<<< HEAD
         # Log training in Tensorboard
         if self.logger is not None:
             self.logger.log_losses(loss_dict, full_loss, epoch+1)
@@ -227,9 +260,37 @@ class Train:
                 self.logger.log_weights(weight_dict=self.loss_weights, epoch=epoch+1)
                 self.logger.log_gradnorms(gradnorms = gradnorms, epoch=epoch+1)
                 self.logger.log_r(r,epoch=epoch+1)
+=======
+                    if 'localisation' in self.perceptual_dict or 'uncertainty' in self.perceptual_dict:
+                        self.logger.log_bin_cues(bin_stim, epoch+1)
+
+                    if 'localisation' in self.perceptual_dict:
+                        if self.perceptual_dict['localisation'].lstn_pos_conf is not None:
+                            self.logger.log_plot_arrows(self.prop.lstn_pos, 
+                                                    self.prop.spk_pos, 
+                                                    est_dict['localisation'], 
+                                                    est_dict['uncertainty'] if 'uncertainty' in self.perceptual_dict else None, 
+                                                    est_dict['coloration'] if 'coloration' in self.perceptual_dict else None, 
+                                                    epoch+1, 
+                                                    loc_target=self.perceptual_dict['localisation'].target[0])
+                        else:
+                            self.logger.log_plot_arrows(self.prop.lstn_pos, 
+                                                    self.prop.spk_pos, 
+                                                    est_dict['localisation'], 
+                                                    est_dict['uncertainty'] if 'uncertainty' in self.perceptual_dict else None, 
+                                                    est_dict['coloration'] if 'coloration' in self.perceptual_dict else None, 
+                                                    epoch+1)
+                    if self.gradnorm:
+                        self.logger.log_weights(weight_dict=self.loss_weights, epoch=epoch+1)
+                        self.logger.log_gradnorms(gradnorms = gradnorms, epoch=epoch+1)
+                        self.logger.log_r(r,epoch=epoch+1)
+>>>>>>> Evaluation-plots
 
 
-    def evaluate(self):
+    def evaluate(self, perceptual_dict = None):
+
+        if perceptual_dict is None:
+            perceptual_dict = self.perceptual_dict
         # Evaluate final FIRs
         with torch.no_grad():
             h = self.nn(torch.ones(1,1, device=self.device, dtype=self.dtype))
@@ -242,10 +303,10 @@ class Train:
 
             estimation_dict = {}
             # Get perceptual estimations and compute losses
-            for entry in self.perceptual_dict.items():
+            for entry in perceptual_dict.items():
                 model = entry[1] # Get model
 
                 model_estimation = model(bin_stim) # Get model estimation
                 estimation_dict[entry[0]] = model_estimation.squeeze().detach().cpu().numpy() # Store estimation in dictionary
 
-        return h_full.squeeze().detach().cpu().numpy(), estimation_dict
+        return h_full.squeeze().detach().cpu().numpy(), estimation_dict, bin_stim.squeeze().detach().cpu().numpy()

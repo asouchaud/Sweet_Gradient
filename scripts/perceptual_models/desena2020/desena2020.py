@@ -20,7 +20,7 @@ class desena2020(nn.Module):
         self.tau_IACC = tau_IACC
 
         self.template = desena2020_estimateinterauralcues(hrirs, fs, gtfb, tau_IACC)
-        self.template['azimuths'] = torch.arange(-90,95,5,dtype=self.dtype, device=self.device, requires_grad=True).view(-1,1)
+        self.template['azimuths'] = torch.arange(-90,95,5,dtype=self.dtype, device=self.device).view(-1,1)
         self.template['ild'] = self.template['ild'].squeeze()
         self.template['itd'] = self.template['itd'].squeeze()
         self.Hmin = desena2020_Hmin(self.template) # Hard coded APPARENT SADIE value

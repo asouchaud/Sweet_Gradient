@@ -187,8 +187,8 @@ class dense_battery_arrow_plot():
             ax.arrow(float(x), float(y), float(dx), float(dy),
                     head_width=0.05, head_length=0.08, fc='orange', ec='orange')    
 
-        ax.set_ylim(-1.5,1.5)
-        ax.set_xlim(-1.5-0.732,1.5)
+        ax.set_ylim(-1.25,1.25)
+        ax.set_xlim(-0.5,2.0)
         ax.grid()
         ax.set_ylabel('Y position (m)')
         ax.set_xlabel('X position (m)')

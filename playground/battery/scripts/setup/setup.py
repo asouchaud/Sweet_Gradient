@@ -19,7 +19,8 @@ def setup(args):
     fs = 48000
 
     # Set random seed for reproducibility
-    set_seed(seed=args.seed)
+    if args.seed is not None:
+        set_seed(seed=args.seed)
 
     # Training angles 
     target_angle = torch.tensor([0,10, 20], device=device, dtype=dtype)  # Target angle in degrees
