@@ -6,6 +6,92 @@ import matplotlib.colors as colors
 
 from scripts.perceptual_models.llado2025.llado2025_estimateinterauralcues import llado2025_estimateinterauralcues
 
+
+def rfft_freq_response(h, fs, n_fft: int = 4096):
+    """
+    Shared helper for FIR frequency response used by both `plot_freq` and video rendering.
+
+    Parameters
+    ----------
+    h : array-like
+        FIR(s) with shape (..., n_taps).
+    fs : float
+        Sampling rate in Hz.
+    n_fft : int
+        FFT size (mirrors `plot_freq` default).
+
+    Returns
+    -------
+    freqs_hz : np.ndarray
+        Frequency axis in Hz for the rFFT bins.
+    H : np.ndarray (complex)
+        rFFT of `h` along the last axis, shape (..., n_bins).
+    """
+    h = np.asarray(h)
+    H = np.fft.rfft(h, n=n_fft, axis=-1)
+    freqs_hz = np.fft.rfftfreq(n_fft, 1 / float(fs))
+    return freqs_hz, H
+
+
+def rfft_mag_db_phase(h, fs, n_fft: int = 4096, eps: float = 1e-12):
+    """
+    Compute rFFT magnitude (in dB) and phase (in radians).
+
+    Notes
+    -----
+    - Magnitude is in dB: \(20 \\log_{10}(|H| + eps)\)
+    - Phase is in radians: angle(H) in [-pi, pi]
+    """
+    freqs_hz, H = rfft_freq_response(h, fs, n_fft=n_fft)
+    mag_db = 20.0 * np.log10(np.abs(H) + float(eps))
+    phase = np.angle(H)
+    return freqs_hz, mag_db, phase
+
+
+def plot_mag_db_from_response(
+    freqs_hz,
+    mag_db,
+    ax=None,
+    title: str = None,
+    xlabel: str = "Frequency (Hz)",
+    ylabel: str = "Magnitude (dB)",
+    return_line: bool = False,
+):
+    """
+    Plot magnitude response in dB on a log-frequency x-axis.
+
+    This is the common routine used by `plot_freq` and the training GIF.
+    It masks out DC/non-positive freqs (required for log-x), sets x-limits,
+    labels, and grid styling.
+    """
+    freqs_hz = np.asarray(freqs_hz).reshape(-1)
+    mag_db = np.asarray(mag_db).reshape(-1)
+    if freqs_hz.shape != mag_db.shape:
+        raise ValueError(f"freqs_hz and mag_db must have same shape, got {freqs_hz.shape} vs {mag_db.shape}")
+
+    mask = np.isfinite(freqs_hz) & np.isfinite(mag_db) & (freqs_hz > 0.0)
+    f_plot = freqs_hz[mask]
+    mag_plot = mag_db[mask]
+    if f_plot.size == 0:
+        raise ValueError("No valid positive-frequency points available to plot on log-x axis.")
+
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(10, 2.5))
+    else:
+        fig = ax.figure
+
+    (line,) = ax.semilogx(f_plot, mag_plot)
+    if title is not None:
+        ax.set_title(title)
+    ax.set_xlim(float(f_plot[0]), float(f_plot[-1]))
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.grid(True, alpha=0.25)
+
+    if return_line:
+        return fig, ax, line, f_plot
+    return fig, ax
+
 def plot_time(est_filters, show = True):
     
     # -------- Time domain --------
@@ -30,21 +116,12 @@ def plot_time(est_filters, show = True):
 def plot_freq(est_filters, fs, show = True):
 
     # -------- Frequency domain --------
-    n_fft = 4096
-    freqs = np.fft.rfftfreq(n_fft, 1/fs)
-
-    mag_left = 20*np.log10(np.abs(np.fft.rfft(est_filters[0], n=n_fft)))
-    mag_right = 20*np.log10(np.abs(np.fft.rfft(est_filters[1], n=n_fft)))
-
     fig_freq, ax = plt.subplots(2, 1, sharex=True, figsize=(10, 5))
 
-    ax[0].semilogx(freqs, mag_left)
-    ax[0].set_title('Left FIR (Freq)')
-    ax[0].grid()
-
-    ax[1].semilogx(freqs, mag_right)
-    ax[1].set_title('Right FIR (Freq)')
-    ax[1].grid()
+    freqs_l, mag_l, _ = rfft_mag_db_phase(est_filters[0], fs, n_fft=4096)
+    freqs_r, mag_r, _ = rfft_mag_db_phase(est_filters[1], fs, n_fft=4096)
+    plot_mag_db_from_response(freqs_l, mag_l, ax=ax[0], title='Left FIR (Freq)')
+    plot_mag_db_from_response(freqs_r, mag_r, ax=ax[1], title='Right FIR (Freq)')
 
     fig_freq.suptitle('Estimated FIRs (Frequency Domain)')
     fig_freq.tight_layout()
