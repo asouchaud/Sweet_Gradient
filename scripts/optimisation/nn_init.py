@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from scripts.optimisation.custom_modules import MultiSourceFIRModule
+from scripts.optimisation.custom_modules import MultiSourceFIR
 
 
 def load_optimiser(nn, lr = 0.01): # Optimiser definition
@@ -12,7 +12,7 @@ def load_NN(n_samples=128, device='cuda', dtype=torch.float, init=1, n_sources=2
     if n_samples is None:
         n_samples = 1
 
-    NN = MultiSourceFIRModule(
+    NN = MultiSourceFIR(
         n_samples=n_samples,
         n_sources=n_sources,
         layer_cls=nn.Linear,

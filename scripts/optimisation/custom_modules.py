@@ -2,7 +2,7 @@ import torch
 from torch import nn
 
 
-class SymmetricFIRModule(nn.Module):
+class SymmetricFIR(nn.Module):
     """An FIR module whose filter coefficients are constrained to be symmetric."""
 
     def __init__(self, n_taps, bias=False):
@@ -32,7 +32,7 @@ class SymmetricFIRModule(nn.Module):
         return x @ self.weight.T
 
 
-class MultiSourceFIRModule(nn.Module):
+class MultiSourceFIR(nn.Module):
     """One linear (or custom layer) per source; forward returns (batch, source, taps)."""
 
     def __init__(self, n_samples, n_sources, layer_cls=nn.Linear, layer_kwargs=None, init_weight=None):
@@ -41,7 +41,7 @@ class MultiSourceFIRModule(nn.Module):
         self.n_samples = n_samples
         kwargs = layer_kwargs or {}
         self.branches = nn.ModuleList([
-            layer_cls(n_samples, **kwargs) if layer_cls is SymmetricFIRModule
+            layer_cls(n_samples, **kwargs) if layer_cls is SymmetricFIR
             else layer_cls(1, n_samples, **kwargs)
             for _ in range(n_sources)
         ])
