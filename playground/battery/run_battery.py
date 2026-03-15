@@ -25,6 +25,7 @@ from scripts.perceptual_models.spectral_matching.spectral_matching import spectr
 from scripts.optimisation.nn_init import load_NN
 from scripts.optimisation.nn_init import load_optimiser
 from scripts.optimisation.nn_init import load_scheduler
+from scripts.optimisation.regularisation import select_regularistion
 
 # Import training script
 from scripts.train.train import Train
@@ -40,6 +41,23 @@ from scripts.plotting.dense_arrows_plot import plot_arrows
 from scripts.plotting.graph_plot import plot_time
 from scripts.plotting.graph_plot import plot_freq
 from scripts.plotting.graph_plot import plot_color
+
+def build_perceptual_loss_term(model, device, dtype):
+    def loss_term(bin_stim, h_full):  # noqa: ARG001 - kept for a uniform callable interface
+        estimation = model(bin_stim)
+        target = torch.as_tensor(model.target, device=device, dtype=dtype).expand_as(estimation)
+        loss = model.loss(estimation, target) / model.loss_norm
+        return loss, estimation
+
+    return loss_term
+
+def build_regularisation_loss_term(regularisation, source_idx):
+    def loss_term(bin_stim, h_full):  # noqa: ARG001 - kept for a uniform callable interface
+        source_filter = h_full[:, source_idx:source_idx + 1, :]
+        loss = regularisation.compute_loss(source_filter) / regularisation.loss_norm
+        return loss, None
+
+    return loss_term
 
 
 def run_battery(args):
@@ -86,6 +104,17 @@ def run_battery(args):
                     perceptual_dict = init_perc_model(dict_subsets[dict_idx[dict_sub_idx]], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb, lstn_pos_conf[lstn_pos_conf_idx]) ## CHANGE THIS BACK TO DICT_SUB_IDX
                 else:
                     perceptual_dict = init_perc_model(dict_subsets[dict_idx[dict_sub_idx]], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb) ## CHANGE THIS BACK TO DICT_SUB_IDX
+                loss_terms = {
+                    key: build_perceptual_loss_term(model, device=device, dtype=dtype)
+                    for key, model in perceptual_dict.items()
+                }
+                regularisation = select_regularistion(args.reg, n_samples=args.n_samples, device=device, dtype=dtype)
+                if regularisation is not None:
+                    for source_idx in range(len(spk_pos)):
+                        loss_terms[f"regularisation_source_{source_idx}"] = build_regularisation_loss_term(
+                            regularisation,
+                            source_idx=source_idx,
+                        )
                 
                 # Initialise neural network
                 nn_model = load_NN(n_samples=args.n_samples, device=device, dtype=dtype, init = args.init) # Load neural network ICLD or FIR
@@ -109,8 +138,8 @@ def run_battery(args):
                     nn=nn_model,
                     prop=stereo_prop,
                     perceptual_dict=perceptual_dict,
+                    loss_terms=loss_terms,
                     optimiser=nn_optimiser,
-                    reg = args.reg,
                     loggers=[logger, saver_obj],
                     scheduler=nn_scheduler,
                     gradnorm=args.gradnorm) # Initialize training class

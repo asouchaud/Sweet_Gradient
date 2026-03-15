@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from typing import Callable
 
 pytest.importorskip("torch.utils.tensorboard")
 
@@ -10,6 +11,14 @@ import torch.nn.functional as F
 
 from scripts.optimisation.nn_init import load_NN, load_optimiser
 from scripts.train.train import Train
+
+def build_perceptual_loss_term(model: nn.Module) -> Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, torch.Tensor]]:
+    def loss_term(bin_stim: torch.Tensor, h_full: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:  # noqa: ARG001
+        estimation = model(bin_stim)
+        target = torch.as_tensor(model.target, device=estimation.device, dtype=estimation.dtype).expand_as(estimation)
+        return model.loss(estimation, target) / model.loss_norm, estimation
+
+    return loss_term
 
 
 class IdentityPropagation(nn.Module):
@@ -43,14 +52,17 @@ def test_train_moves_estimate_towards_target() -> None:
     # We start from init=3, which creates all-zero filters, so the initial estimate is exactly 0.
     nn_model = load_NN(n_samples=8, device="cpu", dtype=torch.float32, init=3)
     optimiser = load_optimiser(nn_model, lr=0.05)
+    localisation_model = DifferenceModel(target=1.0)
 
     trainer = Train(
         n_epoch=80,
         nn=nn_model,
         prop=IdentityPropagation(),
-        perceptual_dict={"localisation": DifferenceModel(target=1.0)},
+        perceptual_dict={"localisation": localisation_model},
+        loss_terms={
+            "localisation": build_perceptual_loss_term(localisation_model),
+        },
         optimiser=optimiser,
-        reg=0,
         loggers=[None, None],
         scheduler=None,
         gradnorm=0,

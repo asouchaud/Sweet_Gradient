@@ -2,14 +2,11 @@ import torch
 import time
 
 from scripts.optimisation.curriculum import gradnorm
-from scripts.optimisation.regularisation import select_regularistion
-from scripts.optimisation.regularisation import rms_normalisation
-from scripts.optimisation.regularisation import energy_normalisation
 
 from scripts.plotting.tensorboard_updates import TensorboardLogger
 
 class Train:
-    def __init__(self, n_epoch, nn, prop, perceptual_dict, optimiser, reg=0, loggers=None, scheduler=None, gradnorm = 0, alpha = 1):
+    def __init__(self, n_epoch, nn, prop, perceptual_dict, loss_terms, optimiser, loggers=None, scheduler=None, gradnorm = 0, alpha = 1):
 
         self.n_epoch = n_epoch
         self.device = nn[0].weight.device
@@ -17,31 +14,24 @@ class Train:
         self.optimiser = optimiser
         self.n_samples = nn.n_samples
         self.n_sources = getattr(nn, 'n_sources', 2)
-        self.reg = reg
         self.gradnorm = gradnorm
-        self.regularisation_keys = [f'regularisation_source_{source_idx}' for source_idx in range(self.n_sources)] if self.reg else []
+        self.loss_terms = loss_terms
 
-        if self.reg:
-            
-            weights = {  ### TEMPORARY QUICK FIX TO TEST AND TRY DIFFERENT WEIGTHINGS DURING TRAINING
-                'localisation': 1.0,
-                'uncertainty': 1.0e1,
-                'colouration': 1.0e-2,
-            }
-
-            self.loss_weights = torch.nn.ParameterDict({  ### CHANGE BACK HERE WHEN OPTIMAL WEIGHTS FOUND
-                **{key: torch.nn.Parameter(torch.tensor(weights.get(key, 1.0), device=self.device, dtype=self.dtype))
-                for key in perceptual_dict.keys()},
-                **{key: torch.nn.Parameter(torch.tensor(1.0e-3, device=self.device, dtype=self.dtype))
-                for key in self.regularisation_keys},
-            })
-
-        else:
-            weights = {key: 1.0 for key in perceptual_dict.keys()}
-            self.loss_weights = torch.nn.ParameterDict({
-                key: torch.nn.Parameter(torch.tensor(weights[key], device=self.device, dtype=self.dtype))
-                for key in perceptual_dict.keys()
-            })
+        weights = {
+            "localisation": 1.0,
+            "uncertainty": 1.0e1,
+            "colouration": 1.0e-2,
+        }
+        self.loss_weights = torch.nn.ParameterDict({
+            key: torch.nn.Parameter(
+                torch.tensor(
+                    1.0e-3 if key.startswith("regularisation_source_") else weights.get(key, 1.0),
+                    device=self.device,
+                    dtype=self.dtype,
+                )
+            )
+            for key in self.loss_terms.keys()
+        })
 
         self.importance = None
         self.alpha = None
@@ -54,14 +44,13 @@ class Train:
                             }
             self.importance = {
                                 **{key: base_importance.get(key, 1.0) for key in perceptual_dict.keys()},
-                                **{key: 1.0 for key in self.regularisation_keys if key in self.loss_weights}
+                                **{key: 1.0 for key in self.loss_terms.keys() if key.startswith("regularisation_source_")}
                             }
             self.alpha = alpha
 
         self.nn = nn
         self.prop = prop
         self.perceptual_dict = perceptual_dict
-        self.regularisation = select_regularistion(reg, n_samples=self.n_samples, device=self.device, dtype=self.dtype)
 
         logger, saver = loggers[0], loggers[1]
 
@@ -92,28 +81,16 @@ class Train:
             # Get perceptual estimations and compute losses
             loss_dict = {}
             est_dict = {}
-            for entry in self.perceptual_dict.items():
-                model = entry[1] # Get model
-                model_target = model.target # Get target
-                model_loss = model.loss # Get loss function
-
-                model_estimation = model(bin_stim) # Get model estimation
-                loss = model_loss(model_estimation, torch.tensor(model_target, device=self.device, dtype=self.dtype).expand_as(model_estimation)) # Calculate loss
-                loss_dict[entry[0]] = loss / model.loss_norm # Store loss in dictionary
-                est_dict[entry[0]] = model_estimation # Store estimation in dictionary
-
-            
-            # Compute regularisation loss
-            if self.reg:
-                for source_idx, key in enumerate(self.regularisation_keys):
-                    source_filter = h_full[:, source_idx:source_idx + 1, :]
-                    loss_dict[key] = self.regularisation.compute_loss(source_filter) / self.regularisation.loss_norm
-
-            # Compute full loss
-            full_loss = 0
-            for key in loss_dict.keys():
-                loss_dict[key] = loss_dict[key] * self.loss_weights[key]
-                full_loss += loss_dict[key]
+            weighted_loss_dict = {}
+            full_loss = torch.tensor(0.0, device=self.device, dtype=self.dtype)
+            for key, loss_term in self.loss_terms.items():
+                loss, estimation = loss_term(bin_stim=bin_stim, h_full=h_full)
+                loss_dict[key] = loss
+                weighted_loss = loss * self.loss_weights[key]
+                weighted_loss_dict[key] = weighted_loss
+                full_loss = full_loss + weighted_loss
+                if estimation is not None:
+                    est_dict[key] = estimation
 
             # Optimize Losses
             self.optimiser.zero_grad()
@@ -147,7 +124,7 @@ class Train:
 
             # Log training in Tensorboard
             if self.logger is not None:
-                self.logger.log_losses(loss_dict, full_loss, epoch)
+                self.logger.log_losses(weighted_loss_dict, full_loss, epoch)
                 self.logger.log_h_full(h_full, epoch)
 
                 if 'localisation' in self.perceptual_dict or 'uncertainty' in self.perceptual_dict:
