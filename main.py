@@ -134,10 +134,6 @@ def main(args):
     time_train = time.time() - time_train_start
     print(f"Time for full optimisation:{time_train:.2f}")
 
-    # Save per-epoch source FIR evolution as videos (one per source)
-    saver_obj.save_filter_video(trainer.h_history, source_index=0, fs=fs)
-    saver_obj.save_filter_video(trainer.h_history, source_index=1, fs=fs)
-    
 ## Print and Plot results
 
     full_perceptual_dict = {'localisation': loc_model,
@@ -182,6 +178,10 @@ def main(args):
 
     saver_obj.save_results(args, estimation_dict, est_filters, fs, lstn_pos_conf[args.lstn_pos_conf], spk_pos, trainer)
     saver_obj.save_plots(time_plot,freq_plot,arrow_plot, color_l_plot, color_r_plot)
+
+    # Save per-epoch source FIR evolution as videos (one per source)
+    # saver_obj.save_filter_video(trainer.h_history, source_index=0, fs=fs)
+    # saver_obj.save_filter_video(trainer.h_history, source_index=1, fs=fs)
 
 if __name__ == "__main__":
     # Default paths relative to this repository (portable across machines/OSes)
