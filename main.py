@@ -108,7 +108,7 @@ def main(args):
                          'colouration': col_model}
 
     # Initialise neural network
-    nn_model = load_NN(n_samples=args.n_samples, device=device, dtype=dtype, init = args.init) # Load neural network ICLD or FIR
+    nn_model = load_NN(n_samples=args.n_samples, device=device, dtype=dtype, init = args.init, n_sources=len(spk_pos)) # Load neural network ICLD or FIR
     nn_optimiser = load_optimiser(nn_model, lr=args.lr) # Load optimiser for neural network
     # nn_scheduler = load_scheduler(nn_optimiser, epochs)
 

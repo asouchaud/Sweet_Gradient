@@ -68,9 +68,9 @@ class saver():
         Parameters
         ----------
         h_history : list/sequence
-            Per-epoch filters, each element shaped (2, n_samples) or (n_samples, 2).
+            Per-epoch filters, each element shaped (n_sources, n_samples) or (n_samples, n_sources).
         source_index : int
-            0 for left, 1 for right.
+            Index of the source to render.
         fs : float
             Sampling rate in Hz.
         fps : int
@@ -89,12 +89,14 @@ class saver():
             raise ValueError(f"h_history must be 3D, got shape {arr.shape}")
 
         # Make per-epoch mono FIR array: (n_epoch, n_samples)
-        if arr.shape[1] == 2:
+        if arr.shape[1] <= arr.shape[2]:
+            if not 0 <= source_index < arr.shape[1]:
+                raise IndexError(f"source_index {source_index} is out of bounds for {arr.shape[1]} sources")
             h_epoch = arr[:, source_index, :]
-        elif arr.shape[2] == 2:
-            h_epoch = arr[:, :, source_index]
         else:
-            raise ValueError(f"Expected a stereo filter with a dimension of size 2, got shape {arr.shape}")
+            if not 0 <= source_index < arr.shape[2]:
+                raise IndexError(f"source_index {source_index} is out of bounds for {arr.shape[2]} sources")
+            h_epoch = arr[:, :, source_index]
 
         max_abs = float(np.max(np.abs(h_epoch))) if np.size(h_epoch) else 1.0
         if max_abs == 0.0:
@@ -263,4 +265,3 @@ class saver():
         if color_l is not None and color_r is not None:
             color_l.savefig(plot_folder / "color_left.png")
             color_r.savefig(plot_folder / "color_right.png")
-        

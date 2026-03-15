@@ -94,16 +94,17 @@ def plot_mag_db_from_response(
 
 def plot_time(est_filters, show = True):
     
+    est_filters = np.atleast_2d(np.asarray(est_filters))
+    n_sources = est_filters.shape[0]
+
     # -------- Time domain --------
-    fig_time, ax = plt.subplots(2, 1, sharex=True, figsize=(10, 5))
+    fig_time, ax = plt.subplots(n_sources, 1, sharex=True, figsize=(10, 2.5 * n_sources))
+    ax = np.atleast_1d(ax)
 
-    ax[0].plot(est_filters[0], label='Left loudspeaker filter')
-    ax[0].set_title('Left FIR')
-    ax[0].grid()
-
-    ax[1].plot(est_filters[1], label='Right loudspeaker filter')
-    ax[1].set_title('Right FIR')
-    ax[1].grid()
+    for source_idx in range(n_sources):
+        ax[source_idx].plot(est_filters[source_idx], label=f'Source {source_idx + 1} filter')
+        ax[source_idx].set_title(f'Source {source_idx + 1} FIR')
+        ax[source_idx].grid()
 
     fig_time.suptitle('Estimated FIRs after training')
     fig_time.tight_layout()
@@ -115,13 +116,16 @@ def plot_time(est_filters, show = True):
 
 def plot_freq(est_filters, fs, show = True):
 
-    # -------- Frequency domain --------
-    fig_freq, ax = plt.subplots(2, 1, sharex=True, figsize=(10, 5))
+    est_filters = np.atleast_2d(np.asarray(est_filters))
+    n_sources = est_filters.shape[0]
 
-    freqs_l, mag_l, _ = rfft_mag_db_phase(est_filters[0], fs, n_fft=4096)
-    freqs_r, mag_r, _ = rfft_mag_db_phase(est_filters[1], fs, n_fft=4096)
-    plot_mag_db_from_response(freqs_l, mag_l, ax=ax[0], title='Left FIR (Freq)')
-    plot_mag_db_from_response(freqs_r, mag_r, ax=ax[1], title='Right FIR (Freq)')
+    # -------- Frequency domain --------
+    fig_freq, ax = plt.subplots(n_sources, 1, sharex=True, figsize=(10, 2.5 * n_sources))
+    ax = np.atleast_1d(ax)
+
+    for source_idx in range(n_sources):
+        freqs, mag, _ = rfft_mag_db_phase(est_filters[source_idx], fs, n_fft=4096)
+        plot_mag_db_from_response(freqs, mag, ax=ax[source_idx], title=f'Source {source_idx + 1} FIR (Freq)')
 
     fig_freq.suptitle('Estimated FIRs (Frequency Domain)')
     fig_freq.tight_layout()
@@ -350,5 +354,3 @@ def plot_color(bin_stim, ref_stim, lstn_pos, show = True):
         plt.show()
 
     return(fig_l, fig_r)
-    
-    

@@ -8,13 +8,13 @@ def load_optimiser(nn, lr = 0.01): # Optimiser definition
     optimiser = torch.optim.Adam(nn.parameters(), lr=lr)
     return optimiser
 
-def load_NN(n_samples=128, device='cuda', dtype=torch.float, init=1):
+def load_NN(n_samples=128, device='cuda', dtype=torch.float, init=1, n_sources=2):
     if n_samples is None:
         n_samples = 1
 
     NN = MultiSourceFIRModule(
         n_samples=n_samples,
-        n_sources=2,
+        n_sources=n_sources,
         layer_cls=nn.Linear,
         layer_kwargs={"bias": False},
     ).to(device=device, dtype=dtype)
@@ -23,16 +23,17 @@ def load_NN(n_samples=128, device='cuda', dtype=torch.float, init=1):
         with torch.no_grad():
             for branch in NN.branches:
                 branch.weight.fill_(0.0)
-    elif init == 1:  # Impulses at both left and right speakers
+    elif init == 1:  # Impulses at all sources
         with torch.no_grad():
             for branch in NN.branches:
                 branch.weight.fill_(0.0)
                 branch.weight[0, 0] = 1.0
-    elif init == 2:  # Impulse at left speaker, silent right speaker
+    elif init == 2:  # Impulse at first source, silent remaining sources
         with torch.no_grad():
-            NN[0].weight.fill_(0.0)
-            NN[0].weight[0, 0] = 1.0
-            NN[1].weight.fill_(0.0)
+            for source_idx, branch in enumerate(NN.branches):
+                branch.weight.fill_(0.0)
+                if source_idx == 0:
+                    branch.weight[0, 0] = 1.0
 
     return NN
 

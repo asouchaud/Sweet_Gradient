@@ -31,8 +31,8 @@ class TensorboardLogger:
         h_full = h_full.squeeze(0).detach().cpu().numpy()
 
         # Histograms
-        self.writer.add_histogram("h_full/left", h_full[0], global_step=epoch)
-        self.writer.add_histogram("h_full/right", h_full[1], global_step=epoch)
+        for source_idx, source_filter in enumerate(h_full):
+            self.writer.add_histogram(f"h_full/source_{source_idx}", source_filter, global_step=epoch)
 
         # Time domain plots
         fig_time = plot_time(h_full, show=False)
@@ -79,6 +79,3 @@ class TensorboardLogger:
 
     def close(self):
         self.writer.close()
-
-
-

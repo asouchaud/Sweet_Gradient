@@ -16,8 +16,10 @@ class Train:
         self.dtype = nn[0].weight.dtype
         self.optimiser = optimiser
         self.n_samples = nn.n_samples
+        self.n_sources = getattr(nn, 'n_sources', 2)
         self.reg = reg
         self.gradnorm = gradnorm
+        self.regularisation_keys = [f'regularisation_source_{source_idx}' for source_idx in range(self.n_sources)] if self.reg else []
 
         if self.reg:
             
@@ -25,15 +27,13 @@ class Train:
                 'localisation': 1.0,
                 'uncertainty': 1.0e1,
                 'colouration': 1.0e-2,
-                'regularisation_l': 1.0e-3,
-                'regularisation_r': 1.0e-3
             }
 
             self.loss_weights = torch.nn.ParameterDict({  ### CHANGE BACK HERE WHEN OPTIMAL WEIGHTS FOUND
-                **{key: torch.nn.Parameter(torch.tensor(weights[key], device=self.device, dtype=self.dtype))
+                **{key: torch.nn.Parameter(torch.tensor(weights.get(key, 1.0), device=self.device, dtype=self.dtype))
                 for key in perceptual_dict.keys()},
-                'regularisation_l': torch.nn.Parameter(torch.tensor(weights['regularisation_l'], device=self.device, dtype=self.dtype)),
-                'regularisation_r': torch.nn.Parameter(torch.tensor(weights['regularisation_r'], device=self.device, dtype=self.dtype)),
+                **{key: torch.nn.Parameter(torch.tensor(1.0e-3, device=self.device, dtype=self.dtype))
+                for key in self.regularisation_keys},
             })
 
         else:
@@ -47,12 +47,14 @@ class Train:
         self.alpha = None
         if self.gradnorm:
             self.gradnorm_optimiser = torch.optim.Adam(self.loss_weights.parameters(), lr = 1e-2)
-            self.importance = {
+            base_importance = {
                                 'localisation': 6.0,
                                 'uncertainty': 1.0,
                                 'colouration': 7.0,
-                                'regularisation_l': 1.0,
-                                'regularisation_r': 1.0
+                            }
+            self.importance = {
+                                **{key: base_importance.get(key, 1.0) for key in perceptual_dict.keys()},
+                                **{key: 1.0 for key in self.regularisation_keys if key in self.loss_weights}
                             }
             self.alpha = alpha
 
@@ -80,9 +82,10 @@ class Train:
 
             # Estimate FIRs 
             h = self.nn(torch.ones(1,1, device=self.device, dtype=self.dtype))
-            h_l = h[:,:self.n_samples].unsqueeze(1)
-            h_r = h[:,self.n_samples:].unsqueeze(1)
-            h_full = torch.cat([h_l,h_r], dim=1)
+            expected_n_coeffs = self.n_sources * self.n_samples
+            if h.shape[-1] != expected_n_coeffs:
+                raise ValueError(f"Expected {expected_n_coeffs} filter coefficients, got {h.shape[-1]}")
+            h_full = h.reshape(h.shape[0], self.n_sources, self.n_samples)
             # h_full_normalised = energy_normalisation(h_full)
             with torch.no_grad():
                 self.h_history.append(h_full.squeeze(0).detach().cpu().numpy())
@@ -106,8 +109,9 @@ class Train:
             
             # Compute regularisation loss
             if self.reg:
-                loss_dict['regularisation_l'] = self.regularisation.compute_loss(h_l) / self.regularisation.loss_norm
-                loss_dict['regularisation_r'] = self.regularisation.compute_loss(h_r) / self.regularisation.loss_norm
+                for source_idx, key in enumerate(self.regularisation_keys):
+                    source_filter = h_full[:, source_idx:source_idx + 1, :]
+                    loss_dict[key] = self.regularisation.compute_loss(source_filter) / self.regularisation.loss_norm
 
             # Compute full loss
             full_loss = 0
@@ -195,9 +199,10 @@ class Train:
         # Evaluate final FIRs
         with torch.no_grad():
             h = self.nn(torch.ones(1,1, device=self.device, dtype=self.dtype))
-            h_l = h[:,:self.n_samples].unsqueeze(1)
-            h_r = h[:,self.n_samples:].unsqueeze(1)
-            h_full = torch.cat([h_l,h_r], dim=1)
+            expected_n_coeffs = self.n_sources * self.n_samples
+            if h.shape[-1] != expected_n_coeffs:
+                raise ValueError(f"Expected {expected_n_coeffs} filter coefficients, got {h.shape[-1]}")
+            h_full = h.reshape(h.shape[0], self.n_sources, self.n_samples)
 
             # Propagate sound from speakers
             bin_stim = self.prop(h_full)
@@ -210,4 +215,4 @@ class Train:
                 model_estimation = model(bin_stim) # Get model estimation
                 estimation_dict[entry[0]] = model_estimation.squeeze().detach().cpu().numpy() # Store estimation in dictionary
 
-        return h_full.squeeze().detach().cpu().numpy(), estimation_dict, bin_stim.squeeze().detach().cpu().numpy()
+        return h_full.squeeze(0).detach().cpu().numpy(), estimation_dict, bin_stim.squeeze().detach().cpu().numpy()
