@@ -1,5 +1,8 @@
+*.DS_Store
 *.ipynb
 *.json
+# Exception: track JSON reference baselines used by tests
+!tests/reference_outputs/*.json
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
