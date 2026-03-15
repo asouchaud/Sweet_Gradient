@@ -144,13 +144,20 @@ def test_reference_100_epoch_matches_known_output() -> None:
         key: build_perceptual_loss_term(model, device=device, dtype=dtype)
         for key, model in perceptual_dict.items()
     }
+    loss_weights = {
+        "localisation": 1.0,
+        "uncertainty": 1.0e1,
+        "colouration": 1.0e-2,
+    }
     regularisation = select_regularistion(args.reg, n_samples=args.n_samples, device=device, dtype=dtype)
     if regularisation is not None:
         for source_idx in range(len(spk_pos)):
-            loss_terms[f"regularisation_source_{source_idx}"] = build_regularisation_loss_term(
+            reg_key = f"regularisation_source_{source_idx}"
+            loss_terms[reg_key] = build_regularisation_loss_term(
                 regularisation,
                 source_idx=source_idx,
             )
+            loss_weights[reg_key] = 1.0e-3
 
     # Initialise neural network
     nn_model = MultiSourceFIR(
@@ -180,6 +187,7 @@ def test_reference_100_epoch_matches_known_output() -> None:
                     prop=stereo_prop,
                     perceptual_dict=perceptual_dict,
                     loss_terms=loss_terms,
+                    loss_weights=loss_weights,
                     optimiser=nn_optimiser,
                     loggers = [logger, None], 
                     scheduler=None) # Initialize training class

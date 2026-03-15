@@ -73,6 +73,9 @@ def test_train_moves_estimate_towards_target() -> None:
         loss_terms={
             "localisation": build_perceptual_loss_term(localisation_model),
         },
+        loss_weights={
+            "localisation": 1.0,
+        },
         optimiser=optimiser,
         loggers=[None, None],
         scheduler=None,

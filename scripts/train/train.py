@@ -4,7 +4,7 @@ import time
 from scripts.plotting.tensorboard_updates import TensorboardLogger
 
 class Train:
-    def __init__(self, n_epoch, nn, prop, perceptual_dict, loss_terms, optimiser, loggers=None, scheduler=None, alpha = 1):
+    def __init__(self, n_epoch, nn, prop, perceptual_dict, loss_terms, loss_weights, optimiser, loggers=None, scheduler=None, alpha = 1):
 
         self.n_epoch = n_epoch
         self.device = nn[0].weight.device
@@ -13,16 +13,11 @@ class Train:
         self.n_samples = nn.n_samples
         self.n_sources = getattr(nn, 'n_sources', 2)
         self.loss_terms = loss_terms
-
-        weights = {
-            "localisation": 1.0,
-            "uncertainty": 1.0e1,
-            "colouration": 1.0e-2,
-        }
+        self.loss_weights_dict = loss_weights
         self.loss_weights = torch.nn.ParameterDict({
             key: torch.nn.Parameter(
                 torch.tensor(
-                    1.0e-3 if key.startswith("regularisation_source_") else weights.get(key, 1.0),
+                    self.loss_weights_dict[key],
                     device=self.device,
                     dtype=self.dtype,
                 )
