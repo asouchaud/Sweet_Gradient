@@ -156,8 +156,7 @@ def main(args):
                     loss_terms=loss_terms,
                     optimiser=nn_optimiser,
                     loggers = [logger, None], 
-                    scheduler=None,
-                    gradnorm=args.gradnorm) # Initialize training class
+                    scheduler=None) # Initialize training class
     time_train_start = time.time()
     trainer.train()
     time_train = time.time() - time_train_start
@@ -230,7 +229,6 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=0.001)
     parser.add_argument("--init", type=int, default=1, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and 0s at right speaker")
     parser.add_argument("--reg", type=int, default=2, help="If 1, use first moment or 2 for second moment regularisation during training")
-    parser.add_argument("--gradnorm", type=int, default=0, help="If 1, dynamically normalise weighting of losses using the GradNorm method")
     parser.add_argument("--alpha", type=float, default=1.5)
     parser.add_argument("--seed", type=int, default = 46, help="Random seed for reproducibility")
     parser.add_argument("--log", type=int, default=1, help="If 1, will log the training in Tensorboard, to view run in terminal | tensorboard --logdir runs | ")

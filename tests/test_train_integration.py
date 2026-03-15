@@ -65,7 +65,6 @@ def test_train_moves_estimate_towards_target() -> None:
         optimiser=optimiser,
         loggers=[None, None],
         scheduler=None,
-        gradnorm=0,
     )
 
     _, initial_estimates, _initial_bin_stim = trainer.evaluate()

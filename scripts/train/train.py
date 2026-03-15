@@ -1,12 +1,10 @@
 import torch
 import time
 
-from scripts.optimisation.curriculum import gradnorm
-
 from scripts.plotting.tensorboard_updates import TensorboardLogger
 
 class Train:
-    def __init__(self, n_epoch, nn, prop, perceptual_dict, loss_terms, optimiser, loggers=None, scheduler=None, gradnorm = 0, alpha = 1):
+    def __init__(self, n_epoch, nn, prop, perceptual_dict, loss_terms, optimiser, loggers=None, scheduler=None, alpha = 1):
 
         self.n_epoch = n_epoch
         self.device = nn[0].weight.device
@@ -14,7 +12,6 @@ class Train:
         self.optimiser = optimiser
         self.n_samples = nn.n_samples
         self.n_sources = getattr(nn, 'n_sources', 2)
-        self.gradnorm = gradnorm
         self.loss_terms = loss_terms
 
         weights = {
@@ -35,19 +32,6 @@ class Train:
 
         self.importance = None
         self.alpha = None
-        if self.gradnorm:
-            self.gradnorm_optimiser = torch.optim.Adam(self.loss_weights.parameters(), lr = 1e-2)
-            base_importance = {
-                                'localisation': 6.0,
-                                'uncertainty': 1.0,
-                                'colouration': 7.0,
-                            }
-            self.importance = {
-                                **{key: base_importance.get(key, 1.0) for key in perceptual_dict.keys()},
-                                **{key: 1.0 for key in self.loss_terms.keys() if key.startswith("regularisation_source_")}
-                            }
-            self.alpha = alpha
-
         self.nn = nn
         self.prop = prop
         self.perceptual_dict = perceptual_dict
@@ -97,28 +81,6 @@ class Train:
             full_loss.backward(retain_graph = True)
             self.optimiser.step()
 
-            # Optimise weights using GradNorm (after network update)
-            if self.gradnorm:
-                gradnorm_loss, gradnorms, r = gradnorm(
-                    self.nn,
-                    loss_dict,
-                    self.loss_weights,
-                    self.importance,
-                    alpha=self.alpha,
-                )
-                self.gradnorm_optimiser.zero_grad()
-                gradnorm_loss.backward()
-                self.gradnorm_optimiser.step()
-
-                with torch.no_grad():
-                    for p in self.loss_weights.values():
-                        p.clamp_(min=0.0)
-                    total_w = sum(p.item() for p in self.loss_weights.values())
-                    N = sum(self.importance[k] for k in self.loss_weights.keys())
-                    for p in self.loss_weights.values():
-                        p.mul_(N / total_w)
-
-
             if self.scheduler is not None:
                 self.scheduler.step()
 
@@ -146,10 +108,6 @@ class Train:
                                                    est_dict['uncertainty'] if 'uncertainty' in self.perceptual_dict else None, 
                                                    est_dict['coloration'] if 'coloration' in self.perceptual_dict else None, 
                                                    epoch)
-                if self.gradnorm:
-                    self.logger.log_weights(weight_dict=self.loss_weights, epoch=epoch)
-                    self.logger.log_gradnorms(gradnorms = gradnorms, epoch=epoch)
-                    self.logger.log_r(r,epoch=epoch)
             
             time_epoch = time.time() - time_epoch_start
             # Print progress

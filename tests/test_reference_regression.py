@@ -82,7 +82,6 @@ def test_reference_100_epoch_matches_known_output() -> None:
         lr=0.001,
         init=1,
         reg=2,
-        gradnorm=0,
         alpha=1.5,
         seed=46,
         log=1,
@@ -163,8 +162,7 @@ def test_reference_100_epoch_matches_known_output() -> None:
                     loss_terms=loss_terms,
                     optimiser=nn_optimiser,
                     loggers = [logger, None], 
-                    scheduler=None,
-                    gradnorm=args.gradnorm) # Initialize training class
+                    scheduler=None) # Initialize training class
     trainer.train()
     
 ## Print and Plot results
