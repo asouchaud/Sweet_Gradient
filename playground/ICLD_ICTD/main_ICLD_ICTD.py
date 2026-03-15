@@ -28,8 +28,6 @@ from scripts.perceptual_models.desena2020.desena2020 import desena2020
 from scripts.perceptual_models.spectral_matching.spectral_matching import spectral_matching
 
 # Import neural network related scripts
-from scripts.optimisation.nn_init import load_NN
-from scripts.optimisation.nn_init import load_optimiser
 
 # Import training script
 from playground.ICLD_ICTD.scripts.train.train_ICLD_ICTD import Train

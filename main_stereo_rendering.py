@@ -10,6 +10,9 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 import torch.nn.functional as F
+import torch.nn as nn
+
+from scripts.optimisation.custom_modules import MultiSourceFIR
 
 # Import libraries for plotting
 import matplotlib.pyplot as plt
@@ -33,9 +36,6 @@ from scripts.perceptual_models.desena2020.desena2020 import desena2020
 from scripts.perceptual_models.spectral_matching.spectral_matching import spectral_matching
 
 # Import neural network related scripts
-from scripts.optimisation.nn_init import load_NN
-from scripts.optimisation.nn_init import load_optimiser
-# from scripts.optimisation.nn_init import load_scheduler
 from scripts.optimisation.regularisation import first_moment_regularisation
 from scripts.optimisation.regularisation import second_moment_regularisation
 
@@ -139,10 +139,21 @@ if __name__ == "__main__":
             )
 
     # Initialise neural network
-    nn_model = load_NN(n_samples=n_samples, device=device, dtype=dtype, init = init, n_sources=len(spk_pos)) # Load neural network ICLD or FIR
-    nn_optimiser = load_optimiser(nn_model, lr=lr) # Load optimiser for neural network
-    # nn_scheduler = load_scheduler(nn_optimiser, epochs)
 
+    nn_model = MultiSourceFIR(
+        n_samples=n_samples,
+        n_sources=2,
+        layer_cls=nn.Linear,
+        layer_kwargs={"bias": False},
+    ).to(device=device, dtype=dtype)
+
+    with torch.no_grad():
+        for branch in nn_model.branches:
+            branch.weight.fill_(0.0)
+            branch.weight[0, 0] = 1.0
+
+    nn_optimiser = torch.optim.Adam(nn_model.parameters(), lr=lr)
+    
 ## Initliase saving folder and logger
 
     saver_obj = saver(perceptual_dict, lstn_pos)

@@ -8,9 +8,8 @@ pytest.importorskip("torch.utils.tensorboard")
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from scripts.optimisation.nn_init import load_NN, load_optimiser
 from scripts.train.train import Train
+from scripts.optimisation.custom_modules import MultiSourceFIR
 
 def build_perceptual_loss_term(model: nn.Module) -> Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, torch.Tensor]]:
     def loss_term(bin_stim: torch.Tensor, h_full: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:  # noqa: ARG001
@@ -50,8 +49,20 @@ def test_train_moves_estimate_towards_target() -> None:
     # - the optimiser is the real project optimiser,
     # - the Train class performs real forward/backward updates.
     # We start from init=3, which creates all-zero filters, so the initial estimate is exactly 0.
-    nn_model = load_NN(n_samples=8, device="cpu", dtype=torch.float32, init=3)
-    optimiser = load_optimiser(nn_model, lr=0.05)
+    nn_model = MultiSourceFIR(
+        n_samples=8,
+        n_sources=2,
+        layer_cls=nn.Linear,
+        layer_kwargs={"bias": False},
+    ).to(device="cpu", dtype=torch.float32)
+
+    with torch.no_grad():
+        for branch in nn_model.branches:
+            branch.weight.fill_(0.0)
+            branch.weight[0, 0] = 1.0
+
+    optimiser = torch.optim.Adam(nn_model.parameters(), lr=0.05)
+
     localisation_model = DifferenceModel(target=1.0)
 
     trainer = Train(

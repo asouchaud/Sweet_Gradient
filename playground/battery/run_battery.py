@@ -22,9 +22,6 @@ from scripts.perceptual_models.desena2020.desena2020 import desena2020
 from scripts.perceptual_models.spectral_matching.spectral_matching import spectral_matching
 
 # Import neural network related scripts
-from scripts.optimisation.nn_init import load_NN
-from scripts.optimisation.nn_init import load_optimiser
-from scripts.optimisation.nn_init import load_scheduler
 from scripts.optimisation.regularisation import first_moment_regularisation
 from scripts.optimisation.regularisation import second_moment_regularisation
 
@@ -129,7 +126,6 @@ def run_battery(args):
                 # Initialise neural network
                 nn_model = load_NN(n_samples=args.n_samples, device=device, dtype=dtype, init = args.init) # Load neural network ICLD or FIR
                 nn_optimiser = load_optimiser(nn_model, lr=0.01) # Load optimiser for neural network
-                # nn_scheduler = load_scheduler(nn_optimiser,args.epochs)
                 nn_scheduler = None
 
                 saver_obj = saver(current_date=current_date,
