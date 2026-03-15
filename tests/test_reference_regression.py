@@ -27,7 +27,8 @@ from scripts.perceptual_models.spectral_matching.spectral_matching import spectr
 # Import neural network related scripts
 from scripts.optimisation.nn_init import load_NN
 from scripts.optimisation.nn_init import load_optimiser
-from scripts.optimisation.regularisation import select_regularistion
+from scripts.optimisation.regularisation import first_moment_regularisation
+from scripts.optimisation.regularisation import second_moment_regularisation
 # from scripts.optimisation.nn_init import load_scheduler
 
 # Import training script
@@ -55,6 +56,15 @@ def build_regularisation_loss_term(regularisation, source_idx):
         return loss, None
 
     return loss_term
+
+def select_regularistion(reg: str, n_samples: int, device='cuda', dtype=torch.float32):
+    if reg == 0:
+        return None
+    if reg == 1:
+        return first_moment_regularisation(n_samples=n_samples, device=device, dtype=dtype)
+    if reg == 2:
+        return second_moment_regularisation(n_samples=n_samples, device=device, dtype=dtype)
+    return None
 
 def test_reference_100_epoch_matches_known_output() -> None:
 

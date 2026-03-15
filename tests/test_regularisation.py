@@ -7,19 +7,7 @@ from scripts.optimisation.regularisation import (
     first_moment_regularisation,
     rms_normalisation,
     second_moment_regularisation,
-    select_regularistion,
 )
-
-
-def test_select_regularisation_returns_expected_types() -> None:
-    # This checks the small dispatch helper that selects the project's regularisation object from the
-    # integer flag used in the training code.
-    assert select_regularistion(0, n_samples=8, device="cpu") is None
-    assert isinstance(select_regularistion(1, n_samples=8, device="cpu"), first_moment_regularisation)
-    assert isinstance(select_regularistion(2, n_samples=8, device="cpu"), second_moment_regularisation)
-
-    # Any unknown flag should fall back to None according to the implementation.
-    assert select_regularistion(99, n_samples=8, device="cpu") is None
 
 
 def test_rms_normalisation_gives_unit_rms_per_filter() -> None:

@@ -36,7 +36,8 @@ from scripts.perceptual_models.spectral_matching.spectral_matching import spectr
 from scripts.optimisation.nn_init import load_NN
 from scripts.optimisation.nn_init import load_optimiser
 # from scripts.optimisation.nn_init import load_scheduler
-from scripts.optimisation.regularisation import select_regularistion
+from scripts.optimisation.regularisation import first_moment_regularisation
+from scripts.optimisation.regularisation import second_moment_regularisation
 
 # Import training script
 from scripts.train.train import Train
@@ -70,7 +71,6 @@ if __name__ == "__main__":
     epochs=100
     n_samples=10
     target_angle=15.0
-    reg_type=2
     selected_stim="random"
     repo_root = Path(__file__).resolve().parent
     sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa")
@@ -129,7 +129,8 @@ if __name__ == "__main__":
         key: build_perceptual_loss_term(model, device=device, dtype=dtype)
         for key, model in perceptual_dict.items()
     }
-    regularisation = select_regularistion(reg_type, n_samples=n_samples, device=device, dtype=dtype)
+    
+    regularisation = second_moment_regularisation(n_samples=n_samples, device=device, dtype=dtype)
     if regularisation is not None:
         for source_idx in range(len(spk_pos)):
             loss_terms[f"regularisation_source_{source_idx}"] = build_regularisation_loss_term(

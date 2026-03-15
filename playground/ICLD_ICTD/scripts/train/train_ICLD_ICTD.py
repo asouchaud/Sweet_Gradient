@@ -1,11 +1,21 @@
 import torch
 
 from scripts.optimisation.curriculum import curriculum_weights
-from scripts.optimisation.regularisation import select_regularistion
+from scripts.optimisation.regularisation import first_moment_regularisation
+from scripts.optimisation.regularisation import second_moment_regularisation
 from scripts.optimisation.regularisation import rms_normalisation
 from scripts.optimisation.regularisation import energy_normalisation
 
 from playground.ICLD_ICTD.scripts.plotting.tensorboard_updates import TensorboardLogger
+
+def select_regularistion(reg: str, n_samples: int, device='cuda', dtype=torch.float32):
+    if reg == 0:
+        return None
+    if reg == 1:
+        return first_moment_regularisation(n_samples=n_samples, device=device, dtype=dtype)
+    if reg == 2:
+        return second_moment_regularisation(n_samples=n_samples, device=device, dtype=dtype)
+    return None
 
 class Train:
     def __init__(self, n_epoch, nn, prop, perceptual_dict, optimiser, reg=0, loggers=None):
