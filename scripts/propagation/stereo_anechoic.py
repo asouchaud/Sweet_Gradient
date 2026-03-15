@@ -4,13 +4,13 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-from scripts.propagation.anechoic_source import anechoic_source
+from scripts.propagation.anechoic_source import AnechoicSourcePropagation
 
 
 ## Stereo anechoic class definition
 
 class stereo_anechoic(nn.Module):
-    """Two sources (L/R speakers): uses two anechoic_source instances and sums binaural outputs."""
+    """Two sources (L/R speakers): uses two AnechoicSourcePropagation instances and sums binaural outputs."""
 
     def __init__(self, stim, lstn_pos, spk_pos, sofa_file_path, fs=48000):
         super().__init__()
@@ -40,7 +40,7 @@ class stereo_anechoic(nn.Module):
             int(np.round(max(0, -tau_relative[i]) * fs)) for i in range(n_listeners)
         ]
 
-        self.left_source = anechoic_source(
+        self.left_source = AnechoicSourcePropagation(
             stim=stim,
             lstn_pos=lstn_pos,
             source_pos=spk_pos[0],
@@ -48,7 +48,7 @@ class stereo_anechoic(nn.Module):
             fs=fs,
             delay_samples=left_delay_samples,
         )
-        self.right_source = anechoic_source(
+        self.right_source = AnechoicSourcePropagation(
             stim=stim,
             lstn_pos=lstn_pos,
             source_pos=spk_pos[1],

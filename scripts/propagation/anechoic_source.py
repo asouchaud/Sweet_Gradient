@@ -11,7 +11,7 @@ import numpy as np
 from scripts.setup.helpers import true_conv1d
 
 
-class anechoic_source(nn.Module):
+class AnechoicSourcePropagation(nn.Module):
     """One source, multiple listeners. Returns binaural (L/R ear) per listener."""
 
     def __init__(self, stim, lstn_pos, source_pos, sofa_file_path, fs=48000, delay_samples=None):
