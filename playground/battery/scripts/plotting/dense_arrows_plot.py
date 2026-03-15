@@ -104,14 +104,14 @@ class dense_battery_arrow_plot():
     
     def setup_evaluation(self):
 
-        self.stim = load_stim(self.fs, self.device, DTYPE, self.stim_type)
+        self.stim = load_stim(self.fs, self.device, DTYPE, selected_stim=self.stim_type)
         self.prop_model = stereo_anechoic(self.stim, 
                                     self.grid, 
                                     spk_pos=self.spk_pos, 
                                     sofa_file_path=self.sofa_path)
         
         self.hrirs = load_hrirs(DTYPE, device=self.device, sofa_path=self.sofa_path, idx_path=self.sofa_idx)
-        self.gtfb = load_gtfb(self.fs, device=self.device, dtype=DTYPE)
+        self.gtfb = load_gtfb(self.fs, device=self.device, data_type=DTYPE)
         self.localisation_model = llado2025(torch.nn.functional.mse_loss, 
                                     0, 
                                     hrirs=self.hrirs,

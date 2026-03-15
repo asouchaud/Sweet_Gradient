@@ -149,7 +149,7 @@ def test_reference_100_epoch_matches_known_output() -> None:
 
 ## Initliase saving folder and logger
 
-    saver_obj = saver(perceptual_dict, lstn_pos, args)
+    saver_obj = saver(perceptual_dict, lstn_pos)
     logger = saver_obj if args.log else None
 
 ## Training loop

@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import sys
 import numpy as np
 from datetime import datetime
 import scipy.io as sio
@@ -9,7 +10,7 @@ from scripts.plotting.graph_plot import rfft_mag_db_phase, plot_mag_db_from_resp
 
 
 class saver():
-    def __init__(self, perceptual_dict, lstn_pos, args):
+    def __init__(self, perceptual_dict, lstn_pos):
         # Root experiment directory
         exp_root = Path("results")
         exp_root.mkdir(exist_ok=True)
@@ -45,7 +46,7 @@ class saver():
         }
 
         # Build run folder name
-        run_name = f"{flag_str}_n{n_listeners}_r{reg_map[args.reg]}_i{init_map[args.init]}_{field_map[args.near_field]}_{date_prefix}_{time_suffix}"
+        run_name = f"{flag_str}_{date_prefix}_{time_suffix}"
         run_dir = exp_root / run_name
         
         self.run_dir = run_dir
@@ -181,7 +182,7 @@ class saver():
         plt.close(fig)
 
 
-    def save_results(self, args, estimation_dict, est_filters, fs, lstn_pos, spk_pos, trainer):    
+    def save_results(self, estimation_dict, est_filters, fs, lstn_pos, spk_pos, trainer):    
         # =========================
         # Save results (clean layout)
         # Subfolders
@@ -209,24 +210,7 @@ class saver():
         config = {
             "run_name": self.run_name,
             "date": self.now.strftime("%Y-%m-%d %H:%M:%S"),
-            "n_epochs": args.epochs,
-            "seed": args.seed,
-            "fs": fs,
-            "listeners_position": lstn_pos,
-            "n_listeners": len(lstn_pos),
-            "speakers_position": spk_pos,
-            "near_field": bool(args.near_field),
-            "target_angle": args.target_angle,
-            "stimulus": args.stimulus,
-            "HRTF": Path(args.sofa_path).name,
-            "learning_rate": args.lr,
-            "init": args.init,
-            "regularisation": args.reg,
-            "perceptual_losses": list(estimation_dict.keys()),
-            "Gradnorm": args.gradnorm,
-            "importance": trainer.importance,
-            "alpha": trainer.alpha,
-            "weights": {k: v.detach().cpu().item() for k, v in trainer.loss_weights.items()}
+            "entrypoint_file": Path(sys.argv[0]).name,
         }
 
         with open(self.run_dir / "config.json", "w") as f:

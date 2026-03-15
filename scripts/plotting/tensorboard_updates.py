@@ -67,10 +67,6 @@ class TensorboardLogger:
         for key, weight in weight_dict.items():
             self.writer.add_scalar(f'loss_weights/{key}', weight.item(), global_step=epoch)
 
-    def log_gradnorms(self, gradnorms, epoch):
-        for key, norm in gradnorms.items():
-             self.writer.add_scalar(f'Gradient norms/{key}', norm.item(), global_step=epoch)
-
     def log_r(self, r, epoch):
         for key, ratio in r.items():
              self.writer.add_scalar(f'Relative inverse training rate/{key}', ratio.item(), global_step=epoch)

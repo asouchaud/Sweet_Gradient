@@ -141,8 +141,7 @@ def run_battery(args):
                     loss_terms=loss_terms,
                     optimiser=nn_optimiser,
                     loggers=[logger, saver_obj],
-                    scheduler=nn_scheduler,
-                    gradnorm=args.gradnorm) # Initialize training class
+                    scheduler=nn_scheduler) # Initialize training class
     
                 trainer.train()
 
@@ -206,7 +205,6 @@ parser.add_argument("--sofa_path", type=str, default=str(default_sofa_path))
 parser.add_argument("--lr", type=float, default=0.01)
 parser.add_argument("--init", type=int, default=1, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and random FIR at right speaker")
 parser.add_argument("--reg", type=int, default=1, help="If 1, use first moment or 2 for second moment regularisation during training")
-parser.add_argument("--gradnorm", type=int, default=1, help="If 1, dynamically normalise weighting of losses using the GradNorm method")
 parser.add_argument("--alpha", type=float, default=1.5)
 parser.add_argument("--seed", type=int, default=52, help="Random seed for reproducibility")
 parser.add_argument("--log", type=int, default=1, help="If 1, will log the training in Tensorboard, to view run in terminal | tensorboard --logdir runs | ")

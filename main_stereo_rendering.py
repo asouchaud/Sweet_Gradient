@@ -3,8 +3,8 @@ import os
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 
 # Import interface libraries
-import argparse
 from pathlib import Path
+from types import SimpleNamespace
 
 # Import computational libraries
 import numpy as np
@@ -65,61 +65,62 @@ def build_regularisation_loss_term(regularisation, source_idx):
     return loss_term
 
 
-def main(args):
+if __name__ == "__main__":
+    near_field=0
+    epochs=100
+    n_samples=10
+    target_angle=15.0
+    reg_type=2
+    selected_stim="random"
+    repo_root = Path(__file__).resolve().parent
+    sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa")
+    sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv")
+    lr=0.001
+    seed=46
+    log=1
+    device="cpu"
+    init=1
+    fs = 48000
 
 ## Initial setup
-
     # Set data type, device and sampling frequency
     dtype = torch.float32
-    if args.device:
-        device = torch.device(args.device)
+    if device:
+        device = torch.device(device)
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-    fs = 48000
 
     # Set random seed for reproducibility
-    if args.seed is not None:
-        set_seed(seed=args.seed)
-
-    # Training parameters
-    epochs = args.epochs # Number of training epochs
+    if seed is not None:
+        set_seed(seed=seed)
 
     # Loudspkeaker and listener positions
-    lstn_pos_conf = [[[0.0, 0.0]],  # 1 listner position
-                [[0.0, 0], [0.0, 0.5], [0.0, -0.5]], # 3 listener positions
-                [[0.0, 0], [0.0, 0.5], [0.0, -0.5], [0.5, 0], [-0.5, 0]], # 5 listener positions
-                [[0.0, 0], [0.0, 0.5], [0.0, -0.5], [0.5, 0], [-0.5, 0], [0.5, 0.5], [0.5, -0.5], [-0.5, 0.5], [-0.5, -0.5]]] # 9 listener positions
+    lstn_pos = [[0.0, 0], [0.0, 0.5], [0.0, -0.5]] # 3 listener positions
     spk_pos = [[1.732,1], [1.732,-1]]
 
 ## Load data
-
     gtfb = load_gtfb(fs=fs, device=device, dtype=dtype)  # Load Gamma Tone Filter Bank
-    stim = load_stim(fs=fs, device=device, dtype=dtype, selected_stim=args.stimulus)  # Load stimulus
-    hrirs = load_hrirs(dtype=dtype, device=device, sofa_path=args.sofa_path, idx_path=args.idx_path) # Load HRIRs using specific location from SOFA file
+    stim = load_stim(fs=fs, device=device, dtype=dtype, selected_stim=selected_stim)  # Load stimulus
+    hrirs = load_hrirs(dtype=dtype, device=device, sofa_path=sofa_path, idx_path=sofa_idx_path) # Load HRIRs using specific location from SOFA file
 
 ## Initialize model
-
     # Initialize sound propagation module
-    stereo_prop = stereo_anechoic(stim=stim, lstn_pos=lstn_pos_conf[args.lstn_pos_conf], spk_pos=spk_pos, fs=fs, sofa_file_path=args.sofa_path) # Load stereo anechoic propagation module
+    stereo_prop = stereo_anechoic(stim=stim, lstn_pos=lstn_pos, spk_pos=spk_pos, fs=fs, sofa_file_path=sofa_path) # Load stereo anechoic propagation module
 
     # Initiate perceptual models
     loc_loss = F.mse_loss
     unc_loss = F.l1_loss
     col_loss = F.l1_loss
 
-    loc_target = args.target_angle
+    loc_target = target_angle
     unc_target = 0
     col_target = 0
 
-    if args.near_field == 1:
-        loc_model = llado2025(loss = loc_loss, target = loc_target, hrirs=hrirs, fs=fs, gtfb=gtfb, lstn_pos_conf=lstn_pos_conf[args.lstn_pos_conf]).to(device=device, dtype=dtype) # Llado et al. 2025 model
-        col_model = spectral_matching(loss = col_loss, target = col_target, stim=stim, hrirs=hrirs, target_angle=args.target_angle, fs=fs, lstn_pos_conf=lstn_pos_conf[args.lstn_pos_conf]).to(device=device, dtype=dtype) # Spectral Matching model
-    else: 
-        loc_model = llado2025(loss = loc_loss, target = loc_target, hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # Llado et al. 2025 model
-        col_model = spectral_matching(loss = col_loss, target = col_target, stim=stim, hrirs=hrirs, target_angle=args.target_angle, fs=fs).to(device=device, dtype=dtype) # Spectral Matching model
+    near_field_kwargs = {"lstn_pos_conf": lstn_pos} if near_field == 1 else {}
+    loc_model = llado2025(loss = loc_loss, target = loc_target, hrirs=hrirs, fs=fs, gtfb=gtfb, **near_field_kwargs).to(device=device, dtype=dtype) # Llado et al. 2025 model
+    col_model = spectral_matching(loss = col_loss, target = col_target, stim=stim, hrirs=hrirs, target_angle=target_angle, fs=fs, **near_field_kwargs).to(device=device, dtype=dtype) # Spectral Matching model
     unc_model = desena2020(loss = unc_loss, target = unc_target, hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # De Sena et al. 2020 model
-    
 
     perceptual_dict = {'localisation': loc_model,
                          'uncertainty': unc_model,
@@ -128,7 +129,7 @@ def main(args):
         key: build_perceptual_loss_term(model, device=device, dtype=dtype)
         for key, model in perceptual_dict.items()
     }
-    regularisation = select_regularistion(args.reg, n_samples=args.n_samples, device=device, dtype=dtype)
+    regularisation = select_regularistion(reg_type, n_samples=n_samples, device=device, dtype=dtype)
     if regularisation is not None:
         for source_idx in range(len(spk_pos)):
             loss_terms[f"regularisation_source_{source_idx}"] = build_regularisation_loss_term(
@@ -137,14 +138,14 @@ def main(args):
             )
 
     # Initialise neural network
-    nn_model = load_NN(n_samples=args.n_samples, device=device, dtype=dtype, init = args.init, n_sources=len(spk_pos)) # Load neural network ICLD or FIR
-    nn_optimiser = load_optimiser(nn_model, lr=args.lr) # Load optimiser for neural network
+    nn_model = load_NN(n_samples=n_samples, device=device, dtype=dtype, init = init, n_sources=len(spk_pos)) # Load neural network ICLD or FIR
+    nn_optimiser = load_optimiser(nn_model, lr=lr) # Load optimiser for neural network
     # nn_scheduler = load_scheduler(nn_optimiser, epochs)
 
 ## Initliase saving folder and logger
 
-    saver_obj = saver(perceptual_dict, lstn_pos_conf[args.lstn_pos_conf], args)
-    logger = saver_obj if args.log else None
+    saver_obj = saver(perceptual_dict, lstn_pos)
+    logger = saver_obj if log else None
 
 ## Training loop
 
@@ -163,7 +164,6 @@ def main(args):
     print(f"Time for full optimisation:{time_train:.2f}")
 
 ## Print and Plot results
-
     full_perceptual_dict = {'localisation': loc_model,
                          'uncertainty': unc_model,
                          'colouration': col_model}
@@ -188,7 +188,7 @@ def main(args):
                                         torch.tensor(estimation_dict['localisation'], device=device, dtype=dtype), 
                                         torch.tensor(estimation_dict['uncertainty'], device=device, dtype=dtype) if 'uncertainty' in estimation_dict else None, 
                                         torch.tensor(estimation_dict['colouration'],device=device, dtype=dtype) if 'colouration' in estimation_dict else None, 
-                                        loc_target=torch.tensor(args.target_angle),
+                                        loc_target=torch.tensor(target_angle),
                                         show=False
             )
         else:
@@ -204,35 +204,9 @@ def main(args):
 
 ## Save results
 
-    saver_obj.save_results(args, estimation_dict, est_filters, fs, lstn_pos_conf[args.lstn_pos_conf], spk_pos, trainer)
+    saver_obj.save_results(estimation_dict=estimation_dict, est_filters=est_filters, fs=fs, lstn_pos=lstn_pos, spk_pos=spk_pos, trainer=trainer)
     saver_obj.save_plots(time_plot,freq_plot,arrow_plot, color_l_plot, color_r_plot)
 
     # Save per-epoch source FIR evolution as videos (one per source)
     # saver_obj.save_filter_video(trainer.h_history, source_index=0, fs=fs)
     # saver_obj.save_filter_video(trainer.h_history, source_index=1, fs=fs)
-
-if __name__ == "__main__":
-    # Default paths relative to this repository (portable across machines/OSes)
-    repo_root = Path(__file__).resolve().parent
-    default_sofa_path = repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"
-    default_idx_path = repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--near_field", type = int, default = 0, help = "Optimise for source in the near-field (1) and far-field (0)")
-    parser.add_argument("--epochs", type=int, default=1000)
-    parser.add_argument("--n_samples", type=int, default=128)
-    parser.add_argument("--target_angle", type=float, default=00.0)
-    parser.add_argument("--stimulus", type=str, default="random")
-    parser.add_argument("--sofa_path", type=str, default=str(default_sofa_path))
-    parser.add_argument("--idx_path", type=str,default=str(default_idx_path))
-    parser.add_argument("--lstn_pos_conf", type=int, default=1, help="Listener position configuration index (0: 1 pos, 1: 3 pos, 2: 5 pos, 3: 9 pos)")
-    parser.add_argument("--lr", type=float, default=0.001)
-    parser.add_argument("--init", type=int, default=1, help="If 1, initialise NN with delta-like impulse responses, if 2 initialise with NN with delta-like impulse response at left speaker and 0s at right speaker")
-    parser.add_argument("--reg", type=int, default=2, help="If 1, use first moment or 2 for second moment regularisation during training")
-    parser.add_argument("--alpha", type=float, default=1.5)
-    parser.add_argument("--seed", type=int, default = 46, help="Random seed for reproducibility")
-    parser.add_argument("--log", type=int, default=1, help="If 1, will log the training in Tensorboard, to view run in terminal | tensorboard --logdir runs | ")
-    parser.add_argument("--device", type=str, default=None, help="Device to use for computation (e.g., 'cpu', 'cuda', or 'mps'). If None, will use CUDA if available.")
-    args = parser.parse_args()
-
-    main(args)
