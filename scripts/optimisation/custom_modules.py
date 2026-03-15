@@ -33,16 +33,14 @@ class SymmetricFIR(nn.Module):
 
 
 class MultiSourceFIR(nn.Module):
-    """One linear (or custom layer) per source; forward returns (batch, source, taps)."""
+    """One FIR (Linear) layer per source; forward returns (batch, source, taps)."""
 
-    def __init__(self, n_samples, n_sources, layer_cls=nn.Linear, layer_kwargs=None, init_weight=None):
+    def __init__(self, n_samples, n_sources, init_weight=None):
         super().__init__()
         self.n_sources = n_sources
         self.n_samples = n_samples
-        kwargs = layer_kwargs or {}
         self.branches = nn.ModuleList([
-            layer_cls(n_samples, **kwargs) if layer_cls is SymmetricFIR
-            else layer_cls(1, n_samples, **kwargs)
+            nn.Linear(1, n_samples, bias=False)
             for _ in range(n_sources)
         ])
 

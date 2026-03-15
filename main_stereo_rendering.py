@@ -10,7 +10,6 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 import torch.nn.functional as F
-import torch.nn as nn
 
 from scripts.optimisation.custom_modules import MultiSourceFIR
 
@@ -135,25 +134,19 @@ if __name__ == "__main__":
         "colouration": 1.0e-2,
     }
     
-    regularisation = second_moment_regularisation(n_samples=n_samples, device=device, dtype=dtype)
-    if regularisation is not None:
-        for source_idx in range(len(spk_pos)):
-            reg_key = f"regularisation_source_{source_idx}"
-            loss_terms[reg_key] = build_regularisation_loss_term(
-                regularisation,
-                source_idx=source_idx,
-            )
-            loss_weights[reg_key] = 1.0e-3
+    for source_idx in range(len(spk_pos)):
+        reg_key = f"regularisation_source_{source_idx}"
+        loss_terms[reg_key] = build_regularisation_loss_term(
+            second_moment_regularisation(n_samples=n_samples, device=device, dtype=dtype),
+            source_idx=source_idx,
+        )
+        loss_weights[reg_key] = 1.0e-3
 
     # Initialise neural network
-
     nn_model = MultiSourceFIR(
         n_samples=n_samples,
         n_sources=2,
-        layer_cls=nn.Linear,
-        layer_kwargs={"bias": False},
     ).to(device=device, dtype=dtype)
-
     with torch.no_grad():
         for branch in nn_model.branches:
             branch.weight.fill_(0.0)
@@ -162,7 +155,6 @@ if __name__ == "__main__":
     nn_optimiser = torch.optim.Adam(nn_model.parameters(), lr=lr)
     
 ## Initliase saving folder and logger
-
     saver_obj = saver(perceptual_dict, lstn_pos)
     logger = saver_obj if log else None
 

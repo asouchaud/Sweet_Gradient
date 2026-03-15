@@ -52,8 +52,6 @@ def test_train_moves_estimate_towards_target() -> None:
     nn_model = MultiSourceFIR(
         n_samples=8,
         n_sources=2,
-        layer_cls=nn.Linear,
-        layer_kwargs={"bias": False},
     ).to(device="cpu", dtype=torch.float32)
 
     with torch.no_grad():

@@ -6,7 +6,6 @@ from pathlib import Path
 from types import SimpleNamespace
 import torch
 import torch.nn.functional as F
-import torch.nn as nn
 
 from scripts.optimisation.custom_modules import MultiSourceFIR
 
@@ -163,8 +162,6 @@ def test_reference_100_epoch_matches_known_output() -> None:
     nn_model = MultiSourceFIR(
         n_samples=args.n_samples,
         n_sources=2,
-        layer_cls=nn.Linear,
-        layer_kwargs={"bias": False},
     ).to(device=device, dtype=dtype)
 
     with torch.no_grad():
