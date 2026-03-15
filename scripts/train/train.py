@@ -37,6 +37,7 @@ class Train:
             })
 
         else:
+            weights = {key: 1.0 for key in perceptual_dict.keys()}
             self.loss_weights = torch.nn.ParameterDict({
                 key: torch.nn.Parameter(torch.tensor(weights[key], device=self.device, dtype=self.dtype))
                 for key in perceptual_dict.keys()
