@@ -10,7 +10,7 @@ from scripts.plotting.graph_plot import rfft_mag_db_phase, plot_mag_db_from_resp
 
 
 class saver():
-    def __init__(self, perceptual_dict, lstn_pos):
+    def __init__(self, loss_dict, lstn_pos):
         # Root experiment directory
         exp_root = Path("results")
         exp_root.mkdir(exist_ok=True)
@@ -22,8 +22,17 @@ class saver():
         date_prefix = now.strftime("%y%m%d")
         time_suffix = now.strftime("%H%M%S")
 
-        # Alphabetical flags from perceptual_dict keys
-        flag_str = ''.join(sorted(k[0] for k in perceptual_dict.keys()))
+        # Alphabetical flags from listener-based perceptual keys.
+        # Supports both the new loss_dict API (entries with `.model`) and
+        # legacy model-only dictionaries.
+        perceptual_keys = []
+        for key, value in loss_dict.items():
+            if hasattr(value, "model"):
+                if value.model is not None:
+                    perceptual_keys.append(key)
+            else:
+                perceptual_keys.append(key)
+        flag_str = ''.join(sorted(k[0] for k in perceptual_keys))
 
         # Number of listener positions
         n_listeners = len(lstn_pos)

@@ -35,34 +35,16 @@ from scripts.perceptual_models.desena2020.desena2020 import desena2020
 from scripts.perceptual_models.spectral_matching.spectral_matching import spectral_matching
 
 # Import neural network related scripts
-from scripts.optimisation.regularisation import first_moment_regularisation
 from scripts.optimisation.regularisation import second_moment_regularisation
 
 # Import training script
-from scripts.train.train import Train
+from scripts.train.train import ListenerBasedLoss, SourceBasedLoss, Train
 
 # Import saving class
 from scripts.saving.save_results import saver
 
 # Import time
 import time
-
-def build_perceptual_loss_term(model, device, dtype):
-    def loss_term(bin_stim, h_full):  # noqa: ARG001 - kept for a uniform callable interface
-        model_estimation = model(bin_stim)
-        target = torch.as_tensor(model.target, device=device, dtype=dtype).expand_as(model_estimation)
-        loss = model.loss(model_estimation, target) / model.loss_norm
-        return loss, model_estimation
-
-    return loss_term
-
-def build_regularisation_loss_term(regularisation, source_idx):
-    def loss_term(bin_stim, h_full):  # noqa: ARG001 - kept for a uniform callable interface
-        source_filter = h_full[:, source_idx:source_idx + 1, :]
-        loss = regularisation.compute_loss(source_filter) / regularisation.loss_norm
-        return loss, None
-
-    return loss_term
 
 
 if __name__ == "__main__":
@@ -108,45 +90,26 @@ if __name__ == "__main__":
     stereo_prop = BinauralFreeFieldPropagation(stim=stim, lstn_pos=lstn_pos, spk_pos=spk_pos, fs=fs, sofa_file_path=sofa_path) # Load stereo anechoic propagation module
 
     # Initiate perceptual models
-    loc_loss = F.mse_loss
-    unc_loss = F.l1_loss
-    col_loss = F.l1_loss
-
-    loc_target = target_angle
-    unc_target = 0
-    col_target = 0
-
     near_field_kwargs = {"lstn_pos_conf": lstn_pos} if near_field == 1 else {}
-    loc_model = llado2025(loss = loc_loss, target = loc_target, hrirs=hrirs, fs=fs, gtfb=gtfb, **near_field_kwargs).to(device=device, dtype=dtype) # Llado et al. 2025 model
-    col_model = spectral_matching(loss = col_loss, target = col_target, stim=stim, hrirs=hrirs, target_angle=target_angle, fs=fs, **near_field_kwargs).to(device=device, dtype=dtype) # Spectral Matching model
-    unc_model = desena2020(loss = unc_loss, target = unc_target, hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # De Sena et al. 2020 model
+    loc_model = llado2025(loss = F.mse_loss, target = target_angle, hrirs=hrirs, fs=fs, gtfb=gtfb, **near_field_kwargs).to(device=device, dtype=dtype) # Llado et al. 2025 model
+    col_model = spectral_matching(loss = F.l1_loss, target = 0, stim=stim, hrirs=hrirs, target_angle=target_angle, fs=fs, **near_field_kwargs).to(device=device, dtype=dtype) # Spectral Matching model
+    unc_model = desena2020(loss = F.l1_loss, target = 0, hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # De Sena et al. 2020 model
 
-    perceptual_dict = {'localisation': loc_model,
-                         'uncertainty': unc_model,
-                         'colouration': col_model}
-    loss_terms = {
-        key: build_perceptual_loss_term(model, device=device, dtype=dtype)
-        for key, model in perceptual_dict.items()
+    regularisation = second_moment_regularisation(n_samples=n_samples, device=device, dtype=dtype)
+    loss_dict = {
+        "localisation": ListenerBasedLoss(model=loc_model, weight=1.0, device=device, dtype=dtype),
+        "uncertainty": ListenerBasedLoss(model=unc_model, weight=1.0e1, device=device, dtype=dtype),
+        "colouration": ListenerBasedLoss(model=col_model, weight=1.0e-2, device=device, dtype=dtype),
+        "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1.0e-3),
+        "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1.0e-3),
     }
-    loss_weights = {
-        "localisation": 1.0,
-        "uncertainty": 1.0e1,
-        "colouration": 1.0e-2,
-    }
-    
-    for source_idx in range(len(spk_pos)):
-        reg_key = f"regularisation_source_{source_idx}"
-        loss_terms[reg_key] = build_regularisation_loss_term(
-            second_moment_regularisation(n_samples=n_samples, device=device, dtype=dtype),
-            source_idx=source_idx,
-        )
-        loss_weights[reg_key] = 1.0e-3
 
     # Initialise neural network
     nn_model = MultiSourceFIR(
         n_samples=n_samples,
         n_sources=2,
     ).to(device=device, dtype=dtype)
+    # Initialise FIR filter weights
     with torch.no_grad():
         for branch in nn_model.branches:
             branch.weight.fill_(0.0)
@@ -155,7 +118,7 @@ if __name__ == "__main__":
     nn_optimiser = torch.optim.Adam(nn_model.parameters(), lr=lr)
     
 ## Initliase saving folder and logger
-    saver_obj = saver(perceptual_dict, lstn_pos)
+    saver_obj = saver(loss_dict, lstn_pos)
     logger = saver_obj if log else None
 
 ## Training loop
@@ -164,9 +127,7 @@ if __name__ == "__main__":
     trainer = Train(n_epoch=epochs,
                     nn=nn_model,
                     prop=stereo_prop,
-                    perceptual_dict=perceptual_dict,
-                    loss_terms=loss_terms,
-                    loss_weights=loss_weights,
+                    loss_dict=loss_dict,
                     optimiser=nn_optimiser,
                     loggers = [logger, None], 
                     scheduler=None) # Initialize training class
@@ -176,12 +137,8 @@ if __name__ == "__main__":
     print(f"Time for full optimisation:{time_train:.2f}")
 
 ## Print and Plot results
-    full_perceptual_dict = {'localisation': loc_model,
-                         'uncertainty': unc_model,
-                         'colouration': col_model}
-
     # Evaluate final neural network FIRs
-    est_filters, estimation_dict, bin_stim = trainer.evaluate(full_perceptual_dict)
+    est_filters, estimation_dict, bin_stim = trainer.evaluate()
     # Normalise filters to prevent clipping 
     est_filters /= np.max(np.abs(est_filters)) / 0.9 # TODO: move this to a more appropriate place at the end of the training loop
 
@@ -193,8 +150,8 @@ if __name__ == "__main__":
     time_plot = plot_time(est_filters, show=False)
     freq_plot = plot_freq(est_filters, fs, show=False)
     arrow_plot = None
-    if 'localisation' in full_perceptual_dict:
-        if full_perceptual_dict['localisation'].lstn_pos_conf is not None:
+    if 'localisation' in estimation_dict:
+        if loc_model.lstn_pos_conf is not None:
             arrow_plot = plot_arrows(stereo_prop.lstn_pos, 
                                         stereo_prop.spk_pos, 
                                         torch.tensor(estimation_dict['localisation'], device=device, dtype=dtype), 

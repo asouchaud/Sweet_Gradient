@@ -1,24 +1,14 @@
 from __future__ import annotations
 
 import pytest
-from typing import Callable
 
 pytest.importorskip("torch.utils.tensorboard")
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from scripts.train.train import Train
+from scripts.train.train import ListenerBasedLoss, Train
 from scripts.optimisation.custom_modules import MultiSourceFIR
-
-def build_perceptual_loss_term(model: nn.Module) -> Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, torch.Tensor]]:
-    def loss_term(bin_stim: torch.Tensor, h_full: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:  # noqa: ARG001
-        estimation = model(bin_stim)
-        target = torch.as_tensor(model.target, device=estimation.device, dtype=estimation.dtype).expand_as(estimation)
-        return model.loss(estimation, target) / model.loss_norm, estimation
-
-    return loss_term
-
 
 class IdentityPropagation(nn.Module):
     def forward(self, spk_filters: torch.Tensor) -> torch.Tensor:
@@ -67,12 +57,13 @@ def test_train_moves_estimate_towards_target() -> None:
         n_epoch=80,
         nn=nn_model,
         prop=IdentityPropagation(),
-        perceptual_dict={"localisation": localisation_model},
-        loss_terms={
-            "localisation": build_perceptual_loss_term(localisation_model),
-        },
-        loss_weights={
-            "localisation": 1.0,
+        loss_dict={
+            "localisation": ListenerBasedLoss(
+                model=localisation_model,
+                weight=1.0,
+                device=torch.device("cpu"),
+                dtype=torch.float32,
+            ),
         },
         optimiser=optimiser,
         loggers=[None, None],

@@ -31,30 +31,13 @@ from scripts.optimisation.regularisation import first_moment_regularisation
 from scripts.optimisation.regularisation import second_moment_regularisation
 
 # Import training script
-from scripts.train.train import Train
+from scripts.train.train import ListenerBasedLoss, SourceBasedLoss, Train
 
 pytest.importorskip("sofar")
 pytest.importorskip("torchaudio")
 
 # Import saving class
 from scripts.saving.save_results import saver
-
-def build_perceptual_loss_term(model, device, dtype):
-    def loss_term(bin_stim, h_full):  # noqa: ARG001 - kept for a uniform callable interface
-        estimation = model(bin_stim)
-        target = torch.as_tensor(model.target, device=device, dtype=dtype).expand_as(estimation)
-        loss = model.loss(estimation, target) / model.loss_norm
-        return loss, estimation
-
-    return loss_term
-
-def build_regularisation_loss_term(regularisation, source_idx):
-    def loss_term(bin_stim, h_full):  # noqa: ARG001 - kept for a uniform callable interface
-        source_filter = h_full[:, source_idx:source_idx + 1, :]
-        loss = regularisation.compute_loss(source_filter) / regularisation.loss_norm
-        return loss, None
-
-    return loss_term
 
 def select_regularistion(reg: str, n_samples: int, device='cuda', dtype=torch.float32):
     if reg == 0:
@@ -136,27 +119,20 @@ def test_reference_100_epoch_matches_known_output() -> None:
     unc_model = desena2020(loss = unc_loss, target = unc_target, hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # De Sena et al. 2020 model
     
 
-    perceptual_dict = {'localisation': loc_model,
-                         'uncertainty': unc_model,
-                         'colouration': col_model}
-    loss_terms = {
-        key: build_perceptual_loss_term(model, device=device, dtype=dtype)
-        for key, model in perceptual_dict.items()
-    }
-    loss_weights = {
-        "localisation": 1.0,
-        "uncertainty": 1.0e1,
-        "colouration": 1.0e-2,
+    loss_dict = {
+        "localisation": ListenerBasedLoss(model=loc_model, weight=1.0, device=device, dtype=dtype),
+        "uncertainty": ListenerBasedLoss(model=unc_model, weight=1.0e1, device=device, dtype=dtype),
+        "colouration": ListenerBasedLoss(model=col_model, weight=1.0e-2, device=device, dtype=dtype),
     }
     regularisation = select_regularistion(args.reg, n_samples=args.n_samples, device=device, dtype=dtype)
     if regularisation is not None:
         for source_idx in range(len(spk_pos)):
             reg_key = f"regularisation_source_{source_idx}"
-            loss_terms[reg_key] = build_regularisation_loss_term(
-                regularisation,
+            loss_dict[reg_key] = SourceBasedLoss(
+                regulariser=regularisation,
                 source_idx=source_idx,
+                weight=1.0e-3,
             )
-            loss_weights[reg_key] = 1.0e-3
 
     # Initialise neural network
     nn_model = MultiSourceFIR(
@@ -173,7 +149,7 @@ def test_reference_100_epoch_matches_known_output() -> None:
     
 ## Initliase saving folder and logger
 
-    saver_obj = saver(perceptual_dict, lstn_pos)
+    saver_obj = saver(loss_dict, lstn_pos)
     logger = saver_obj if args.log else None
 
 ## Training loop
@@ -182,9 +158,7 @@ def test_reference_100_epoch_matches_known_output() -> None:
     trainer = Train(n_epoch=epochs,
                     nn=nn_model,
                     prop=stereo_prop,
-                    perceptual_dict=perceptual_dict,
-                    loss_terms=loss_terms,
-                    loss_weights=loss_weights,
+                    loss_dict=loss_dict,
                     optimiser=nn_optimiser,
                     loggers = [logger, None], 
                     scheduler=None) # Initialize training class
@@ -192,12 +166,8 @@ def test_reference_100_epoch_matches_known_output() -> None:
     
 ## Print and Plot results
 
-    full_perceptual_dict = {'localisation': loc_model,
-                         'uncertainty': unc_model,
-                         'colouration': col_model}
-
     # Evaluate final neural network FIRs
-    est_filters, estimation_dict, bin_stim = trainer.evaluate(full_perceptual_dict)
+    est_filters, estimation_dict, bin_stim = trainer.evaluate()
     # Normalise filters to prevent clipping
     est_filters /= np.max(np.abs(est_filters)) / 0.9  # TODO: move this to a more appropriate place at the end of the training loop
 

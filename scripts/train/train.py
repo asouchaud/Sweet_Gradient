@@ -3,8 +3,34 @@ import time
 
 from scripts.plotting.tensorboard_updates import TensorboardLogger
 
+class ListenerBasedLoss:
+    def __init__(self, model, weight, device, dtype):
+        self.model = model
+        self.weight = weight
+        self.device = device
+        self.dtype = dtype
+
+    def compute_loss(self, bin_stim, h_full):  # noqa: ARG002 - kept for uniform interface
+        model_estimation = self.model(bin_stim)
+        target = torch.as_tensor(self.model.target, device=self.device, dtype=self.dtype).expand_as(model_estimation)
+        loss = self.model.loss(model_estimation, target) / self.model.loss_norm
+        return loss, model_estimation
+
+
+class SourceBasedLoss:
+    def __init__(self, regulariser, source_idx, weight):
+        self.model = None
+        self.regulariser = regulariser
+        self.source_idx = source_idx
+        self.weight = weight
+
+    def compute_loss(self, bin_stim, h_full):  # noqa: ARG002 - kept for uniform interface
+        source_filter = h_full[:, self.source_idx:self.source_idx + 1, :]
+        loss = self.regulariser.compute_loss(source_filter) / self.regulariser.loss_norm
+        return loss, None
+
 class Train:
-    def __init__(self, n_epoch, nn, prop, perceptual_dict, loss_terms, loss_weights, optimiser, loggers=None, scheduler=None, alpha = 1):
+    def __init__(self, n_epoch, nn, prop, loss_dict, optimiser, loggers=None, scheduler=None, alpha = 1):
 
         self.n_epoch = n_epoch
         self.device = nn[0].weight.device
@@ -12,24 +38,27 @@ class Train:
         self.optimiser = optimiser
         self.n_samples = nn.n_samples
         self.n_sources = getattr(nn, 'n_sources', 2)
-        self.loss_terms = loss_terms
-        self.loss_weights_dict = loss_weights
+        self.loss_dict = loss_dict
         self.loss_weights = torch.nn.ParameterDict({
             key: torch.nn.Parameter(
                 torch.tensor(
-                    self.loss_weights_dict[key],
+                    loss_cfg.weight,
                     device=self.device,
                     dtype=self.dtype,
                 )
             )
-            for key in self.loss_terms.keys()
+            for key, loss_cfg in self.loss_dict.items()
         })
 
         self.importance = None
         self.alpha = None
         self.nn = nn
         self.prop = prop
-        self.perceptual_dict = perceptual_dict
+        self.perceptual_models = {
+            key: loss_cfg.model
+            for key, loss_cfg in self.loss_dict.items()
+            if loss_cfg.model is not None
+        }
 
         logger, saver = loggers[0], loggers[1]
 
@@ -62,8 +91,8 @@ class Train:
             est_dict = {}
             weighted_loss_dict = {}
             full_loss = torch.tensor(0.0, device=self.device, dtype=self.dtype)
-            for key, loss_term in self.loss_terms.items():
-                loss, estimation = loss_term(bin_stim=bin_stim, h_full=h_full)
+            for key, loss_cfg in self.loss_dict.items():
+                loss, estimation = loss_cfg.compute_loss(bin_stim=bin_stim, h_full=h_full)
                 loss_dict[key] = loss
                 weighted_loss = loss * self.loss_weights[key]
                 weighted_loss_dict[key] = weighted_loss
@@ -84,24 +113,24 @@ class Train:
                 self.logger.log_losses(weighted_loss_dict, full_loss, epoch)
                 self.logger.log_h_full(h_full, epoch)
 
-                if 'localisation' in self.perceptual_dict or 'uncertainty' in self.perceptual_dict:
+                if 'localisation' in self.perceptual_models or 'uncertainty' in self.perceptual_models:
                     self.logger.log_bin_cues(bin_stim, epoch)
 
-                if 'localisation' in self.perceptual_dict:
-                    if self.perceptual_dict['localisation'].lstn_pos_conf is not None:
+                if 'localisation' in self.perceptual_models:
+                    if self.perceptual_models['localisation'].lstn_pos_conf is not None:
                         self.logger.log_plot_arrows(self.prop.lstn_pos, 
                                                    self.prop.spk_pos, 
                                                    est_dict['localisation'], 
-                                                   est_dict['uncertainty'] if 'uncertainty' in self.perceptual_dict else None, 
-                                                   est_dict['coloration'] if 'coloration' in self.perceptual_dict else None, 
+                                                   est_dict['uncertainty'] if 'uncertainty' in self.perceptual_models else None, 
+                                                   est_dict['coloration'] if 'coloration' in self.perceptual_models else None, 
                                                    epoch, 
-                                                   loc_target=self.perceptual_dict['localisation'].target[0])
+                                                   loc_target=self.perceptual_models['localisation'].target[0])
                     else:
                         self.logger.log_plot_arrows(self.prop.lstn_pos, 
                                                    self.prop.spk_pos, 
                                                    est_dict['localisation'], 
-                                                   est_dict['uncertainty'] if 'uncertainty' in self.perceptual_dict else None, 
-                                                   est_dict['coloration'] if 'coloration' in self.perceptual_dict else None, 
+                                                   est_dict['uncertainty'] if 'uncertainty' in self.perceptual_models else None, 
+                                                   est_dict['coloration'] if 'coloration' in self.perceptual_models else None, 
                                                    epoch)
             
             time_epoch = time.time() - time_epoch_start
@@ -118,10 +147,18 @@ class Train:
                 
 
 
-    def evaluate(self, perceptual_dict = None):
-
-        if perceptual_dict is None:
-            perceptual_dict = self.perceptual_dict
+    def evaluate(self, loss_dict=None):
+        if loss_dict is None:
+            perceptual_models = self.perceptual_models
+        else:
+            perceptual_models = {}
+            for key, value in loss_dict.items():
+                if hasattr(value, "model"):
+                    if value.model is not None:
+                        perceptual_models[key] = value.model
+                else:
+                    # Backward compatibility for model-only dicts
+                    perceptual_models[key] = value
         # Evaluate final FIRs
         with torch.no_grad():
             h_full = self.nn(torch.ones(1,1, device=self.device, dtype=self.dtype))
@@ -131,7 +168,7 @@ class Train:
 
             estimation_dict = {}
             # Get perceptual estimations and compute losses
-            for entry in perceptual_dict.items():
+            for entry in perceptual_models.items():
                 model = entry[1] # Get model
 
                 model_estimation = model(bin_stim) # Get model estimation

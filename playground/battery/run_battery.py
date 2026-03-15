@@ -26,7 +26,7 @@ from scripts.optimisation.regularisation import first_moment_regularisation
 from scripts.optimisation.regularisation import second_moment_regularisation
 
 # Import training script
-from scripts.train.train import Train
+from scripts.train.train import ListenerBasedLoss, SourceBasedLoss, Train
 
 # Import saving functions
 from playground.battery.scripts.saving.save_results import saver
@@ -39,23 +39,6 @@ from scripts.plotting.dense_arrows_plot import plot_arrows
 from scripts.plotting.graph_plot import plot_time
 from scripts.plotting.graph_plot import plot_freq
 from scripts.plotting.graph_plot import plot_color
-
-def build_perceptual_loss_term(model, device, dtype):
-    def loss_term(bin_stim, h_full):  # noqa: ARG001 - kept for a uniform callable interface
-        estimation = model(bin_stim)
-        target = torch.as_tensor(model.target, device=device, dtype=dtype).expand_as(estimation)
-        loss = model.loss(estimation, target) / model.loss_norm
-        return loss, estimation
-
-    return loss_term
-
-def build_regularisation_loss_term(regularisation, source_idx):
-    def loss_term(bin_stim, h_full):  # noqa: ARG001 - kept for a uniform callable interface
-        source_filter = h_full[:, source_idx:source_idx + 1, :]
-        loss = regularisation.compute_loss(source_filter) / regularisation.loss_norm
-        return loss, None
-
-    return loss_term
 
 def select_regularistion(reg: str, n_samples: int, device='cuda', dtype=torch.float32):
     if reg == 0:
@@ -111,24 +94,29 @@ def run_battery(args):
                     perceptual_dict = init_perc_model(dict_subsets[dict_idx[dict_sub_idx]], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb, lstn_pos_conf[lstn_pos_conf_idx]) ## CHANGE THIS BACK TO DICT_SUB_IDX
                 else:
                     perceptual_dict = init_perc_model(dict_subsets[dict_idx[dict_sub_idx]], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb) ## CHANGE THIS BACK TO DICT_SUB_IDX
-                loss_terms = {
-                    key: build_perceptual_loss_term(model, device=device, dtype=dtype)
-                    for key, model in perceptual_dict.items()
-                }
-                loss_weights = {
+                base_weights = {
                     "localisation": 1.0,
                     "uncertainty": 1.0e1,
                     "colouration": 1.0e-2,
+                }
+                loss_dict = {
+                    key: ListenerBasedLoss(
+                        model=model,
+                        weight=base_weights[key],
+                        device=device,
+                        dtype=dtype,
+                    )
+                    for key, model in perceptual_dict.items()
                 }
                 regularisation = select_regularistion(args.reg, n_samples=args.n_samples, device=device, dtype=dtype)
                 if regularisation is not None:
                     for source_idx in range(len(spk_pos)):
                         reg_key = f"regularisation_source_{source_idx}"
-                        loss_terms[reg_key] = build_regularisation_loss_term(
-                            regularisation,
+                        loss_dict[reg_key] = SourceBasedLoss(
+                            regulariser=regularisation,
                             source_idx=source_idx,
+                            weight=1.0e-3,
                         )
-                        loss_weights[reg_key] = 1.0e-3
                 
                 # Initialise neural network
                 nn_model = load_NN(n_samples=args.n_samples, device=device, dtype=dtype, init = args.init) # Load neural network ICLD or FIR
@@ -150,9 +138,7 @@ def run_battery(args):
                 trainer = Train(n_epoch=args.epochs,
                     nn=nn_model,
                     prop=stereo_prop,
-                    perceptual_dict=perceptual_dict,
-                    loss_terms=loss_terms,
-                    loss_weights=loss_weights,
+                    loss_dict=loss_dict,
                     optimiser=nn_optimiser,
                     loggers=[logger, saver_obj],
                     scheduler=nn_scheduler) # Initialize training class
