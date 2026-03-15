@@ -81,11 +81,7 @@ class Train:
             time_epoch_start = time.time()
 
             # Estimate FIRs 
-            h = self.nn(torch.ones(1,1, device=self.device, dtype=self.dtype))
-            expected_n_coeffs = self.n_sources * self.n_samples
-            if h.shape[-1] != expected_n_coeffs:
-                raise ValueError(f"Expected {expected_n_coeffs} filter coefficients, got {h.shape[-1]}")
-            h_full = h.reshape(h.shape[0], self.n_sources, self.n_samples)
+            h_full = self.nn(torch.ones(1,1, device=self.device, dtype=self.dtype))
             # h_full_normalised = energy_normalisation(h_full)
             with torch.no_grad():
                 self.h_history.append(h_full.squeeze(0).detach().cpu().numpy())
@@ -198,11 +194,7 @@ class Train:
             perceptual_dict = self.perceptual_dict
         # Evaluate final FIRs
         with torch.no_grad():
-            h = self.nn(torch.ones(1,1, device=self.device, dtype=self.dtype))
-            expected_n_coeffs = self.n_sources * self.n_samples
-            if h.shape[-1] != expected_n_coeffs:
-                raise ValueError(f"Expected {expected_n_coeffs} filter coefficients, got {h.shape[-1]}")
-            h_full = h.reshape(h.shape[0], self.n_sources, self.n_samples)
+            h_full = self.nn(torch.ones(1,1, device=self.device, dtype=self.dtype))
 
             # Propagate sound from speakers
             bin_stim = self.prop(h_full)

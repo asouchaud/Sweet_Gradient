@@ -33,7 +33,7 @@ class SymmetricFIRModule(nn.Module):
 
 
 class MultiSourceFIRModule(nn.Module):
-    """One linear (or custom layer) per source; forward concatenates outputs along the last dim."""
+    """One linear (or custom layer) per source; forward returns (batch, source, taps)."""
 
     def __init__(self, n_samples, n_sources, layer_cls=nn.Linear, layer_kwargs=None, init_weight=None):
         super().__init__()
@@ -59,7 +59,8 @@ class MultiSourceFIRModule(nn.Module):
             weight.copy_(init_weight.reshape_as(weight))
 
     def forward(self, x):
-        return torch.cat([b(x) for b in self.branches], dim=-1)
+        # Expects x shaped (batch, 1); returns stacked FIRs shaped (batch, n_sources, n_samples).
+        return torch.stack([b(x) for b in self.branches], dim=1)
 
     def __getitem__(self, i):
         """So downstream can use nn[0], nn[-1] for device/dtype or first/last branch."""
