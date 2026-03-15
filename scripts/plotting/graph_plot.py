@@ -39,7 +39,7 @@ def rfft_mag_db_phase(h, fs, n_fft: int = 4096, eps: float = 1e-12):
 
     Notes
     -----
-    - Magnitude is in dB: \(20 \\log_{10}(|H| + eps)\)
+    - Magnitude is in dB: 20 * log10(|H| + eps).
     - Phase is in radians: angle(H) in [-pi, pi]
     """
     freqs_hz, H = rfft_freq_response(h, fs, n_fft=n_fft)
