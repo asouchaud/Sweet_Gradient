@@ -13,7 +13,7 @@ from scripts.setup.setup import load_stim
 from scripts.setup.setup import load_hrirs
 from scripts.setup.setup import load_gtfb
 
-from scripts.propagation.stereo_anechoic import BinauralFreeFieldPropagation
+from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagation
 
 from scripts.perceptual_models.llado2025.llado2025 import llado2025
 from scripts.perceptual_models.desena2020.desena2020 import desena2020

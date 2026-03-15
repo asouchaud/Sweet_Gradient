@@ -17,7 +17,7 @@ from scripts.setup.setup import load_stim
 from scripts.setup.setup import load_hrirs
 
 # Import sound propagation module
-from scripts.propagation.stereo_anechoic import BinauralFreeFieldPropagation
+from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagation
 
 # Import perceptual models
 from scripts.perceptual_models.llado2025.llado2025 import llado2025

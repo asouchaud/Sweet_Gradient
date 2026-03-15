@@ -10,7 +10,7 @@ import argparse
 
 from scripts.setup.setup import load_stim
 
-from scripts.propagation.stereo_anechoic import BinauralFreeFieldPropagation
+from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagation
 
 
 class binaural_listening:
