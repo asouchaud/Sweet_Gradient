@@ -21,6 +21,7 @@ def load_NN(n_samples = 128, device = 'cuda', dtype = torch.float, init = 1):
             n_samples=n_samples,
             n_sources=2,
             layer_cls=nn.Linear,
+            layer_kwargs={"bias": False},
         ).to(device=device, dtype=dtype)
 
         if init == 3:
