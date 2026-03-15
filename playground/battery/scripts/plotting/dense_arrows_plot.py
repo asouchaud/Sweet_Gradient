@@ -12,7 +12,7 @@ from scripts.setup.setup import load_stim
 from scripts.setup.setup import load_hrirs
 from scripts.setup.setup import load_gtfb
 
-from scripts.propagation.stereo_anechoic import stereo_anechoic
+from scripts.propagation.stereo_anechoic import BinauralFreeFieldPropagation
 
 from scripts.perceptual_models.llado2025.llado2025 import llado2025
 from scripts.perceptual_models.desena2020.desena2020 import desena2020
@@ -105,7 +105,7 @@ class dense_battery_arrow_plot():
     def setup_evaluation(self):
 
         self.stim = load_stim(self.fs, self.device, DTYPE, selected_stim=self.stim_type)
-        self.prop_model = stereo_anechoic(self.stim, 
+        self.prop_model = BinauralFreeFieldPropagation(self.stim, 
                                     self.grid, 
                                     spk_pos=self.spk_pos, 
                                     sofa_file_path=self.sofa_path)

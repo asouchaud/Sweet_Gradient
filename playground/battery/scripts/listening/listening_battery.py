@@ -10,7 +10,7 @@ import argparse
 
 from scripts.setup.setup import load_stim
 
-from scripts.propagation.stereo_anechoic import stereo_anechoic
+from scripts.propagation.stereo_anechoic import BinauralFreeFieldPropagation
 
 
 class binaural_listening:
@@ -68,7 +68,7 @@ class binaural_listening:
         self.opt_idx = self.inv_opt_dict[opt_name]
 
 
-        self.prop = stereo_anechoic(self.stim, self.lstn_pos_conf[self.pos_conf_idx], self.spk_pos, self.sofa_path, self.fs)
+        self.prop = BinauralFreeFieldPropagation(self.stim, self.lstn_pos_conf[self.pos_conf_idx], self.spk_pos, self.sofa_path, self.fs)
 
         filters_np = np.load(self.filter_path)
         self.filters = torch.tensor(filters_np, device='cuda', dtype=torch.float32).unsqueeze(0)
@@ -138,7 +138,7 @@ class binaural_listening:
             self.filters = torch.tensor(filters_np, device='cuda', dtype=torch.float32).unsqueeze(0)
 
             # Apply propagation and binaural processing
-            self.prop = stereo_anechoic(
+            self.prop = BinauralFreeFieldPropagation(
                 self.stim,
                 self.lstn_pos_conf[self.pos_conf_idx],
                 self.spk_pos,

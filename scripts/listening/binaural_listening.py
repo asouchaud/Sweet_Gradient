@@ -10,7 +10,7 @@ import argparse
 
 from scripts.setup.setup import load_stim
 
-from scripts.propagation.stereo_anechoic import stereo_anechoic
+from scripts.propagation.stereo_anechoic import BinauralFreeFieldPropagation
 
 
 class binaural_listening:
@@ -37,7 +37,7 @@ class binaural_listening:
         
         self.stim = load_stim(self.fs, device='cuda', dtype=torch.float32, selected_stim=json_data["stimulus"])
 
-        self.prop = stereo_anechoic(self.stim, self.lstn_pos, self.spk_pos, self.sofa_path, self.fs)
+        self.prop = BinauralFreeFieldPropagation(self.stim, self.lstn_pos, self.spk_pos, self.sofa_path, self.fs)
 
         filter_path = os.path.join(folder_path, "artifacts", "est_filters.npy")
         filters_np = np.load(filter_path)
@@ -69,7 +69,7 @@ class binaural_listening:
 
         stim_dict = {0: "random", 1: "sine", 2: "male_speech", 3: "pop_music"}
         self.stim = load_stim(self.fs, device='cuda', dtype=torch.float32, selected_stim=stim_dict[stim_idx])
-        self.prop = stereo_anechoic(self.stim, self.lstn_pos, self.spk_pos, self.sofa_path, self.fs)
+        self.prop = BinauralFreeFieldPropagation(self.stim, self.lstn_pos, self.spk_pos, self.sofa_path, self.fs)
         self.bin_stim = self.prop(self.filters)
         print(f"Selected stimulus: {stim_dict[stim_idx]}")
 

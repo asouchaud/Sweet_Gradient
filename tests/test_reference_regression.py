@@ -17,7 +17,7 @@ from scripts.setup.setup import load_stim
 from scripts.setup.setup import load_hrirs
 
 # Import sound propagation module
-from scripts.propagation.stereo_anechoic import stereo_anechoic
+from scripts.propagation.stereo_anechoic import BinauralFreeFieldPropagation
 
 # Import perceptual models
 from scripts.perceptual_models.llado2025.llado2025 import llado2025
@@ -110,7 +110,7 @@ def test_reference_100_epoch_matches_known_output() -> None:
 ## Initialize model
 
     # Initialize sound propagation module
-    stereo_prop = stereo_anechoic(stim=stim, lstn_pos=lstn_pos, spk_pos=spk_pos, fs=fs, sofa_file_path=args.sofa_path) # Load stereo anechoic propagation module
+    stereo_prop = BinauralFreeFieldPropagation(stim=stim, lstn_pos=lstn_pos, spk_pos=spk_pos, fs=fs, sofa_file_path=args.sofa_path) # Load stereo anechoic propagation module
 
     # Initiate perceptual models
     loc_loss = F.mse_loss

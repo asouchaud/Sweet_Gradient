@@ -14,7 +14,7 @@ from playground.battery.scripts.setup.setup import get_all_subsets
 from playground.battery.scripts.setup.setup import init_perc_model
 
 # Import sound propagation module
-from scripts.propagation.stereo_anechoic import stereo_anechoic
+from scripts.propagation.stereo_anechoic import BinauralFreeFieldPropagation
 
 # Import perceptual models
 from scripts.perceptual_models.llado2025.llado2025 import llado2025
@@ -93,7 +93,7 @@ def run_battery(args):
                 print(f"Running battery for target angle {target_angle[ta_idx].item()} deg, listener position configuration {lstn_pos_conf_idx}, current run {dict_idx[dict_sub_idx]+1}/7") ## CHANGE THIS BACK TO DICT_SUB_IDX
                 
                 # Initialize sound propagation module
-                stereo_prop = stereo_anechoic(stim=stim,
+                stereo_prop = BinauralFreeFieldPropagation(stim=stim,
                                  lstn_pos=lstn_pos_conf[lstn_pos_conf_idx],
                                  spk_pos=spk_pos,
                                  fs=fs,

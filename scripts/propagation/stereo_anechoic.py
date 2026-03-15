@@ -8,7 +8,7 @@ from scripts.propagation.anechoic_source import AnechoicSourcePropagation
 
 ## Stereo anechoic class definition
 
-class stereo_anechoic(nn.Module):
+class BinauralFreeFieldPropagation(nn.Module):
     """Generic multi-source anechoic propagation with summed binaural output."""
 
     def __init__(self, stim, lstn_pos, spk_pos, sofa_file_path, fs=48000):

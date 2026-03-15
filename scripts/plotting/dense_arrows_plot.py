@@ -13,7 +13,7 @@ from scripts.setup.setup import load_stim
 from scripts.setup.setup import load_hrirs
 from scripts.setup.setup import load_gtfb
 
-from scripts.propagation.stereo_anechoic import stereo_anechoic
+from scripts.propagation.stereo_anechoic import BinauralFreeFieldPropagation
 
 from scripts.perceptual_models.llado2025.llado2025 import llado2025
 from scripts.perceptual_models.desena2020.desena2020 import desena2020
@@ -174,7 +174,7 @@ def create_grid(n_points_x, n_points_y):
 def setup_evaluation(dense_grid, spk_pos, target_angle, stim_type, fs, device, args):
 
     stim = load_stim(fs, device, DTYPE, stim_type)
-    prop_model = stereo_anechoic(stim, 
+    prop_model = BinauralFreeFieldPropagation(stim, 
                                   dense_grid, 
                                   spk_pos=spk_pos, 
                                   sofa_file_path=args.sofa_path)
