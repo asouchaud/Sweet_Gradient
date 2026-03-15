@@ -5,7 +5,6 @@ from datetime import datetime
 import scipy.io as sio
 import matplotlib.pyplot as plt
 
-from scripts.saving.save_normalise import normalise_max
 from scripts.plotting.graph_plot import rfft_mag_db_phase, plot_mag_db_from_response
 
 
@@ -184,8 +183,6 @@ class saver():
         # =========================
         # Save results (clean layout)
         # Subfolders
-
-        est_filters = normalise_max(est_filters)
 
         artifacts_dir = self.run_dir / "artifacts"
 

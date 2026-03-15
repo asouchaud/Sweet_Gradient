@@ -7,6 +7,7 @@ import argparse
 from pathlib import Path
 
 # Import computational libraries
+import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -145,6 +146,8 @@ def main(args):
 
     # Evaluate final neural network FIRs
     est_filters, estimation_dict, bin_stim = trainer.evaluate(full_perceptual_dict)
+    # Normalise filters to prevent clipping 
+    est_filters /= np.max(np.abs(est_filters)) / 0.9 # TODO: move this to a more appropriate place at the end of the training loop
 
     # Print estimated perceptual metrics
     for key, value in estimation_dict.items():
