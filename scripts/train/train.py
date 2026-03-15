@@ -15,7 +15,7 @@ class Train:
         self.device = nn[0].weight.device
         self.dtype = nn[0].weight.dtype
         self.optimiser = optimiser
-        self.n_samples = nn[-1].weight.shape[0] // 2
+        self.n_samples = nn.n_samples
         self.reg = reg
         self.gradnorm = gradnorm
 

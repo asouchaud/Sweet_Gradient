@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
 
+from scripts.optimisation.custom_modules import MultiSourceFIRModule
+
+
 def load_optimiser(nn, lr = 0.01): # Optimiser definition
     optimiser = torch.optim.Adam(nn.parameters(), lr=lr)
     return optimiser
@@ -14,25 +17,30 @@ def load_NN(n_samples = 128, device = 'cuda', dtype = torch.float, init = 1):
 
 
     else:
-        NN = nn.Sequential(
-            nn.Linear(1,2*n_samples, bias=False) # Initialise NN with 2 times filter taps for both loudspeakers
+        NN = MultiSourceFIRModule(
+            n_samples=n_samples,
+            n_sources=2,
+            layer_cls=nn.Linear,
         ).to(device=device, dtype=dtype)
 
-        
-        if init==3:
+        if init == 3:
             with torch.no_grad():
-                NN[0].weight.fill_(0.0)
+                for branch in NN.branches:
+                    branch.weight.fill_(0.0)
 
-        if init==1: # Initialisation scheme: impulses at both left and right speakers
+        if init == 1:  # Initialisation scheme: impulses at both left and right speakers
+            init_impulse = torch.zeros(n_samples, 1, device=device, dtype=dtype)
+            init_impulse[0, 0] = 1.0
             with torch.no_grad():
-                NN[0].weight.fill_(0.0)
-                NN[0].weight[0, 0] = 1.0
-                NN[0].weight[n_samples, 0] = 1.0
+                for branch in NN.branches:
+                    branch.weight.copy_(init_impulse)
 
-        if init==2: # Initialisation scheme: impulse at left speaker and silent right speaker
+        if init == 2:  # Initialisation scheme: impulse at left speaker and silent right speaker
+            init_impulse = torch.zeros(n_samples, 1, device=device, dtype=dtype)
+            init_impulse[0, 0] = 1.0
             with torch.no_grad():
-                NN[0].weight.fill_(0.0)
-                NN[0].weight[0, 0] = 1.0
+                NN[0].weight.copy_(init_impulse)
+                NN[1].weight.fill_(0.0)
 
     return NN
 
