@@ -76,6 +76,8 @@ class spectral_matching(nn.Module):
         return hrir
 
     def forward(self, bin_stim):
+        # Expects bin_stim as (batch, n_listeners, 2, T), where 2 is the left and right ear and T is the number of time samples of each ear signal;
+        # returns flattened coloration scores with shape (batch * n_listeners,).
 
         if len(bin_stim.shape) == 4:
             batch_size = bin_stim.shape[0]

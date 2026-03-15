@@ -37,6 +37,9 @@ class llado2025(nn.Module):
         self.loss_norm = self.loss(torch.tensor([30.0], device=self.device, dtype=self.dtype), torch.tensor([-30.0], device=self.device, dtype=self.dtype)) # Maximum possible loss for normalization THIS IS FOR A STEREO WITH SPANNING ANGLE OF 60 DEGREE
 
     def forward(self, bin_stim):
+        # Expects bin_stim as (batch, n_listeners, 2, T), where 2 is the left and right ear and T is the number of time samples of each ear signal;
+        # returns localisation per listener as (batch, n_listeners).
+        
         # Estimate Interaural Cues
         interauralcues = llado2025_estimateinterauralcues(bin_stim, self.fs, self.gtfb, self.tau_IACC)
 
@@ -45,5 +48,4 @@ class llado2025(nn.Module):
 
         # Estimate Localisation
         estimated_localisation = llado2025_estimatelocalisation_torch(distance, self.template, self.tau_L)
-
         return estimated_localisation

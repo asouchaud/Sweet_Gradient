@@ -30,6 +30,8 @@ class desena2020(nn.Module):
         self.loss_norm = 1.0 # No normalization needed for uncertainty as it is already between 0 and 1
         
     def forward(self, bin_stim):
+        # Expects bin_stim as (batch, n_listeners, 2, T), where 2 is the left and right ear and T is the number of time samples of each ear signal;
+        # returns uncertainty per listener as (batch, n_listeners, 1). # TODO: Antoine, why does this keep the trailing dimension, as opposed to the other models?
         # Estimate Interaural Cues
         interauralcues = desena2020_estimateinterauralcues(bin_stim, self.fs, self.gtfb, self.tau_IACC)
 
