@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -145,47 +146,18 @@ def test_reference_100_epoch_matches_known_output() -> None:
 
     # Evaluate final neural network FIRs
     est_filters, estimation_dict, bin_stim = trainer.evaluate(full_perceptual_dict)
-    # Normalise filters to prevent clipping 
-    est_filters /= np.max(np.abs(est_filters)) / 0.9 # TODO: move this to a more appropriate place at the end of the training loop
-
-## Save results
-    
-    saver_obj.save_results(args, estimation_dict, est_filters, fs, lstn_pos, spk_pos, trainer)
-    # print(est_filters)
+    # Normalise filters to prevent clipping
+    est_filters /= np.max(np.abs(est_filters)) / 0.9  # TODO: move this to a more appropriate place at the end of the training loop
 
     # Expected from: python main.py --epochs=100 --n_samples=10 --target_angle=15 (with device=cpu)
-    expected_filters = np.array(
-        [
-            [
-                0.8028717637062073,
-                -0.09117339551448822,
-                -0.08421041071414948,
-                -0.05354265123605728,
-                -0.05228962376713753,
-                -0.049026601016521454,
-                0.06736702471971512,
-                0.06748471409082413,
-                0.00806218571960926,
-                0.05893412232398987,
-            ],
-            [
-                0.9000000357627869,
-                -0.08920857310295105,
-                -0.09449869394302368,
-                -0.08539257198572159,
-                -0.04616745188832283,
-                -0.06372010707855225,
-                0.01923779770731926,
-                0.08262218534946442,
-                0.09175180643796921,
-                0.0925263836979866,
-            ],
-        ],
-        dtype=np.float32,
-    )
-    expected_localisation = [-0.4166666567325592, 19.16666603088379, -18.95833396911621]
-    expected_colouration = [7.113246917724609, 6.420462608337402, 8.479430198669434]
-    expected_uncertainty = [0.3592131733894348, 0.7276415824890137, 0.6328936219215393]
+    expected_path = Path(__file__).resolve().parent / "reference_outputs" / "test_reference_100_epoch_matches_known_output.json"
+    with open(expected_path) as f:
+        expected = json.load(f)
+
+    expected_filters = np.array(expected["est_filters"], dtype=np.float32)
+    expected_localisation = expected["localisation"]
+    expected_colouration = expected["colouration"]
+    expected_uncertainty = expected["uncertainty"]
 
     filters_np = np.asarray(est_filters, dtype=np.float32)
     np.testing.assert_allclose(filters_np, expected_filters, rtol=1e-4, atol=1e-4)
