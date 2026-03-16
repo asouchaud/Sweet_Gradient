@@ -37,7 +37,6 @@ if __name__ == "__main__":
     seed=46
     log=1
     device="cuda" if torch.cuda.is_available() else "cpu"
-    init=1
     fs = 48000
 
 ## Initial setup
