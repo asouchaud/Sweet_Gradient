@@ -3,6 +3,8 @@ import time
 
 from scripts.plotting.tensorboard_updates import TensorboardLogger
 
+# Listener-based losses operate on the propagated binaural scene and a perceptual model
+# (e.g., localisation, uncertainty, colouration). 
 class ListenerBasedLoss:
     def __init__(self, model, weight, device, dtype):
         self.model = model
@@ -11,12 +13,33 @@ class ListenerBasedLoss:
         self.dtype = dtype
 
     def compute_loss(self, bin_stim, h_full):  # noqa: ARG002 - kept for uniform interface
+        """
+        Args:
+            bin_stim: Tensor shaped (batch, n_listeners, 2, n_samples), propagated binaural signals, 
+            and 2 is the number of ears.
+            h_full: Tensor shaped (batch, n_sources, n_samples), source filters (unused here).
+
+        Why include an unused input:
+            Train uses one generic loop over `loss_dict` and always calls
+            `compute_loss(bin_stim=..., h_full=...)` regardless of loss type.
+            Keeping the same method signature across ListenerBasedLoss and
+            SourceBasedLoss is intentional polymorphism: it avoids branching
+            logic in Train and makes it easy to add new loss classes later.
+            For listener-based losses, `h_full` is accepted for API consistency.
+
+        Returns:
+            loss: Scalar tensor.
+            model_estimation: Tensor output of the perceptual model, shape depends on the model.
+        """
         model_estimation = self.model(bin_stim)
         target = torch.as_tensor(self.model.target, device=self.device, dtype=self.dtype).expand_as(model_estimation)
         loss = self.model.loss(model_estimation, target) / self.model.loss_norm
         return loss, model_estimation
 
 
+# Source-based losses regularise individual source filters directly from h_full.
+# They do not expose a perceptual model, so Train treats them as optimization-only
+# objectives (no perceptual estimation output needed for evaluate/plotting).
 class SourceBasedLoss:
     def __init__(self, regulariser, source_idx, weight):
         self.model = None
@@ -25,6 +48,22 @@ class SourceBasedLoss:
         self.weight = weight
 
     def compute_loss(self, bin_stim, h_full):  # noqa: ARG002 - kept for uniform interface
+        """
+        Args:
+            bin_stim: Tensor shaped (batch, n_listeners, 2, n_samples), propagated binaural signals, 
+            and 2 is the number of ears (unused here).
+            h_full: Tensor shaped (batch, n_sources, n_samples), source filters.
+
+        Why include an unused input:
+            This class shares the same `compute_loss` signature as
+            ListenerBasedLoss so Train can call all losses uniformly.
+            Here only `h_full` is needed, while `bin_stim` is accepted for
+            API consistency and future extensibility.
+
+        Returns:
+            loss: Scalar tensor for the selected source filter.
+            estimation: None (source-based losses do not produce perceptual estimates).
+        """
         source_filter = h_full[:, self.source_idx:self.source_idx + 1, :]
         loss = self.regulariser.compute_loss(source_filter) / self.regulariser.loss_norm
         return loss, None
@@ -39,19 +78,11 @@ class Train:
         self.n_samples = nn.n_samples
         self.n_sources = getattr(nn, 'n_sources', 2)
         self.loss_dict = loss_dict
-        self.loss_weights = torch.nn.ParameterDict({
-            key: torch.nn.Parameter(
-                torch.tensor(
-                    loss_cfg.weight,
-                    device=self.device,
-                    dtype=self.dtype,
-                )
-            )
+        self.loss_weights = {
+            key: torch.as_tensor(loss_cfg.weight, device=self.device, dtype=self.dtype)
             for key, loss_cfg in self.loss_dict.items()
-        })
+        }
 
-        self.importance = None
-        self.alpha = None
         self.nn = nn
         self.prop = prop
         self.perceptual_models = {
@@ -87,15 +118,13 @@ class Train:
             bin_stim = self.prop(h_full)
 
             # Get perceptual estimations and compute losses
-            loss_dict = {}
             est_dict = {}
             weighted_loss_dict = {}
             full_loss = torch.tensor(0.0, device=self.device, dtype=self.dtype)
             for key, loss_cfg in self.loss_dict.items():
                 loss, estimation = loss_cfg.compute_loss(bin_stim=bin_stim, h_full=h_full)
-                loss_dict[key] = loss
                 weighted_loss = loss * self.loss_weights[key]
-                weighted_loss_dict[key] = weighted_loss
+                weighted_loss_dict[key] = weighted_loss # For logging purposes only
                 full_loss = full_loss + weighted_loss
                 if estimation is not None:
                     est_dict[key] = estimation
