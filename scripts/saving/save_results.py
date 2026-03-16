@@ -21,6 +21,7 @@ class saver():
         now = datetime.now()
         date_prefix = now.strftime("%y%m%d")
         time_suffix = now.strftime("%H%M%S")
+        entrypoint_stem = Path(sys.argv[0]).stem
 
         # Alphabetical flags from listener-based perceptual keys.
         # Supports both the new loss_dict API (entries with `.model`) and
@@ -55,7 +56,7 @@ class saver():
         }
 
         # Build run folder name
-        run_name = f"{flag_str}_{date_prefix}_{time_suffix}"
+        run_name = f"{entrypoint_stem}_{flag_str}_{date_prefix}_{time_suffix}"
         run_dir = exp_root / run_name
         
         self.run_dir = run_dir
