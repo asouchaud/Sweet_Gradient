@@ -244,13 +244,23 @@ class saver():
 
         print(f"\n✅ Results saved to {self.run_dir}")
 
-    def save_plots(self, time_plot, freq_plot, arrows_plot = None, color_l = None, color_r = None):
+    def save_plots(self, plots_or_time_plot, freq_plot=None, arrows_plot=None, color_l=None, color_r=None):
+        if isinstance(plots_or_time_plot, dict):
+            time_plot = plots_or_time_plot.get("time_plot")
+            freq_plot = plots_or_time_plot.get("freq_plot")
+            arrows_plot = plots_or_time_plot.get("arrow_plot")
+            color_l = plots_or_time_plot.get("color_l_plot")
+            color_r = plots_or_time_plot.get("color_r_plot")
+        else:
+            time_plot = plots_or_time_plot
 
         plot_folder = self.run_dir / "plots"
         plot_folder.mkdir(parents=True)
 
-        time_plot.savefig(plot_folder / "time_filters.png")
-        freq_plot.savefig(plot_folder / "freq_filters.png")
+        if time_plot is not None:
+            time_plot.savefig(plot_folder / "time_filters.png")
+        if freq_plot is not None:
+            freq_plot.savefig(plot_folder / "freq_filters.png")
 
         if arrows_plot is not None:
             arrows_plot.savefig(plot_folder / "arrow_plot.png")

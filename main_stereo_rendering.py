@@ -14,11 +14,7 @@ import torch.nn.functional as F
 from scripts.optimisation.custom_modules import MultiSourceFIR
 
 # Import libraries for plotting
-import matplotlib.pyplot as plt
-from scripts.plotting.graph_plot import plot_time
-from scripts.plotting.graph_plot import plot_freq
-from scripts.plotting.dense_arrows_plot import plot_arrows
-from scripts.plotting.graph_plot import plot_color
+from scripts.plotting.results_plot import plot_results
 
 # Import setup functions
 from scripts.setup.setup import set_seed
@@ -59,26 +55,27 @@ if __name__ == "__main__":
     lr=0.001
     seed=46
     log=1
-    device="cpu"
+    device="cuda" if torch.cuda.is_available() else "cpu"
     init=1
     fs = 48000
 
 ## Initial setup
     # Set data type, device and sampling frequency
     dtype = torch.float32
-    if device:
-        device = torch.device(device)
-    else:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device(device)
     print(f"Using device: {device}")
 
     # Set random seed for reproducibility
-    if seed is not None:
-        set_seed(seed=seed)
+    set_seed(seed=seed)
 
     # Loudspkeaker and listener positions
     lstn_pos = [[0.0, 0], [0.0, 0.5], [0.0, -0.5]] # 3 listener positions
-    spk_pos = [[1.732,1], [1.732,-1]]
+    base_angle_rad = np.deg2rad(30.0)
+    speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
+    spk_pos = [
+        [speaker_distance * np.cos(base_angle_rad), speaker_distance * np.sin(base_angle_rad)],
+        [speaker_distance * np.cos(base_angle_rad), -speaker_distance * np.sin(base_angle_rad)],
+    ]
 
 ## Load data
     gtfb = load_gtfb(fs=fs, device=device, dtype=dtype)  # Load Gamma Tone Filter Bank
@@ -146,35 +143,23 @@ if __name__ == "__main__":
     for key, value in estimation_dict.items():
         print(f"Estimated {key}: {value}")
 
-    # Plot estimated filters (time and frequency domain)
-    time_plot = plot_time(est_filters, show=False)
-    freq_plot = plot_freq(est_filters, fs, show=False)
-    arrow_plot = None
-    if 'localisation' in estimation_dict:
-        if loc_model.lstn_pos_conf is not None:
-            arrow_plot = plot_arrows(stereo_prop.lstn_pos, 
-                                        stereo_prop.spk_pos, 
-                                        torch.tensor(estimation_dict['localisation'], device=device, dtype=dtype), 
-                                        torch.tensor(estimation_dict['uncertainty'], device=device, dtype=dtype) if 'uncertainty' in estimation_dict else None, 
-                                        torch.tensor(estimation_dict['colouration'],device=device, dtype=dtype) if 'colouration' in estimation_dict else None, 
-                                        loc_target=torch.tensor(target_angle),
-                                        show=False
-            )
-        else:
-            arrow_plot = plot_arrows(stereo_prop.lstn_pos, 
-                                        stereo_prop.spk_pos, 
-                                        torch.tensor(estimation_dict['localisation'], device=device,dtype=dtype), 
-                                        torch.tensor(estimation_dict['uncertainty'],device=device,dtype=dtype) if 'uncertainty' in estimation_dict else None, 
-                                        torch.tensor(estimation_dict['colouration'],device=device,dtype=dtype) if 'colouration' in estimation_dict else None, 
-                                        show=False
-            )
-    color_l_plot, color_r_plot = plot_color(bin_stim, col_model.reference_stim, stereo_prop.lstn_pos)
-    plt.show()
+    plots = plot_results(
+        estimation_dict=estimation_dict,
+        est_filters=est_filters,
+        bin_stim=bin_stim,
+        prop_model=stereo_prop,
+        loss_dict=loss_dict,
+        target_angle=target_angle,
+        fs=fs,
+        device=device,
+        dtype=dtype,
+        show=True,
+    )
 
 ## Save results
 
     saver_obj.save_results(estimation_dict=estimation_dict, est_filters=est_filters, fs=fs, lstn_pos=lstn_pos, spk_pos=spk_pos, trainer=trainer)
-    saver_obj.save_plots(time_plot,freq_plot,arrow_plot, color_l_plot, color_r_plot)
+    saver_obj.save_plots(plots)
 
     # Save per-epoch source FIR evolution as videos (one per source)
     # saver_obj.save_filter_video(trainer.h_history, source_index=0, fs=fs)
