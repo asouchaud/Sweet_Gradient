@@ -23,40 +23,8 @@ class saver():
         time_suffix = now.strftime("%H%M%S")
         entrypoint_stem = Path(sys.argv[0]).stem
 
-        # Alphabetical flags from listener-based perceptual keys.
-        # Supports both the new loss_dict API (entries with `.model`) and
-        # legacy model-only dictionaries.
-        perceptual_keys = []
-        for key, value in loss_dict.items():
-            if hasattr(value, "model"):
-                if value.model is not None:
-                    perceptual_keys.append(key)
-            else:
-                perceptual_keys.append(key)
-        flag_str = ''.join(sorted(k[0] for k in perceptual_keys))
-
-        # Number of listener positions
-        n_listeners = len(lstn_pos)
-
-        reg_map = {
-            0: "0", # No regularisation
-            1: "1", # First moment regularisation
-            2: "2", # Second moment regularisation
-        }
-
-        init_map = {
-            0: "n", # Random noise initialisation
-            1: "2", # Impulses at both loudspeakers initialisation
-            2: "1" # Impulse at only left loudspeaker and silent right loudspeaker initialisation
-        }
-
-        field_map = {
-            0: "ff", # Far-field
-            1: "nf", # Near-field
-        }
-
         # Build run folder name
-        run_name = f"{entrypoint_stem}_{flag_str}_{date_prefix}_{time_suffix}"
+        run_name = f"{entrypoint_stem}_{date_prefix}_{time_suffix}"
         run_dir = exp_root / run_name
         
         self.run_dir = run_dir
@@ -252,8 +220,10 @@ class saver():
             arrows_plot = plots_or_time_plot.get("arrow_plot")
             color_l = plots_or_time_plot.get("color_l_plot")
             color_r = plots_or_time_plot.get("color_r_plot")
+            directivity_plot = plots_or_time_plot.get("directivity_plot")
         else:
             time_plot = plots_or_time_plot
+            directivity_plot = None
 
         plot_folder = self.run_dir / "plots"
         plot_folder.mkdir(parents=True)
@@ -269,3 +239,6 @@ class saver():
         if color_l is not None and color_r is not None:
             color_l.savefig(plot_folder / "color_left.png")
             color_r.savefig(plot_folder / "color_right.png")
+
+        if directivity_plot is not None:
+            directivity_plot.savefig(plot_folder / "directivity_plot.png")
