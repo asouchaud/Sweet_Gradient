@@ -4,43 +4,24 @@ os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 
 # Import interface libraries
 from pathlib import Path
-from types import SimpleNamespace
+import time
 
 # Import computational libraries
 import numpy as np
 import torch
 import torch.nn.functional as F
 
+# Import project modules
 from scripts.optimisation.custom_modules import MultiSourceFIR
-
-# Import libraries for plotting
 from scripts.plotting.results_plot import plot_results
-
-# Import setup functions
-from scripts.setup.setup import set_seed
-from scripts.setup.setup import load_gtfb
-from scripts.setup.setup import load_stim
-from scripts.setup.setup import load_hrirs
-
-# Import sound propagation module
+from scripts.setup.setup import load_gtfb, load_hrirs, load_stim, set_seed
 from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagation
-
-# Import perceptual models
 from scripts.perceptual_models.llado2025.llado2025 import llado2025
 from scripts.perceptual_models.desena2020.desena2020 import desena2020
 from scripts.perceptual_models.spectral_matching.spectral_matching import spectral_matching
-
-# Import neural network related scripts
 from scripts.optimisation.regularisation import second_moment_regularisation
-
-# Import training script
 from scripts.train.train import ListenerBasedLoss, SourceBasedLoss, Train
-
-# Import saving class
 from scripts.saving.save_results import saver
-
-# Import time
-import time
 
 
 if __name__ == "__main__":
@@ -143,6 +124,7 @@ if __name__ == "__main__":
     for key, value in estimation_dict.items():
         print(f"Estimated {key}: {value}")
 
+    saver_obj.save_results(estimation_dict=estimation_dict, est_filters=est_filters, fs=fs, lstn_pos=lstn_pos, spk_pos=spk_pos, trainer=trainer)
     plots = plot_results(
         estimation_dict=estimation_dict,
         est_filters=est_filters,
@@ -155,10 +137,6 @@ if __name__ == "__main__":
         dtype=dtype,
         show=True,
     )
-
-## Save results
-
-    saver_obj.save_results(estimation_dict=estimation_dict, est_filters=est_filters, fs=fs, lstn_pos=lstn_pos, spk_pos=spk_pos, trainer=trainer)
     saver_obj.save_plots(plots)
 
     # Save per-epoch source FIR evolution as videos (one per source)

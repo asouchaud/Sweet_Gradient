@@ -51,7 +51,12 @@ def plot_results(estimation_dict, est_filters, bin_stim, prop_model, loss_dict, 
     color_r_plot = None
     col_model = perceptual_models.get("colouration")
     if col_model is not None:
-        color_l_plot, color_r_plot = plot_color(bin_stim, col_model.reference_stim, prop_model.lstn_pos)
+        color_l_plot, color_r_plot = plot_color(
+            bin_stim,
+            col_model.reference_stim,
+            prop_model.lstn_pos,
+            show=False,
+        )
 
     if show:
         import matplotlib.pyplot as plt
