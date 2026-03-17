@@ -40,6 +40,7 @@ if __name__ == "__main__":
     fs = 48000
     directivity_radius_m = 10.0
     directivity_freqs_hz = [500, 1000, 2000, 4000, 8000]
+    directivity_db_floor = -40
 
 ## Initial setup
     # Set data type, device and sampling frequency
@@ -188,7 +189,7 @@ if __name__ == "__main__":
         [14.40, -19.56],
         [21.08, -20.18],
     ]
-    rodenas2004_data = [[(angle_deg + 180-30) % 360.0, level_db] for angle_deg, level_db in rodenas2004_data]    
+    rodenas2004_data = [[(angle_deg + 180 - 30) % 360.0, level_db] for angle_deg, level_db in rodenas2004_data]
 
     plots["directivity_plot"] = plot_pair_directivity_polar(
         est_filters=est_filters,
@@ -197,7 +198,8 @@ if __name__ == "__main__":
         pair_indices=(2, 3),  # this is plotting the directivity pattern of the right loudspeaker (i.e., the one at negative values of y)
         radius=directivity_radius_m,
         freqs_eval_hz=directivity_freqs_hz,
-        rodenas2004_data=rodenas2004_data,
+        overlay_curve=rodenas2004_data,
+        db_floor=directivity_db_floor,
         show=False,
     )
     saver_obj.save_plots(plots)

@@ -100,9 +100,9 @@ def plot_pair_directivity_polar(
     n_angles=720,
     freqs_eval_hz=(250, 500, 1000, 2000, 4000),
     c=343.0,
-    rodenas2004_data=None,
+    overlay_curve=None,
     show=False,
-    db_floor=nan
+    db_floor=None
 ):
     """
     Plot frequency-dependent directivity for a selected loudspeaker pair.
@@ -111,8 +111,10 @@ def plot_pair_directivity_polar(
     each loudspeaker to the observation point, sums the two delayed FIRs, computes
     and displays normalized level (0 dB peak per frequency curve) on a polar plot.
 
-    If ``rodenas2004_data`` is provided, it must be shape (N, 2) with
+    If ``overlay_curve`` is provided, it must be shape (N, 2) with
     ``[angle_deg, level_db]`` samples; these are overlaid for reference.
+    If ``db_floor`` is ``None``, the lower dB limit is computed from the data
+    (including the optional overlay), preserving the existing behavior.
     """
     filters = np.atleast_2d(np.asarray(est_filters, dtype=float))
     spk_pos = np.asarray(spk_pos, dtype=float)
@@ -168,24 +170,25 @@ def plot_pair_directivity_polar(
         min_db = min(min_db, float(np.min(dir_db)))
         ax.plot(theta, dir_db, linewidth=1.6, label=f"{int(round(f_hz))} Hz")
 
-    if rodenas2004_data is not None:
-        rodenas2004_data = np.asarray(rodenas2004_data, dtype=float)
-        if rodenas2004_data.ndim != 2 or rodenas2004_data.shape[1] != 2:
-            raise ValueError("rodenas2004_data must have shape (N, 2) as [angle_deg, level_db].")
-        rodenas_theta = np.deg2rad(np.mod(rodenas2004_data[:, 0], 360.0))
-        rodenas_db = rodenas2004_data[:, 1]
-        min_db = min(min_db, float(np.min(rodenas_db)))
+    if overlay_curve is not None:
+        overlay_curve = np.asarray(overlay_curve, dtype=float)
+        if overlay_curve.ndim != 2 or overlay_curve.shape[1] != 2:
+            raise ValueError("overlay_curve must have shape (N, 2) as [angle_deg, level_db].")
+        overlay_theta = np.deg2rad(np.mod(overlay_curve[:, 0], 360.0))
+        overlay_db = overlay_curve[:, 1]
+        min_db = min(min_db, float(np.min(overlay_db)))
         ax.scatter(
-            rodenas_theta,
-            rodenas_db,
+            overlay_theta,
+            overlay_db,
             color="k",
             s=20,
             marker="o",
-            label="Rodenas 2004",
+            label="Data overlay",
             zorder=5,
         )
 
-    ax.set_ylim(max(-40.0, min_db - 1.0), 1.0)
+    y_floor = max(-40.0, min_db - 1.0) if db_floor is None else float(db_floor)
+    ax.set_ylim(y_floor, 1.0)
     ax.set_title(f"Pair directivity (sources {i0}, {i1}), r={radius:.1f} m")
     # Keep legend fully inside figure bounds so saved PNGs don't clip it.
     fig.subplots_adjust(right=0.80)
