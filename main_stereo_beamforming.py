@@ -26,7 +26,7 @@ from scripts.saving.save_results import saver
 
 if __name__ == "__main__":
     near_field=0
-    epochs=3000
+    epochs=1000
     n_samples=41
     target_angle=0
     selected_stim="random"
@@ -37,10 +37,9 @@ if __name__ == "__main__":
     seed=46
     log=1
     device="cuda" if torch.cuda.is_available() else "cpu"
-    init=1
     fs = 48000
     directivity_radius_m = 10.0
-    directivity_freqs_hz = [250, 500, 1000, 2000, 4000]
+    directivity_freqs_hz = [500, 1000, 2000, 4000, 8000]
 
 ## Initial setup
     # Set data type, device and sampling frequency
@@ -52,17 +51,32 @@ if __name__ == "__main__":
     set_seed(seed=seed)
 
     # Loudspkeaker and listener positions
-    lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, 6)]  # 10 listener positions
-    speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
-    speaker_angles_deg = [30.5, 29.5, -29.5, -30.5]
-    # speaker_angles_deg = [30.0, 30.0, -30.0, -30.0]
-    spk_pos = [
-        [
-            speaker_distance * np.cos(np.deg2rad(angle_deg)),
-            speaker_distance * np.sin(np.deg2rad(angle_deg)),
-        ]
-        for angle_deg in speaker_angles_deg
-    ]
+    lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, 11)]  # 10 listener positions
+    # speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
+    # speaker_angles_deg = [30.5, 29.5, -29.5, -30.5]
+    # # speaker_angles_deg = [30.0, 30.0, -30.0, -30.0]
+    # spk_pos = [
+    #     [
+    #         speaker_distance * np.cos(np.deg2rad(angle_deg)),
+    #         speaker_distance * np.sin(np.deg2rad(angle_deg)),
+    #     ]
+    #     for angle_deg in speaker_angles_deg
+    # ]
+    speaker_distance = 2.0  # Distance from each pair centre to the reference-system center (0, 0)
+    pair_centre_angles_deg = [30.0, -30.0]
+    speaker_pair_separation_m = 0.02 # Distance between loudspeakers in each pair (global y-axis)
+    half_sep_m = speaker_pair_separation_m / 2.0
+
+    spk_pos = []
+    for angle_deg in pair_centre_angles_deg:
+        pair_centre_x = speaker_distance * np.cos(np.deg2rad(angle_deg))
+        pair_centre_y = speaker_distance * np.sin(np.deg2rad(angle_deg))
+        spk_pos.extend(
+            [
+                [pair_centre_x, pair_centre_y + half_sep_m],
+                [pair_centre_x, pair_centre_y - half_sep_m],
+            ]
+        )
     n_sources = len(spk_pos)
 
 ## Load data
@@ -79,16 +93,21 @@ if __name__ == "__main__":
     loc_model = llado2025(loss = F.mse_loss, target = target_angle, hrirs=hrirs, fs=fs, gtfb=gtfb, **near_field_kwargs).to(device=device, dtype=dtype) # Llado et al. 2025 model
     col_model = spectral_matching(loss = F.l1_loss, target = 0, stim=stim, hrirs=hrirs, target_angle=target_angle, fs=fs, **near_field_kwargs).to(device=device, dtype=dtype) # Spectral Matching model
     unc_model = desena2020(loss = F.l1_loss, target = 0, hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # De Sena et al. 2020 model
-
     regularisation = second_moment_regularisation(n_samples=n_samples, device=device, dtype=dtype)
+
+    loc_weight = 1.0
+    unc_weight = 1.0e1
+    col_weight = 1.0e-1
+    reg_weight = 1.0e-2
+
     loss_dict = {
-        "localisation": ListenerBasedLoss(model=loc_model, weight=1.0, device=device, dtype=dtype),
-        # "uncertainty": ListenerBasedLoss(model=unc_model, weight=1.0e1, device=device, dtype=dtype),
-        "colouration": ListenerBasedLoss(model=col_model, weight=1.0e-1, device=device, dtype=dtype),
-        "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1.0e-2),
-        "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1.0e-2),
-        "regularisation_source_2": SourceBasedLoss(regulariser=regularisation, source_idx=2, weight=1.0e-2),
-        "regularisation_source_3": SourceBasedLoss(regulariser=regularisation, source_idx=3, weight=1.0e-2),
+        "localisation": ListenerBasedLoss(model=loc_model, weight=loc_weight, device=device, dtype=dtype),
+        # "uncertainty": ListenerBasedLoss(model=unc_model, weight=unc_weight, device=device, dtype=dtype),
+        # "colouration": ListenerBasedLoss(model=col_model, weight=col_weight, device=device, dtype=dtype),
+        # "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=reg_weight),
+        # "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=reg_weight),
+        # "regularisation_source_2": SourceBasedLoss(regulariser=regularisation, source_idx=2, weight=reg_weight),
+        # "regularisation_source_3": SourceBasedLoss(regulariser=regularisation, source_idx=3, weight=reg_weight),
     }
 
     # Initialise neural network
@@ -103,6 +122,10 @@ if __name__ == "__main__":
             branch.weight.fill_(0.0)
             branch.weight[centre_tap_idx, 0] = 1.0
 
+    # Tie the two outer loudspeakers (0 and 3) and the two inner loudspeakers (1 and 2).
+    nn_model.branches[3] = nn_model.branches[0]
+    nn_model.branches[2] = nn_model.branches[1]
+    
     nn_optimiser = torch.optim.Adam(nn_model.parameters(), lr=lr)
     
 ## Initliase saving folder and logger
@@ -110,7 +133,6 @@ if __name__ == "__main__":
     logger = saver_obj if log else None
 
 ## Training loop
-
     # Train the neural network
     trainer = Train(n_epoch=epochs,
                     nn=nn_model,
@@ -147,13 +169,35 @@ if __name__ == "__main__":
         dtype=dtype,
         show=False,
     )
+
+    # Rodenas (2004) reference directivity points from the right loudspeaker of figure 2:
+    # [angle_deg, level_db] where angle_deg is 0 when facing the centre of the sweet spot
+    rodenas2004_data = [
+        [330.71, -0.16],
+        [333.43, -1.54],
+        [336.62, -2.35],
+        [340.14, -3.58],
+        [343.69, -5.35],
+        [346.94, -7.27],
+        [349.64, -9.66],
+        [352.86, -12.18],
+        [356.18, -14.30],
+        [0.10, -16.16],
+        [4.84, -17.41],
+        [9.60, -18.59],
+        [14.40, -19.56],
+        [21.08, -20.18],
+    ]
+    rodenas2004_data = [[(angle_deg + 180-30) % 360.0, level_db] for angle_deg, level_db in rodenas2004_data]    
+
     plots["directivity_plot"] = plot_pair_directivity_polar(
         est_filters=est_filters,
         spk_pos=spk_pos,
         fs=fs,
-        pair_indices=(0, 1),  # choose one close loudspeaker pair explicitly
+        pair_indices=(2, 3),  # this is plotting the directivity pattern of the right loudspeaker (i.e., the one at negative values of y)
         radius=directivity_radius_m,
         freqs_eval_hz=directivity_freqs_hz,
+        rodenas2004_data=rodenas2004_data,
         show=False,
     )
     saver_obj.save_plots(plots)

@@ -1,3 +1,4 @@
+from math import nan
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -99,7 +100,9 @@ def plot_pair_directivity_polar(
     n_angles=720,
     freqs_eval_hz=(250, 500, 1000, 2000, 4000),
     c=343.0,
+    rodenas2004_data=None,
     show=False,
+    db_floor=nan
 ):
     """
     Plot frequency-dependent directivity for a selected loudspeaker pair.
@@ -107,6 +110,9 @@ def plot_pair_directivity_polar(
     For each azimuth on a circle, this computes the geometric propagation delay from
     each loudspeaker to the observation point, sums the two delayed FIRs, computes
     and displays normalized level (0 dB peak per frequency curve) on a polar plot.
+
+    If ``rodenas2004_data`` is provided, it must be shape (N, 2) with
+    ``[angle_deg, level_db]`` samples; these are overlaid for reference.
     """
     filters = np.atleast_2d(np.asarray(est_filters, dtype=float))
     spk_pos = np.asarray(spk_pos, dtype=float)
@@ -161,6 +167,23 @@ def plot_pair_directivity_polar(
         dir_db = dir_db - np.max(dir_db)
         min_db = min(min_db, float(np.min(dir_db)))
         ax.plot(theta, dir_db, linewidth=1.6, label=f"{int(round(f_hz))} Hz")
+
+    if rodenas2004_data is not None:
+        rodenas2004_data = np.asarray(rodenas2004_data, dtype=float)
+        if rodenas2004_data.ndim != 2 or rodenas2004_data.shape[1] != 2:
+            raise ValueError("rodenas2004_data must have shape (N, 2) as [angle_deg, level_db].")
+        rodenas_theta = np.deg2rad(np.mod(rodenas2004_data[:, 0], 360.0))
+        rodenas_db = rodenas2004_data[:, 1]
+        min_db = min(min_db, float(np.min(rodenas_db)))
+        ax.scatter(
+            rodenas_theta,
+            rodenas_db,
+            color="k",
+            s=20,
+            marker="o",
+            label="Rodenas 2004",
+            zorder=5,
+        )
 
     ax.set_ylim(max(-40.0, min_db - 1.0), 1.0)
     ax.set_title(f"Pair directivity (sources {i0}, {i1}), r={radius:.1f} m")
