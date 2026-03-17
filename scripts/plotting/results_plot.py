@@ -95,7 +95,7 @@ def plot_pair_directivity_polar(
     est_filters,
     spk_pos,
     fs,
-    pair_indices,
+    group_indices,
     radius=None,
     n_angles=720,
     freqs_eval_hz=(250, 500, 1000, 2000, 4000),
@@ -105,11 +105,14 @@ def plot_pair_directivity_polar(
     db_floor=None
 ):
     """
-    Plot frequency-dependent directivity for a selected loudspeaker pair.
+    Plot frequency-dependent directivity for a selected loudspeaker group.
 
     For each azimuth on a circle, this computes the geometric propagation delay from
-    each loudspeaker to the observation point, sums the two delayed FIRs, computes
+    each loudspeaker to the observation point, sums the delayed FIRs, computes
     and displays normalized level (0 dB peak per frequency curve) on a polar plot.
+
+    ``group_indices`` can contain any number of loudspeaker indices
+    (2, 3, 4, ...).
 
     If ``overlay_curve`` is provided, it must be shape (N, 2) with
     ``[angle_deg, level_db]`` samples; these are overlaid for reference.
@@ -119,44 +122,40 @@ def plot_pair_directivity_polar(
     filters = np.atleast_2d(np.asarray(est_filters, dtype=float))
     spk_pos = np.asarray(spk_pos, dtype=float)
 
-    i0, i1 = pair_indices
+    group_indices = np.asarray(group_indices, dtype=int).reshape(-1)
+    if group_indices.size < 1:
+        raise ValueError("group_indices must contain at least one loudspeaker index.")
 
-    # Use the midpoint of the selected pair as the local reference origin.
-    pair_mid = 0.5 * (spk_pos[i0] + spk_pos[i1])
+    # Use the centroid of the selected loudspeaker group as local reference origin.
+    group_mid = np.mean(spk_pos[group_indices], axis=0)
 
     if radius is None:
         # Keep a practical default observation radius on the same order as the
-        # original setup (around the array listening radius), but now centered
-        # on the pair midpoint reference frame.
-        radius = float(np.mean(np.linalg.norm(spk_pos[[i0, i1]], axis=1)))
+        # original setup (around the array listening radius), now centered on
+        # the selected loudspeaker-group reference frame.
+        radius = float(np.mean(np.linalg.norm(spk_pos[group_indices], axis=1)))
 
     n_taps = filters.shape[1]
     theta = np.linspace(0.0, 2.0 * np.pi, int(n_angles), endpoint=False)
     freqs_eval_hz = [float(f) for f in freqs_eval_hz]
     mag2_by_freq = np.zeros((len(freqs_eval_hz), len(theta)), dtype=float)
 
-    h0 = filters[i0]
-    h1 = filters[i1]
-    p0 = spk_pos[i0]
-    p1 = spk_pos[i1]
+    h_group = filters[group_indices]
+    p_group = spk_pos[group_indices]
 
     # Frequency-domain summation with exact (continuous) phase delays.
     # This avoids jagged artifacts from time-domain fractional-delay realizations.
     n_fft = max(4096, int(2 ** np.ceil(np.log2(max(64, n_taps)))))
     freqs = np.fft.rfftfreq(n_fft, d=1.0 / fs)
     omega = 2.0 * np.pi * freqs
-    H0 = np.fft.rfft(h0, n=n_fft)
-    H1 = np.fft.rfft(h1, n=n_fft)
+    H_group = np.fft.rfft(h_group, n=n_fft, axis=1)
     freq_bin_idx = [int(np.argmin(np.abs(freqs - f_hz))) for f_hz in freqs_eval_hz]
 
     for k, ang in enumerate(theta):
-        obs = pair_mid + np.array([radius * np.cos(ang), radius * np.sin(ang)], dtype=float)
-        tau0 = np.linalg.norm(obs - p0) / c
-        tau1 = np.linalg.norm(obs - p1) / c
-
-        phase0 = np.exp(-1j * omega * tau0)
-        phase1 = np.exp(-1j * omega * tau1)
-        H_sum = H0 * phase0 + H1 * phase1
+        obs = group_mid + np.array([radius * np.cos(ang), radius * np.sin(ang)], dtype=float)
+        tau_group = np.linalg.norm(obs - p_group, axis=1) / c
+        phase_group = np.exp(-1j * np.outer(tau_group, omega))
+        H_sum = np.sum(H_group * phase_group, axis=0)
         for fi, bi in enumerate(freq_bin_idx):
             mag2_by_freq[fi, k] = np.abs(H_sum[bi]) ** 2
 
@@ -189,7 +188,8 @@ def plot_pair_directivity_polar(
 
     y_floor = max(-40.0, min_db - 1.0) if db_floor is None else float(db_floor)
     ax.set_ylim(y_floor, 1.0)
-    ax.set_title(f"Pair directivity (sources {i0}, {i1}), r={radius:.1f} m")
+    idx_str = ", ".join(str(int(i)) for i in group_indices.tolist())
+    ax.set_title(f"Group directivity (sources {idx_str}), r={radius:.1f} m")
     # Keep legend fully inside figure bounds so saved PNGs don't clip it.
     fig.subplots_adjust(right=0.80)
     ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=True, fontsize=8)

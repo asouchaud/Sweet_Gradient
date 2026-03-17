@@ -41,6 +41,10 @@ if __name__ == "__main__":
     directivity_radius_m = 10.0
     directivity_freqs_hz = [500, 1000, 2000, 4000, 8000]
     directivity_db_floor = -40
+    speakers_per_array = 3
+    speaker_distance = 2.0  # Distance from each array centre to the reference-system center (0, 0)
+    array_centre_angles_deg = [30.0, -30.0]
+    speaker_spacing_m = 0.01  # Adjacent spacing within each array (global y-axis)
 
 ## Initial setup
     # Set data type, device and sampling frequency
@@ -52,7 +56,7 @@ if __name__ == "__main__":
     set_seed(seed=seed)
 
     # Loudspkeaker and listener positions
-    lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, 11)]  # 10 listener positions
+    lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, 101)]  # 10 listener positions
     # speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
     # speaker_angles_deg = [30.5, 29.5, -29.5, -30.5]
     # # speaker_angles_deg = [30.0, 30.0, -30.0, -30.0]
@@ -63,21 +67,29 @@ if __name__ == "__main__":
     #     ]
     #     for angle_deg in speaker_angles_deg
     # ]
-    speaker_distance = 2.0  # Distance from each pair centre to the reference-system center (0, 0)
-    pair_centre_angles_deg = [30.0, -30.0]
-    speaker_pair_separation_m = 0.02 # Distance between loudspeakers in each pair (global y-axis)
-    half_sep_m = speaker_pair_separation_m / 2.0
 
-    spk_pos = []
-    for angle_deg in pair_centre_angles_deg:
-        pair_centre_x = speaker_distance * np.cos(np.deg2rad(angle_deg))
-        pair_centre_y = speaker_distance * np.sin(np.deg2rad(angle_deg))
-        spk_pos.extend(
-            [
-                [pair_centre_x, pair_centre_y + half_sep_m],
-                [pair_centre_x, pair_centre_y - half_sep_m],
-            ]
-        )
+    relative_offsets = (np.arange(speakers_per_array, dtype=float) - (speakers_per_array - 1) / 2.0) * speaker_spacing_m
+    upper_angle_deg, lower_angle_deg = array_centre_angles_deg
+    upper_centre = np.array(
+        [
+            speaker_distance * np.cos(np.deg2rad(upper_angle_deg)),
+            speaker_distance * np.sin(np.deg2rad(upper_angle_deg)),
+        ],
+        dtype=float,
+    )
+    lower_centre = np.array(
+        [
+            speaker_distance * np.cos(np.deg2rad(lower_angle_deg)),
+            speaker_distance * np.sin(np.deg2rad(lower_angle_deg)),
+        ],
+        dtype=float,
+    )
+
+    # Build two arrays mirrored around the x-axis:
+    # upper uses +offset, lower uses -offset for each corresponding index.
+    upper_array = [[float(upper_centre[0]), float(upper_centre[1] + off)] for off in relative_offsets]
+    lower_array = [[float(lower_centre[0]), float(lower_centre[1] - off)] for off in relative_offsets]
+    spk_pos = upper_array + lower_array
     n_sources = len(spk_pos)
 
 ## Load data
@@ -123,9 +135,9 @@ if __name__ == "__main__":
             branch.weight.fill_(0.0)
             branch.weight[centre_tap_idx, 0] = 1.0
 
-    # Tie the two outer loudspeakers (0 and 3) and the two inner loudspeakers (1 and 2).
-    nn_model.branches[3] = nn_model.branches[0]
-    nn_model.branches[2] = nn_model.branches[1]
+    # Tie mirrored loudspeakers between the two arrays to preserve symmetry.
+    for local_idx in range(speakers_per_array):
+        nn_model.branches[speakers_per_array + local_idx] = nn_model.branches[local_idx]
     
     nn_optimiser = torch.optim.Adam(nn_model.parameters(), lr=lr)
     
@@ -191,11 +203,12 @@ if __name__ == "__main__":
     ]
     rodenas2004_data = [[(angle_deg + 180 - 30) % 360.0, level_db] for angle_deg, level_db in rodenas2004_data]
 
+    right_array_indices = tuple(range(speakers_per_array, 2 * speakers_per_array))
     plots["directivity_plot"] = plot_pair_directivity_polar(
         est_filters=est_filters,
         spk_pos=spk_pos,
         fs=fs,
-        pair_indices=(2, 3),  # this is plotting the directivity pattern of the right loudspeaker (i.e., the one at negative values of y)
+        group_indices=right_array_indices,
         radius=directivity_radius_m,
         freqs_eval_hz=directivity_freqs_hz,
         overlay_curve=rodenas2004_data,

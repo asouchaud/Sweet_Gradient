@@ -43,6 +43,26 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None,
         fig_arrow, ax = plt.subplots(figsize=(6,6))
         ax.scatter(spk_pos[:,0], spk_pos[:,1], c='red', label='Speaker')
         ax.scatter(lstn_pos[:,0], lstn_pos[:,1], c='blue', label='Listener positions')
+        spk_x_mid = 0.5 * (float(np.min(spk_pos[:, 0])) + float(np.max(spk_pos[:, 0])))
+        for source_idx, (sx, sy) in enumerate(spk_pos):
+            # Small labels to avoid overlap in tightly spaced arrays.
+            place_right = float(sx) < spk_x_mid
+            dx = 0.022 if place_right else -0.022
+            dy = 0.010 if (source_idx % 2 == 0) else -0.010
+            ha = "left" if place_right else "right"
+            ax.text(
+                float(sx) + dx,
+                float(sy) + dy,
+                str(source_idx),
+                color="white",
+                fontsize=6,
+                fontweight="bold",
+                ha=ha,
+                va="center",
+                bbox=dict(boxstyle="round,pad=0.10", fc="black", ec="none", alpha=0.80),
+                zorder=8,
+                clip_on=True,
+            )
         
         target_angle = None
         if loc_target is not None:
