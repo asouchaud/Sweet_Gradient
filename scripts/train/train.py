@@ -105,7 +105,7 @@ class Train:
         self.h_history = []
 
     def train(self):
-        for epoch in range(self.n_epoch+1):
+        for epoch in range(self.n_epoch):
             time_epoch_start = time.time()
 
             # Estimate FIRs 
