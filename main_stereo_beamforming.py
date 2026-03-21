@@ -25,28 +25,29 @@ from scripts.saving.save_results import saver
 
 
 if __name__ == "__main__":
-    near_field=0
-    epochs=1000
+    near_field=1
+    epochs=3000
     n_samples=41
-    listener_batch_size=21  # 10 mirrored pairs plus the centre listener
+    num_lstn_pos=201
+    listener_batch_size=5  # 5 mirrored pairs plus the centre listener
     symmetric_listener_sampling=True
     target_angle=0
     selected_stim="random"
     repo_root = Path(__file__).resolve().parent
     sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa")
     sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv")
-    lr=0.01
+    lr=0.005
     seed=46
     log=1
     device="cuda" if torch.cuda.is_available() else "cpu"
     fs = 48000
     directivity_radius_m = 10.0
-    directivity_freqs_hz = [500, 1000, 2000, 4000, 8000]
+    directivity_freqs_hz = [250, 500, 1000, 2000, 4000, 8000]
     directivity_db_floor = -40
-    speakers_per_array = 3
+    speakers_per_array = 2
     speaker_distance = 2.0  # Distance from each array centre to the reference-system center (0, 0)
     array_centre_angles_deg = [30.0, -30.0]
-    speaker_spacing_m = 0.01  # Adjacent spacing within each array (global y-axis)
+    speaker_spacing_m = 0.02  # Adjacent spacing within each array (global y-axis)
 
 ## Initial setup
     # Set data type, device and sampling frequency
@@ -58,7 +59,7 @@ if __name__ == "__main__":
     set_seed(seed=seed)
 
     # Loudspkeaker and listener positions
-    lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, 101)]  # 10 listener positions
+    lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, num_lstn_pos)]  # 10 listener positions
     # speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
     # speaker_angles_deg = [30.5, 29.5, -29.5, -30.5]
     # # speaker_angles_deg = [30.0, 30.0, -30.0, -30.0]
