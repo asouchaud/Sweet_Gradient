@@ -98,12 +98,21 @@ def plot_time(est_filters, show = True):
     n_sources = est_filters.shape[0]
 
     # -------- Time domain --------
-    fig_time, ax = plt.subplots(n_sources, 1, sharex=True, figsize=(10, 2.5 * n_sources))
+    fig_time, ax = plt.subplots(n_sources, 1, sharex=True, sharey=True, figsize=(10, 2.5 * n_sources))
     ax = np.atleast_1d(ax)
 
+    n_taps = est_filters.shape[1]
+    x = np.arange(n_taps)
     for source_idx in range(n_sources):
-        ax[source_idx].plot(est_filters[source_idx], label=f'Source {source_idx + 1} filter')
-        ax[source_idx].set_title(f'Source {source_idx + 1} FIR')
+        ax[source_idx].stem(
+            x,
+            est_filters[source_idx],
+            linefmt="-",
+            markerfmt="o",
+            basefmt=" ",
+            label=f"Source {source_idx + 1} filter",
+        )
+        ax[source_idx].set_title(f"Source {source_idx + 1} FIR")
         ax[source_idx].grid()
 
     fig_time.suptitle('Estimated FIRs after training')
@@ -120,7 +129,7 @@ def plot_freq(est_filters, fs, show = True):
     n_sources = est_filters.shape[0]
 
     # -------- Frequency domain --------
-    fig_freq, ax = plt.subplots(n_sources, 1, sharex=True, figsize=(10, 2.5 * n_sources))
+    fig_freq, ax = plt.subplots(n_sources, 1, sharex=True, sharey=True, figsize=(10, 2.5 * n_sources))
     ax = np.atleast_1d(ax)
 
     for source_idx in range(n_sources):

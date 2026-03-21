@@ -104,9 +104,17 @@ class saver():
             gridspec_kw={"width_ratios": [2.0, 1.3, 1.3]},
         )
 
-        # Time domain
-        x = np.arange(n_taps)
-        (line_t,) = ax_t.plot(x, h_epoch[0], lw=1.5)
+        # Time domain (stem plot, consistent with `plot_time` in graph_plot.py)
+        x = np.arange(n_taps, dtype=float)
+        stem_bottom = 0.0
+        stem_t = ax_t.stem(
+            x,
+            h_epoch[0],
+            linefmt="-",
+            markerfmt="o",
+            basefmt=" ",
+            bottom=stem_bottom,
+        )
         ax_t.set_xlim(0, len(x) - 1)
         ax_t.set_ylim(-1.05 * max_abs, 1.05 * max_abs)
         ax_t.set_xlabel("Sample")
@@ -136,12 +144,20 @@ class saver():
 
         fig.tight_layout(rect=[0, 0.08, 1, 1])
 
+        def _stem_line_segments(x_axis, y_vals, bottom):
+            return [
+                np.array([[float(xi), bottom], [float(xi), float(yi)]], dtype=float)
+                for xi, yi in zip(x_axis, y_vals)
+            ]
+
         def _update(frame_idx):
-            line_t.set_ydata(h_epoch[frame_idx])
+            y = h_epoch[frame_idx]
+            stem_t.markerline.set_ydata(y)
+            stem_t.stemlines.set_segments(_stem_line_segments(x, y, stem_bottom))
             ax_t.set_title(f"Source {source_index} FIR — epoch {frame_idx}")
             line_m.set_ydata(mag_db_plot[frame_idx])
             line_p.set_ydata(phase_plot[frame_idx])
-            return (line_t, line_m, line_p)
+            return (stem_t.markerline, stem_t.stemlines, line_m, line_p)
 
         from matplotlib.animation import FuncAnimation, PillowWriter
 
@@ -154,7 +170,8 @@ class saver():
             _update,
             frames=frame_indices,
             interval=1000 / max(int(fps), 1),
-            blit=True,
+            # Stem uses a LineCollection; blitting it with Pillow is unreliable.
+            blit=False,
         )
         anim.save(out_path, writer=PillowWriter(fps=fps))
         plt.close(fig)
