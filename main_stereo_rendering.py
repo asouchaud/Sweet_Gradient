@@ -26,14 +26,17 @@ from scripts.saving.save_results import saver
 
 if __name__ == "__main__":
     near_field=0
-    epochs=100
+    epochs=1000
+    num_lstn_pos=101
+    listener_batch_size=6  # 5 mirrored pairs plus the centre listener
+    symmetric_listener_sampling=True
     n_samples=10
     target_angle=15.0
     selected_stim="random"
     repo_root = Path(__file__).resolve().parent
     sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa")
     sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv")
-    lr=0.001
+    lr=0.01
     seed=46
     log=1
     device="cuda" if torch.cuda.is_available() else "cpu"
@@ -49,7 +52,7 @@ if __name__ == "__main__":
     set_seed(seed=seed)
 
     # Loudspkeaker and listener positions
-    lstn_pos = [[0.0, 0], [0.0, 0.5], [0.0, -0.5]] # 3 listener positions
+    lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, num_lstn_pos)] 
     base_angle_rad = np.deg2rad(30.0)
     speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
     spk_pos = [
@@ -74,11 +77,11 @@ if __name__ == "__main__":
 
     regularisation = second_moment_regularisation(n_samples=n_samples, device=device, dtype=dtype)
     loss_dict = {
-        "localisation": ListenerBasedLoss(model=loc_model, weight=1.0, device=device, dtype=dtype),
+        # "localisation": ListenerBasedLoss(model=loc_model, weight=1.0, device=device, dtype=dtype),
         "uncertainty": ListenerBasedLoss(model=unc_model, weight=1.0e1, device=device, dtype=dtype),
-        "colouration": ListenerBasedLoss(model=col_model, weight=1.0e-2, device=device, dtype=dtype),
-        "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1.0e-3),
-        "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1.0e-3),
+        # "colouration": ListenerBasedLoss(model=col_model, weight=1.0e-2, device=device, dtype=dtype),
+        # "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1.0e-3),
+        # "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1.0e-3),
     }
 
     # Initialise neural network
@@ -88,7 +91,7 @@ if __name__ == "__main__":
     ).to(device=device, dtype=dtype)
     # Initialise FIR filter weights
     with torch.no_grad():
-        for branch in nn_model.branches:
+        for i, branch in enumerate(nn_model.branches):
             branch.weight.fill_(0.0)
             branch.weight[0, 0] = 1.0
 
@@ -107,6 +110,8 @@ if __name__ == "__main__":
                     loss_dict=loss_dict,
                     optimiser=nn_optimiser,
                     loggers = [logger, None], 
+                    listener_batch_size=listener_batch_size,
+                    symmetric_listener_sampling=symmetric_listener_sampling,
                     scheduler=None) # Initialize training class
     time_train_start = time.time()
     trainer.train()
