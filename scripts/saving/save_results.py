@@ -1,12 +1,72 @@
+from collections.abc import Mapping
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
 import json
 import sys
+from types import SimpleNamespace
 import numpy as np
 from datetime import datetime
 import scipy.io as sio
 import matplotlib.pyplot as plt
 
 from scripts.plotting.graph_plot import rfft_mag_db_phase, plot_mag_db_from_response
+
+
+def _to_json_safe(obj):
+    """Recursively convert numpy/torch/path values so ``json.dump`` can persist them."""
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return float(obj)
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, Path):
+        return str(obj)
+    if isinstance(obj, (list, tuple)):
+        return [_to_json_safe(x) for x in obj]
+    if isinstance(obj, dict):
+        return {str(k): _to_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, set):
+        return [_to_json_safe(x) for x in obj]
+    try:
+        import torch
+
+        if isinstance(obj, torch.Tensor):
+            return obj.detach().cpu().tolist() if obj.numel() <= 4096 else str(obj)
+        if isinstance(obj, torch.device):
+            return str(obj)
+        if isinstance(obj, torch.dtype):
+            return str(obj)
+    except ImportError:
+        pass
+    if hasattr(obj, "item") and callable(getattr(obj, "item", None)):
+        try:
+            arr = np.asarray(obj)
+            if arr.ndim == 0:
+                return _to_json_safe(arr.item())
+        except Exception:
+            pass
+    return str(obj)
+
+
+def _coerce_env_to_dict(env):
+    """Normalise ``env`` (mapping, dataclass instance, or ``types.SimpleNamespace``) to a plain dict."""
+    if env is None:
+        return None
+    if is_dataclass(env) and not isinstance(env, type):
+        return asdict(env)
+    if isinstance(env, Mapping):
+        return dict(env)
+    if isinstance(env, SimpleNamespace):
+        return dict(vars(env))
+    raise TypeError(
+        "env must be a mapping, a dataclass instance, or types.SimpleNamespace; "
+        f"got {type(env)!r}"
+    )
 
 
 class saver():
@@ -177,7 +237,7 @@ class saver():
         plt.close(fig)
 
 
-    def save_results(self, estimation_dict, est_filters, fs, lstn_pos, spk_pos, trainer):    
+    def save_results(self, estimation_dict, est_filters, fs, lstn_pos, spk_pos, trainer, env=None):
         # =========================
         # Save results (clean layout)
         # Subfolders
@@ -207,6 +267,9 @@ class saver():
             "date": self.now.strftime("%Y-%m-%d %H:%M:%S"),
             "entrypoint_file": Path(sys.argv[0]).name,
         }
+        env_dict = _coerce_env_to_dict(env)
+        if env_dict is not None:
+            config["main"] = _to_json_safe(env_dict)
 
         with open(self.run_dir / "config.json", "w") as f:
             json.dump(config, f, indent=4)
