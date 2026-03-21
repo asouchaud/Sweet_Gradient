@@ -108,8 +108,8 @@ def plot_pair_directivity_polar(
     Plot frequency-dependent directivity for a selected loudspeaker group.
 
     For each azimuth on a circle, this computes the geometric propagation delay from
-    each loudspeaker to the observation point, sums the delayed FIRs, computes
-    and displays normalized level (0 dB peak per frequency curve) on a polar plot.
+    each loudspeaker to the observation point, sums the delayed FIRs, and plots
+    10·log10(|H|²) in dB (same scale for every frequency; no per-curve peak normalisation).
 
     ``group_indices`` can contain any number of loudspeaker indices
     (2, 3, 4, ...).
@@ -162,11 +162,12 @@ def plot_pair_directivity_polar(
     fig = plt.figure(figsize=(6, 6))
     ax = fig.add_subplot(111, projection="polar")
     eps = 1e-12
-    min_db = 0.0
+    min_db = float("inf")
+    max_db = float("-inf")
     for fi, f_hz in enumerate(freqs_eval_hz):
         dir_db = 10.0 * np.log10(mag2_by_freq[fi] + eps)
-        dir_db = dir_db - np.max(dir_db)
         min_db = min(min_db, float(np.min(dir_db)))
+        max_db = max(max_db, float(np.max(dir_db)))
         ax.plot(theta, dir_db, linewidth=1.6, label=f"{int(round(f_hz))} Hz")
 
     if overlay_curve is not None:
@@ -176,6 +177,7 @@ def plot_pair_directivity_polar(
         overlay_theta = np.deg2rad(np.mod(overlay_curve[:, 0], 360.0))
         overlay_db = overlay_curve[:, 1]
         min_db = min(min_db, float(np.min(overlay_db)))
+        max_db = max(max_db, float(np.max(overlay_db)))
         ax.scatter(
             overlay_theta,
             overlay_db,
@@ -186,8 +188,11 @@ def plot_pair_directivity_polar(
             zorder=5,
         )
 
-    y_floor = max(-40.0, min_db - 1.0) if db_floor is None else float(db_floor)
-    ax.set_ylim(y_floor, 1.0)
+    span = max(max_db - min_db, 1e-9)
+    pad = 0.05 * span
+    y_floor = max(-40.0, min_db - pad) if db_floor is None else float(db_floor)
+    y_ceiling = max_db + pad
+    ax.set_ylim(y_floor, y_ceiling)
     idx_str = ", ".join(str(int(i)) for i in group_indices.tolist())
     ax.set_title(f"Group directivity (sources {idx_str}), r={radius:.1f} m")
     # Keep legend fully inside figure bounds so saved PNGs don't clip it.
