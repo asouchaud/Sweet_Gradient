@@ -19,14 +19,9 @@ from scripts.perceptual_models.llado2025.llado2025 import llado2025
 from scripts.perceptual_models.desena2020.desena2020 import desena2020
 from scripts.perceptual_models.spectral_matching.spectral_matching import spectral_matching
 
-from scripts.perceptual_models.llado2025.llado2025_helpers import near_field_comp_angles
-
 DTYPE = torch.float32
 
 def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None, show = True, vbap_values = None):
-        
-        unc_was_none = unc is None
-        col_was_none = col is None
         
         if unc is None:
             unc = torch.zeros_like(loc, device=loc.device, dtype=loc.dtype)
@@ -64,14 +59,10 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None,
                 clip_on=True,
             )
         
-        target_angle = None
         if loc_target is not None:
             loc_pos = [1.732, 1.732*np.tan(np.deg2rad(loc_target.item()))]
             ax.scatter(loc_pos[0], loc_pos[1], c='green', label='Target position')
 
-            target_angle = near_field_comp_angles(torch.tensor(loc_pos), lstn_pos)
-            target_angle = target_angle.detach().cpu().numpy().squeeze().reshape(-1)
-        
         arrow_len = 0.2
 
             # Create a colormap with log scaling
@@ -131,32 +122,7 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None,
         ax.set_ylabel('Y position (m)')
         ax.set_xlabel('X position (m)')
 
-        # --- format caption text ---
-        parts = [f"loc: {np.array2string(loc, precision=2, separator=', ')}"]
-
-        if target_angle is not None:
-            parts.append(f"target: {np.array2string(target_angle, precision=2, separator=', ')}")
-
-        if not unc_was_none:
-            parts.append(f"unc: {np.array2string(unc, precision=2, separator=', ')}")
-
-        if not col_was_none:
-            parts.append(f"col: {np.array2string(col, precision=2, separator=', ')}")
-
-        caption = " | ".join(parts)
-
-        # make space for caption
-        fig_arrow.subplots_adjust(bottom=0.22)
-
-        # add caption
-        fig_arrow.text(
-            0.5, 0.02, caption,
-            ha='center',
-            va='bottom',
-            fontsize=9,
-            wrap=True
-        )
-
+        fig_arrow.tight_layout()
 
         if show:
             plt.show()
