@@ -102,7 +102,8 @@ def plot_pair_directivity_polar(
     c=343.0,
     overlay_curve=None,
     show=False,
-    db_floor=None
+    db_floor=None,
+    overlay_avg_directivity=True,
 ):
     """
     Plot frequency-dependent directivity for a selected loudspeaker group.
@@ -110,6 +111,11 @@ def plot_pair_directivity_polar(
     For each azimuth on a circle, this computes the geometric propagation delay from
     each loudspeaker to the observation point, sums the delayed FIRs, and plots
     10·log10(|H|²) in dB (same scale for every frequency; no per-curve peak normalisation).
+
+    If ``overlay_avg_directivity`` is True (default), a dashed curve overlays the
+    **log of the linear average** of those per-band powers:
+    ``10·log10(mean_i |H(f_i)|²)``, i.e. same bands as the solid curves, averaged in
+    linear power then converted to dB (not the mean of the dB traces).
 
     ``group_indices`` can contain any number of loudspeaker indices
     (2, 3, 4, ...).
@@ -150,6 +156,7 @@ def plot_pair_directivity_polar(
     omega = 2.0 * np.pi * freqs
     H_group = np.fft.rfft(h_group, n=n_fft, axis=1)
     freq_bin_idx = [int(np.argmin(np.abs(freqs - f_hz))) for f_hz in freqs_eval_hz]
+    eps = 1e-12
 
     for k, ang in enumerate(theta):
         obs = group_mid + np.array([radius * np.cos(ang), radius * np.sin(ang)], dtype=float)
@@ -159,9 +166,10 @@ def plot_pair_directivity_polar(
         for fi, bi in enumerate(freq_bin_idx):
             mag2_by_freq[fi, k] = np.abs(H_sum[bi]) ** 2
 
+    log_mean_mag2 = 10.0 * np.log10(np.mean(mag2_by_freq, axis=0) + eps)
+
     fig = plt.figure(figsize=(6, 6))
     ax = fig.add_subplot(111, projection="polar")
-    eps = 1e-12
     min_db = float("inf")
     max_db = float("-inf")
     for fi, f_hz in enumerate(freqs_eval_hz):
@@ -169,6 +177,19 @@ def plot_pair_directivity_polar(
         min_db = min(min_db, float(np.min(dir_db)))
         max_db = max(max_db, float(np.max(dir_db)))
         ax.plot(theta, dir_db, linewidth=1.6, label=f"{int(round(f_hz))} Hz")
+
+    if overlay_avg_directivity:
+        min_db = min(min_db, float(np.min(log_mean_mag2)))
+        max_db = max(max_db, float(np.max(log_mean_mag2)))
+        ax.plot(
+            theta,
+            log_mean_mag2,
+            linewidth=2.0,
+            linestyle="--",
+            color="tab:red",
+            label=r"10 log$_{10}$(mean $|H|^2$) over eval. freqs",
+            zorder=6,
+        )
 
     if overlay_curve is not None:
         overlay_curve = np.asarray(overlay_curve, dtype=float)
