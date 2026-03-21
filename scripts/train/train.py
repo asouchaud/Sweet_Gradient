@@ -12,16 +12,17 @@ class ListenerBasedLoss:
         self.device = device
         self.dtype = dtype
 
-    def compute_loss(self, bin_stim, h_full):  # noqa: ARG002 - kept for uniform interface
+    def compute_loss(self, bin_stim, h_full, listener_indices=None):  # noqa: ARG002 - kept for uniform interface
         """
         Args:
             bin_stim: Tensor shaped (batch, n_listeners, 2, n_samples), propagated binaural signals, 
             and 2 is the number of ears.
             h_full: Tensor shaped (batch, n_sources, n_samples), source filters (unused here).
+            listener_indices: Optional listener subset used for stochastic listener mini-batching.
 
         Why include an unused input:
             Train uses one generic loop over `loss_dict` and always calls
-            `compute_loss(bin_stim=..., h_full=...)` regardless of loss type.
+            `compute_loss(bin_stim=..., h_full=..., listener_indices=...)` regardless of loss type.
             Keeping the same method signature across ListenerBasedLoss and
             SourceBasedLoss is intentional polymorphism: it avoids branching
             logic in Train and makes it easy to add new loss classes later.
@@ -32,7 +33,12 @@ class ListenerBasedLoss:
             model_estimation: Tensor output of the perceptual model, shape depends on the model.
         """
         model_estimation = self.model(bin_stim)
-        target = torch.as_tensor(self.model.target, device=self.device, dtype=self.dtype).expand_as(model_estimation)
+
+        target = torch.as_tensor(self.model.target, device=self.device, dtype=self.dtype)
+        if listener_indices is not None and target.numel() > 1:
+            target = target[listener_indices]
+        target = target.expand_as(model_estimation)
+
         loss = self.model.loss(model_estimation, target) / self.model.loss_norm
         return loss, model_estimation
 
@@ -47,12 +53,13 @@ class SourceBasedLoss:
         self.source_idx = source_idx
         self.weight = weight
 
-    def compute_loss(self, bin_stim, h_full):  # noqa: ARG002 - kept for uniform interface
+    def compute_loss(self, bin_stim, h_full, listener_indices=None):  # noqa: ARG002 - kept for uniform interface
         """
         Args:
             bin_stim: Tensor shaped (batch, n_listeners, 2, n_samples), propagated binaural signals, 
             and 2 is the number of ears (unused here).
             h_full: Tensor shaped (batch, n_sources, n_samples), source filters.
+            listener_indices: Optional listener subset used for stochastic listener mini-batching (unused here).
 
         Why include an unused input:
             This class shares the same `compute_loss` signature as
@@ -69,7 +76,7 @@ class SourceBasedLoss:
         return loss, None
 
 class Train:
-    def __init__(self, n_epoch, nn, prop, loss_dict, optimiser, loggers=None, scheduler=None, alpha = 1):
+    def __init__(self, n_epoch, nn, prop, loss_dict, optimiser, loggers=None, scheduler=None, alpha = 1, listener_batch_size=None, symmetric_listener_sampling=False):
 
         self.n_epoch = n_epoch
         self.device = nn[0].weight.device
@@ -104,6 +111,67 @@ class Train:
         self.scheduler = scheduler
         self.h_history = []
 
+        self.listener_batch_size = None if listener_batch_size is None else int(listener_batch_size)
+        self.symmetric_listener_sampling = symmetric_listener_sampling
+        self.listener_groups = None
+
+        if self.listener_batch_size is not None:
+            if self.listener_batch_size <= 0:
+                raise ValueError("listener_batch_size must be a positive integer.")
+            if not hasattr(self.prop, 'n_listeners') or not hasattr(self.prop, 'lstn_pos'):
+                raise ValueError("listener_batch_size requires a propagation model exposing n_listeners and lstn_pos.")
+            self.listener_batch_size = min(self.listener_batch_size, int(self.prop.n_listeners))
+            if self.symmetric_listener_sampling and self.listener_batch_size < int(self.prop.n_listeners):
+                self.listener_groups = self._build_symmetric_listener_groups()
+
+    def _build_symmetric_listener_groups(self):
+        listener_groups = {}
+        lstn_pos = self.prop.lstn_pos.detach().cpu().tolist()
+
+        for idx, (x, y) in enumerate(lstn_pos):
+            key = (round(float(x), 8), round(abs(float(y)), 8))
+            if key not in listener_groups:
+                listener_groups[key] = []
+            listener_groups[key].append(idx)
+
+        grouped_indices = [sorted(group) for group in listener_groups.values()]
+        invalid_groups = [group for group in grouped_indices if len(group) not in (1, 2)]
+        if invalid_groups:
+            raise ValueError(
+                "Symmetric listener sampling expects mirrored pairs and optional self-symmetric listeners."
+            )
+
+        return sorted(grouped_indices, key=lambda group: group[0])
+
+    def _sample_listener_indices(self):
+        if self.listener_batch_size is None or self.listener_batch_size >= int(self.prop.n_listeners):
+            return None
+
+        if not self.symmetric_listener_sampling:
+            return sorted(torch.randperm(int(self.prop.n_listeners)).tolist()[:self.listener_batch_size])
+
+        pair_groups = [group for group in self.listener_groups if len(group) == 2]
+        singleton_groups = [group for group in self.listener_groups if len(group) == 1]
+        selected_listener_indices = []
+
+        if self.listener_batch_size % 2 == 1:
+            if len(singleton_groups) == 0:
+                raise ValueError(
+                    "Odd listener_batch_size with symmetric sampling requires at least one self-symmetric listener."
+                )
+            singleton_order = torch.randperm(len(singleton_groups)).tolist()
+            selected_listener_indices.extend(singleton_groups[singleton_order[0]])
+
+        n_pairs = (self.listener_batch_size - len(selected_listener_indices)) // 2
+        if n_pairs > len(pair_groups):
+            raise ValueError("listener_batch_size is too large for symmetric listener sampling.")
+
+        pair_order = torch.randperm(len(pair_groups)).tolist()
+        for pair_idx in pair_order[:n_pairs]:
+            selected_listener_indices.extend(pair_groups[pair_idx])
+
+        return sorted(selected_listener_indices)
+
     def train(self):
         for epoch in range(self.n_epoch):
             time_epoch_start = time.time()
@@ -114,15 +182,22 @@ class Train:
             with torch.no_grad():
                 self.h_history.append(h_full.squeeze(0).detach().cpu().numpy())
 
+            listener_indices = self._sample_listener_indices()
+
             # Propagate sound from speakers
-            bin_stim = self.prop(h_full)
+            if listener_indices is None:
+                bin_stim = self.prop(h_full)
+                current_lstn_pos = self.prop.lstn_pos
+            else:
+                bin_stim = self.prop(h_full, listener_indices=listener_indices)
+                current_lstn_pos = self.prop.lstn_pos[listener_indices]
 
             # Get perceptual estimations and compute losses
             est_dict = {}
             weighted_loss_dict = {}
             full_loss = torch.tensor(0.0, device=self.device, dtype=self.dtype)
             for key, loss_cfg in self.loss_dict.items():
-                loss, estimation = loss_cfg.compute_loss(bin_stim=bin_stim, h_full=h_full)
+                loss, estimation = loss_cfg.compute_loss(bin_stim=bin_stim, h_full=h_full, listener_indices=listener_indices)
                 weighted_loss = loss * self.loss_weights[key]
                 weighted_loss_dict[key] = weighted_loss # For logging purposes only
                 full_loss = full_loss + weighted_loss
@@ -147,7 +222,7 @@ class Train:
 
                 if 'localisation' in self.perceptual_models:
                     if self.perceptual_models['localisation'].lstn_pos_conf is not None:
-                        self.logger.log_plot_arrows(self.prop.lstn_pos, 
+                        self.logger.log_plot_arrows(current_lstn_pos,
                                                    self.prop.spk_pos, 
                                                    est_dict['localisation'], 
                                                    est_dict['uncertainty'] if 'uncertainty' in self.perceptual_models else None, 
@@ -155,7 +230,7 @@ class Train:
                                                    epoch, 
                                                    loc_target=self.perceptual_models['localisation'].target[0])
                     else:
-                        self.logger.log_plot_arrows(self.prop.lstn_pos, 
+                        self.logger.log_plot_arrows(current_lstn_pos,
                                                    self.prop.spk_pos, 
                                                    est_dict['localisation'], 
                                                    est_dict['uncertainty'] if 'uncertainty' in self.perceptual_models else None, 

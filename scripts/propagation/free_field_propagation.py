@@ -19,9 +19,9 @@ class SingleSourceBinauralFreeFieldPropagation(nn.Module):
 
         self.stim = stim.detach()
         self.lstn_pos = torch.tensor(lstn_pos, device=self.device, dtype=self.dtype)
+        self.n_listeners = len(self.lstn_pos)
         self.source_pos = torch.tensor(source_pos, device=self.device, dtype=self.dtype)
         self.sofaile = sf.read_sofa(sofa_file_path)
-        n_listeners = len(self.lstn_pos)
 
         # Vector from each listener to source
         source_vec = self.source_pos[None, :] - self.lstn_pos
@@ -44,7 +44,7 @@ class SingleSourceBinauralFreeFieldPropagation(nn.Module):
 
         # Optional per-listener delay (samples) to align with another source
         if delay_samples is not None:
-            for i in range(n_listeners):
+            for i in range(self.n_listeners):
                 d = int(delay_samples[i])
                 if d != 0:
                     self.hrirs[i, 0, :] = torch.roll(self.hrirs[i, 0, :], d, dims=0)
@@ -81,14 +81,16 @@ class SingleSourceBinauralFreeFieldPropagation(nn.Module):
         )
         return torch.stack((left_ear_IR, right_ear_IR), dim=1)
 
-    def forward(self, source_filter):
+    def forward(self, source_filter, listener_indices=None):
         """
         source_filter: (batch, 1, filter_len)
         Returns: (batch, n_listeners, 2, T) — 2 = L/R ear.
         """
+        hrirs = self.hrirs if listener_indices is None else self.hrirs[listener_indices]
+
         src_signal = true_conv1d(self.stim, source_filter).permute(1, 0, 2)
-        L_ear = true_conv1d(src_signal, self.hrirs[:, 0:1, :])
-        R_ear = true_conv1d(src_signal, self.hrirs[:, 1:2, :])
+        L_ear = true_conv1d(src_signal, hrirs[:, 0:1, :])
+        R_ear = true_conv1d(src_signal, hrirs[:, 1:2, :])
         return torch.cat([L_ear.unsqueeze(2), R_ear.unsqueeze(2)], dim=2)
 
 ## Multiple source anechoic class definition (omitting the "MultipleSource" prefix for brevity)
@@ -103,6 +105,7 @@ class BinauralFreeFieldPropagation(nn.Module):
 
         self.stim = stim.detach()
         self.lstn_pos = torch.tensor(lstn_pos, device=self.device, dtype=self.dtype)
+        self.n_listeners = len(self.lstn_pos)
         self.spk_pos = torch.tensor(spk_pos, device=self.device, dtype=self.dtype)
         if self.spk_pos.ndim != 2 or self.spk_pos.shape[1] != 2:
             raise ValueError("spk_pos must have shape (n_sources, 2)")
@@ -110,8 +113,6 @@ class BinauralFreeFieldPropagation(nn.Module):
         self.n_sources = self.spk_pos.shape[0]
         if self.n_sources < 1:
             raise ValueError("At least one source position is required")
-
-        n_listeners = len(self.lstn_pos)
 
         # Vectors from each listener to each source: (n_sources, n_listeners, 2)
         source_vec = self.spk_pos[:, None, :] - self.lstn_pos[None, :, :]
@@ -124,7 +125,7 @@ class BinauralFreeFieldPropagation(nn.Module):
 
         self.sources = nn.ModuleList()
         for source_idx in range(self.n_sources):
-            source_delay_samples = [int(delay_samples[source_idx, i]) for i in range(n_listeners)]
+            source_delay_samples = [int(delay_samples[source_idx, i]) for i in range(self.n_listeners)]
             self.sources.append(
                 SingleSourceBinauralFreeFieldPropagation(
                     stim=stim,
@@ -136,7 +137,7 @@ class BinauralFreeFieldPropagation(nn.Module):
                 )
             )
 
-    def forward(self, spk_filters):
+    def forward(self, spk_filters, listener_indices=None):
         if spk_filters.shape[1] != self.n_sources:
             raise ValueError(
                 f"Expected spk_filters with {self.n_sources} sources on dim=1, "
@@ -146,6 +147,6 @@ class BinauralFreeFieldPropagation(nn.Module):
         binaural_sum = 0
         for source_idx, source in enumerate(self.sources):
             source_filter = spk_filters[:, source_idx:source_idx + 1, :]
-            binaural_sum = binaural_sum + source(source_filter)
+            binaural_sum = binaural_sum + source(source_filter, listener_indices=listener_indices)
 
         return binaural_sum

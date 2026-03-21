@@ -28,6 +28,8 @@ if __name__ == "__main__":
     near_field=0
     epochs=1000
     n_samples=41
+    listener_batch_size=21  # 10 mirrored pairs plus the centre listener
+    symmetric_listener_sampling=True
     target_angle=0
     selected_stim="random"
     repo_root = Path(__file__).resolve().parent
@@ -153,7 +155,9 @@ if __name__ == "__main__":
                     loss_dict=loss_dict,
                     optimiser=nn_optimiser,
                     loggers = [logger, None], 
-                    scheduler=None) # Initialize training class
+                    scheduler=None,
+                    listener_batch_size=listener_batch_size,
+                    symmetric_listener_sampling=symmetric_listener_sampling) # Initialize training class
     time_train_start = time.time()
     trainer.train()
     time_train = time.time() - time_train_start
