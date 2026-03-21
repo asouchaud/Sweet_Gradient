@@ -187,10 +187,8 @@ class Train:
             # Propagate sound from speakers
             if listener_indices is None:
                 bin_stim = self.prop(h_full)
-                current_lstn_pos = self.prop.lstn_pos
             else:
                 bin_stim = self.prop(h_full, listener_indices=listener_indices)
-                current_lstn_pos = self.prop.lstn_pos[listener_indices]
 
             # Get perceptual estimations and compute losses
             est_dict = {}
@@ -221,6 +219,11 @@ class Train:
                     self.logger.log_bin_cues(bin_stim, epoch)
 
                 if 'localisation' in self.perceptual_models:
+                    current_lstn_pos = (
+                        self.prop.lstn_pos
+                        if listener_indices is None
+                        else self.prop.lstn_pos[listener_indices]
+                    )
                     if self.perceptual_models['localisation'].lstn_pos_conf is not None:
                         self.logger.log_plot_arrows(current_lstn_pos,
                                                    self.prop.spk_pos, 
