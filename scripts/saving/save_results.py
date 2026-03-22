@@ -9,7 +9,7 @@ from datetime import datetime
 import scipy.io as sio
 import matplotlib.pyplot as plt
 
-from scripts.plotting.graph_plot import rfft_mag_db_phase, plot_mag_db_from_response
+from scripts.plotting.graph_plot import plot_frequency_response, plot_stem_signal, rfft_mag_db_phase, update_stem_artists
 
 
 def _to_json_safe(obj):
@@ -69,24 +69,8 @@ def _coerce_env_to_dict(env):
     )
 
 
-def _build_run_name(run_label=None):
-    """Build a compact, filesystem-safe run name with a timestamp."""
-    now = datetime.now()
-    timestamp = now.strftime("%y%m%d_%H%M%S_%f")
-    entrypoint_stem = Path(sys.argv[0]).stem or "run"
-    run_label = "" if run_label is None else str(run_label)
-    run_label = run_label.strip().replace("/", "-").replace("\\", "-")
-    run_label = "_".join(run_label.split())
-
-    name_parts = [entrypoint_stem]
-    if run_label:
-        name_parts.append(run_label)
-    name_parts.append(timestamp)
-    return now, "_".join(name_parts)
-
-
 class saver():
-    def __init__(self, loss_dict, lstn_pos, run_label=None):
+    def __init__(self, loss_dict, lstn_pos):
         # Root experiment directory
         exp_root = Path("results")
         exp_root.mkdir(exist_ok=True)
@@ -94,13 +78,19 @@ class saver():
         # -------------------------
         # Generate run folder name
         # -------------------------
-        now, run_name = _build_run_name(run_label)
+        now = datetime.now()
+        date_prefix = now.strftime("%y%m%d")
+        time_suffix = now.strftime("%H%M%S")
+        entrypoint_stem = Path(sys.argv[0]).stem
+
+        # Build run folder name
+        run_name = f"{entrypoint_stem}_{date_prefix}_{time_suffix}"
         run_dir = exp_root / run_name
         
         self.run_dir = run_dir
         self.run_name = run_name
         self.now = now
-        self.run_dir.mkdir(parents=True, exist_ok=False)
+        self.run_dir.mkdir(parents=True, exist_ok=True)
 
     def save_filter_video(
         self,
@@ -110,6 +100,12 @@ class saver():
         fps: int = 20,
         hold_last_seconds: float = 2.0,
         resolution_scale: float = 0.7,
+        time_title = None,
+        mag_title = "Magnitude",
+        phase_title = "Phase",
+        max_min = None,
+        mag_max = None,
+        include_phase_response: bool = True,
     ):
         """
         Save a simple video (GIF) of a single source FIR over epochs.
@@ -129,6 +125,20 @@ class saver():
         resolution_scale : float
             Scale factor for figure size (and thus output resolution). Use < 1 to reduce
             file size (e.g. 0.5 gives roughly one quarter the pixels).
+        time_title : str, optional
+            Title prefix for the time-domain panel.
+        mag_title : str
+            Title for the magnitude-response panel.
+        phase_title : str
+            Title for the phase-response panel.
+        max_min : float or tuple, optional
+            Time-domain y-axis limit. A scalar applies symmetric limits (-value, value);
+            a tuple applies explicit (min, max) limits.
+        mag_max : float or tuple, optional
+            Magnitude y-axis limit. A scalar sets the upper limit while keeping the
+            computed lower limit; a tuple applies explicit (min, max) limits.
+        include_phase_response : bool
+            Whether to include the phase-response panel.
         """
         if h_history is None or len(h_history) == 0:
             return
@@ -150,6 +160,8 @@ class saver():
         max_abs = float(np.max(np.abs(h_epoch))) if np.size(h_epoch) else 1.0
         if max_abs == 0.0:
             max_abs = 1.0
+        if max_min is None:
+            max_min = 1.05 * max_abs
 
         video_dir = self.run_dir / "videos"
         video_dir.mkdir(parents=True, exist_ok=True)
@@ -162,72 +174,72 @@ class saver():
         f_hz, mag_db, phase = rfft_mag_db_phase(h_epoch, fs, n_fft=n_fft)
 
         f_mask = f_hz > 0.0  # exclude DC for log-x plots
-        f_plot = f_hz[f_mask]
         mag_db_plot = mag_db[:, f_mask]
-        phase_plot = phase[:, f_mask]
+        phase_plot = phase[:, f_mask] if include_phase_response else None
+
+        mag_min = float(np.min(mag_db_plot))
+        mag_max_data = float(np.max(mag_db_plot))
+        pad = 0.05 * (mag_max_data - mag_min + 1e-9)
+        if mag_max is None:
+            mag_max = (mag_min - pad, mag_max_data + pad)
 
         scale = max(0.1, float(resolution_scale))
-        fig, (ax_t, ax_m, ax_p) = plt.subplots(
-            nrows=1,
-            ncols=3,
-            figsize=(12 * scale, 3 * scale),
-            gridspec_kw={"width_ratios": [2.0, 1.3, 1.3]},
-        )
+        if include_phase_response:
+            fig, (ax_t, ax_m, ax_p) = plt.subplots(
+                nrows=1,
+                ncols=3,
+                figsize=(12 * scale, 3 * scale),
+                gridspec_kw={"width_ratios": [2.0, 1.3, 1.3]},
+            )
+        else:
+            fig, (ax_t, ax_m) = plt.subplots(
+                nrows=1,
+                ncols=2,
+                figsize=(8.5 * scale, 3 * scale),
+                gridspec_kw={"width_ratios": [2.0, 1.3]},
+            )
+            ax_p = None
 
-        # Time domain (stem plot, consistent with `plot_time` in graph_plot.py)
-        x = np.arange(n_taps, dtype=float)
+        time_title = f"Source {source_index} FIR" if time_title is None else time_title
+
+        # Time domain (stem plot)
         stem_bottom = 0.0
-        stem_t = ax_t.stem(
-            x,
+        _, ax_t, stem_t, x = plot_stem_signal(
             h_epoch[0],
-            linefmt="-",
-            markerfmt="o",
-            basefmt=" ",
+            ax=ax_t,
+            title=f"{time_title} - epoch 0",
+            max_min=max_min,
             bottom=stem_bottom,
+            return_artists=True,
         )
-        ax_t.set_xlim(0, len(x) - 1)
-        ax_t.set_ylim(-1.05 * max_abs, 1.05 * max_abs)
-        ax_t.set_xlabel("Sample")
-        ax_t.set_ylabel("Amplitude")
-        ax_t.set_title(f"Source {source_index} FIR — epoch 0")
-        ax_t.grid(True, alpha=0.25)
 
-        # Magnitude (reuse same plotting helper as `plot_freq`)
-        _, _, line_m, _ = plot_mag_db_from_response(f_hz, mag_db[0], ax=ax_m, title="Magnitude", return_line=True)
-        line_m.set_ydata(mag_db_plot[0])
-        mag_min = float(np.min(mag_db_plot))
-        mag_max = float(np.max(mag_db_plot))
-        pad = 0.05 * (mag_max - mag_min + 1e-9)
-        ax_m.set_ylim(mag_min - pad, mag_max + pad)
-
-        # Phase
-        (line_p,) = ax_p.plot(f_plot, phase_plot[0], lw=1.2)
-        ax_p.set_xscale("log")
-        ax_p.set_xlim(float(f_plot[0]), float(f_plot[-1]))
-        ax_p.set_ylim(-np.pi, np.pi)
-        ax_p.set_yticks([-np.pi, -np.pi / 2, 0.0, np.pi / 2, np.pi])
-        ax_p.set_yticklabels([r"$-\pi$", r"$-\pi/2$", "0", r"$\pi/2$", r"$\pi$"])
-        ax_p.set_xlabel("Frequency (Hz)")
-        ax_p.set_ylabel("Phase (rad)")
-        ax_p.set_title("Phase")
-        ax_p.grid(True, alpha=0.25)
+        # Magnitude / phase plots
+        _, ax_m, ax_p, line_m, line_p, _f_plot, _phase_plot = plot_frequency_response(
+            freqs_hz=f_hz,
+            mag_db=mag_db[0],
+            phase=phase[0] if include_phase_response else None,
+            ax_mag=ax_m,
+            ax_phase=ax_p,
+            mag_title=mag_title,
+            phase_title=phase_title,
+            mag_max=mag_max,
+            include_phase=include_phase_response,
+            return_lines=True,
+        )
 
         fig.tight_layout(rect=[0, 0.08, 1, 1])
 
-        def _stem_line_segments(x_axis, y_vals, bottom):
-            return [
-                np.array([[float(xi), bottom], [float(xi), float(yi)]], dtype=float)
-                for xi, yi in zip(x_axis, y_vals)
-            ]
-
         def _update(frame_idx):
             y = h_epoch[frame_idx]
-            stem_t.markerline.set_ydata(y)
-            stem_t.stemlines.set_segments(_stem_line_segments(x, y, stem_bottom))
-            ax_t.set_title(f"Source {source_index} FIR — epoch {frame_idx}")
+            update_stem_artists(stem_t, x, y, bottom=stem_bottom)
+            ax_t.set_title(f"{time_title} - epoch {frame_idx}")
             line_m.set_ydata(mag_db_plot[frame_idx])
-            line_p.set_ydata(phase_plot[frame_idx])
-            return (stem_t.markerline, stem_t.stemlines, line_m, line_p)
+
+            artists = [stem_t.markerline, stem_t.stemlines, line_m]
+            if include_phase_response and line_p is not None:
+                line_p.set_ydata(phase_plot[frame_idx])
+                artists.append(line_p)
+            return tuple(artists)
 
         from matplotlib.animation import FuncAnimation, PillowWriter
 

@@ -92,28 +92,217 @@ def plot_mag_db_from_response(
         return fig, ax, line, f_plot
     return fig, ax
 
+
+def _stem_line_segments(x_axis, y_vals, bottom = 0.0):
+    return [
+        np.array([[float(xi), float(bottom)], [float(xi), float(yi)]], dtype=float)
+        for xi, yi in zip(x_axis, y_vals)
+    ]
+
+
+def _apply_axis_limits(ax, limits, fallback = None, symmetric = False):
+    if limits is None:
+        limits = fallback
+
+    if limits is None:
+        return
+
+    if np.isscalar(limits):
+        limit = float(limits)
+        if symmetric:
+            ax.set_ylim(-abs(limit), abs(limit))
+        else:
+            if fallback is None:
+                current_min, _ = ax.get_ylim()
+                ax.set_ylim(current_min, limit)
+            else:
+                ax.set_ylim(float(fallback[0]), limit)
+        return
+
+    if len(limits) != 2:
+        raise ValueError("Axis limits must be a scalar or a (min, max) pair.")
+
+    ax.set_ylim(float(limits[0]), float(limits[1]))
+
+
+def plot_stem_signal(
+    y, 
+    ax = None, 
+    title = None, 
+    max_min = None, 
+    xlabel = "Sample",
+    ylabel = "Amplitude", 
+    label = None, 
+    bottom = 0.0, 
+    return_artists = False):
+    """
+    Reusable stem-plot helper for FIR filters or other 1-D sequences.
+
+    `max_min` can be a scalar (used as symmetric ±limit) or a `(min, max)` pair.
+    """
+    y = np.asarray(y).reshape(-1)
+    x = np.arange(y.size, dtype=float)
+
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(10, 2.5))
+    else:
+        fig = ax.figure
+
+    stem = ax.stem(x, y, linefmt="-", markerfmt="o", basefmt=" ", bottom=bottom, label=label)
+
+    if x.size > 1:
+        ax.set_xlim(float(x[0]), float(x[-1]))
+    elif x.size == 1:
+        ax.set_xlim(float(x[0]) - 0.5, float(x[0]) + 0.5)
+    else:
+        ax.set_xlim(0.0, 1.0)
+
+    _apply_axis_limits(ax, max_min, symmetric=True)
+
+    if title is not None:
+        ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.grid(True, alpha=0.25)
+
+    if label is not None:
+        ax.legend()
+
+    if return_artists:
+        return fig, ax, stem, x
+    return fig, ax
+
+
+def update_stem_artists(stem, x_axis, y_vals, bottom = 0.0):
+    x_axis = np.asarray(x_axis).reshape(-1)
+    y_vals = np.asarray(y_vals).reshape(-1)
+
+    stem.markerline.set_xdata(x_axis)
+    stem.markerline.set_ydata(y_vals)
+
+    if hasattr(stem.stemlines, "set_segments"):
+        stem.stemlines.set_segments(_stem_line_segments(x_axis, y_vals, bottom=bottom))
+    else:
+        for line, xi, yi in zip(stem.stemlines, x_axis, y_vals):
+            line.set_data([float(xi), float(xi)], [float(bottom), float(yi)])
+
+    return stem
+
+
+def plot_frequency_response(
+    h = None,
+    fs = None,
+    freqs_hz = None,
+    mag_db = None,
+    phase = None,
+    ax_mag = None,
+    ax_phase = None,
+    n_fft: int = 4096,
+    mag_title = None,
+    phase_title = "Phase",
+    mag_max = None,
+    include_phase = False,
+    return_lines = False,
+):
+    """
+    Reusable frequency-response helper.
+
+    Either provide `h` and `fs`, or precomputed `freqs_hz` and `mag_db`
+    (plus `phase` when `include_phase=True`).
+
+    `mag_max` can be a scalar (used as the upper y-limit) or a `(min, max)` pair.
+    """
+    if freqs_hz is None or mag_db is None or (include_phase and phase is None):
+        if h is None or fs is None:
+            raise ValueError("Either provide h and fs, or precomputed freqs_hz/mag_db/(phase).")
+        freqs_hz, mag_db, phase = rfft_mag_db_phase(h, fs, n_fft=n_fft)
+
+    freqs_hz = np.asarray(freqs_hz).reshape(-1)
+    mag_db = np.asarray(mag_db).reshape(-1)
+    phase_array = None if phase is None else np.asarray(phase).reshape(-1)
+
+    if include_phase and phase_array is None:
+        raise ValueError("phase must be provided when include_phase=True.")
+
+    if ax_mag is None:
+        if include_phase:
+            fig, (ax_mag, ax_phase) = plt.subplots(1, 2, figsize=(10, 2.5))
+        else:
+            fig, ax_mag = plt.subplots(1, 1, figsize=(10, 2.5))
+            ax_phase = None
+    else:
+        fig = ax_mag.figure
+        if include_phase and ax_phase is None:
+            raise ValueError("ax_phase must be provided when include_phase=True and ax_mag is supplied.")
+
+    fig, ax_mag, line_mag, f_plot = plot_mag_db_from_response(
+        freqs_hz,
+        mag_db,
+        ax=ax_mag,
+        title=mag_title,
+        return_line=True,
+    )
+
+    if mag_max is not None:
+        mag_mask = np.isfinite(freqs_hz) & np.isfinite(mag_db) & (freqs_hz > 0.0)
+        mag_plot = mag_db[mag_mask]
+        if mag_plot.size == 0:
+            raise ValueError("No valid positive-frequency points available to plot.")
+
+        _apply_axis_limits(
+            ax_mag,
+            mag_max,
+            fallback=(float(np.min(mag_plot)), float(np.max(mag_plot))),
+            symmetric=False,
+        )
+
+    line_phase = None
+    phase_plot = None
+
+    if include_phase:
+        phase_mask = np.isfinite(freqs_hz) & np.isfinite(phase_array) & (freqs_hz > 0.0)
+        f_phase = freqs_hz[phase_mask]
+        phase_plot = phase_array[phase_mask]
+
+        if f_phase.size == 0:
+            raise ValueError("No valid positive-frequency points available for the phase plot.")
+
+        (line_phase,) = ax_phase.plot(f_phase, phase_plot, lw=1.2)
+        ax_phase.set_xscale("log")
+        ax_phase.set_xlim(float(f_phase[0]), float(f_phase[-1]))
+        ax_phase.set_ylim(-np.pi, np.pi)
+        ax_phase.set_yticks([-np.pi, -np.pi / 2, 0.0, np.pi / 2, np.pi])
+        ax_phase.set_yticklabels([r"$-\pi$", r"$-\pi/2$", "0", r"$\pi/2$", r"$\pi$"])
+        ax_phase.set_xlabel("Frequency (Hz)")
+        ax_phase.set_ylabel("Phase (rad)")
+        if phase_title is not None:
+            ax_phase.set_title(phase_title)
+        ax_phase.grid(True, alpha=0.25)
+
+    if return_lines:
+        return fig, ax_mag, ax_phase, line_mag, line_phase, f_plot, phase_plot
+    return fig, ax_mag, ax_phase
+
+
 def plot_time(est_filters, show = True):
     
     est_filters = np.atleast_2d(np.asarray(est_filters))
     n_sources = est_filters.shape[0]
+    max_min = float(np.max(np.abs(est_filters))) if est_filters.size else 1.0
+    if max_min == 0.0:
+        max_min = 1.0
 
     # -------- Time domain --------
     fig_time, ax = plt.subplots(n_sources, 1, sharex=True, sharey=True, figsize=(10, 2.5 * n_sources))
     ax = np.atleast_1d(ax)
 
-    n_taps = est_filters.shape[1]
-    x = np.arange(n_taps)
     for source_idx in range(n_sources):
-        ax[source_idx].stem(
-            x,
+        plot_stem_signal(
             est_filters[source_idx],
-            linefmt="-",
-            markerfmt="o",
-            basefmt=" ",
-            label=f"Source {source_idx + 1} filter",
+            ax=ax[source_idx],
+            title=f"Source {source_idx + 1} FIR",
+            max_min=max_min,
         )
-        ax[source_idx].set_title(f"Source {source_idx + 1} FIR")
-        ax[source_idx].grid()
 
     fig_time.suptitle('Estimated FIRs after training')
     fig_time.tight_layout()
@@ -133,8 +322,12 @@ def plot_freq(est_filters, fs, show = True):
     ax = np.atleast_1d(ax)
 
     for source_idx in range(n_sources):
-        freqs, mag, _ = rfft_mag_db_phase(est_filters[source_idx], fs, n_fft=4096)
-        plot_mag_db_from_response(freqs, mag, ax=ax[source_idx], title=f'Source {source_idx + 1} FIR (Freq)')
+        plot_frequency_response(
+            h=est_filters[source_idx],
+            fs=fs,
+            ax_mag=ax[source_idx],
+            mag_title=f'Source {source_idx + 1} FIR (Freq)',
+        )
 
     fig_freq.suptitle('Estimated FIRs (Frequency Domain)')
     fig_freq.tight_layout()
@@ -201,50 +394,6 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc=None, col=None, loc_target=None, sho
 
     return fig_arrow
 
-# def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None, show = True):
-
-#         if unc is None:
-#             unc = torch.zeros_like(loc, device=loc.device, dtype=loc.dtype)
-        
-#         if col is None:
-#             col = torch.zeros_like(loc, device=loc.device, dtype=loc.dtype)
-    
-        
-#         lstn_pos = lstn_pos.detach().cpu().numpy().squeeze().reshape(-1, 2) # WORKS ONLY FOR BATCH SIZE 1
-#         spk_pos = spk_pos.detach().cpu().numpy().squeeze()
-#         loc = loc.detach().cpu().numpy().squeeze().reshape(-1)
-#         unc = unc.detach().cpu().numpy().squeeze().reshape(-1)
-#         col = col.detach().cpu().numpy().squeeze().reshape(-1)
-
-#         fig_arrow, ax = plt.subplots(figsize=(6,6))
-#         ax.scatter(spk_pos[:,0], spk_pos[:,1], c='red', label='Speaker')
-#         ax.scatter(lstn_pos[:,0], lstn_pos[:,1], c='blue', label='Listener positions')
-
-#         if loc_target is not None:
-#             loc_pos = [1.732, np.tan(np.deg2rad(loc_target.item()))]
-#             ax.scatter(loc_pos[0], loc_pos[1], c='green', label='Target position')
-
-        
-#         arrow_len = 0.2
-#         for x, y, ang, unc in zip(lstn_pos[:,0], lstn_pos[:,1], loc, unc):  
-
-#             dx = (1-unc)*arrow_len * np.cos(np.deg2rad(ang))
-#             dy = (1-unc)*arrow_len * np.sin(np.deg2rad(ang))
-
-#             ax.arrow(float(x), float(y), float(dx), float(dy),
-#                     head_width=0.05, head_length=0.08, fc='orange', ec='orange')    
-
-#         ax.set_ylim(-1.25,1.25)
-#         ax.set_xlim(-0.5,2.0)
-#         ax.grid()
-#         ax.set_ylabel('Y position (m)')
-#         ax.set_xlabel('X position (m)')
-#         ax.legend()
-
-#         if show:
-#             plt.show()
-        
-#         return fig_arrow
 
 def plot_bin_cues(bin_stim, fs, gtfb, show = True):
 
