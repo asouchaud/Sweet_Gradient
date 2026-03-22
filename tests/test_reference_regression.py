@@ -182,7 +182,7 @@ def test_reference_100_epoch_matches_known_output() -> None:
     expected_uncertainty = expected["uncertainty"]
 
     filters_np = np.asarray(est_filters, dtype=np.float32)
-    np.testing.assert_allclose(filters_np, expected_filters, rtol=1e-2, atol=1e-2) # Errors on Githun workflows can be fairly large
+    np.testing.assert_allclose(filters_np, expected_filters, rtol=1e-2, atol=1e-2) # Errors on Github workflows can be fairly large
     np.testing.assert_allclose(np.asarray(estimation_dict["localisation"]), expected_localisation, rtol=1e-2, atol=1e-0) # Errors on Githun workflows can be fairly large, and this is measured in degrees
     np.testing.assert_allclose(np.asarray(estimation_dict["colouration"]), expected_colouration, rtol=1e-2, atol=1e-0)
     np.testing.assert_allclose(np.asarray(estimation_dict["uncertainty"]), expected_uncertainty, rtol=1e-2, atol=1e-2)
