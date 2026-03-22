@@ -301,7 +301,7 @@ class Train:
             time_epoch = time.time() - time_epoch_start
             # Print progress
             print(
-                f"\rIter: {epoch+1:<4d} ¦¦ "
+                f"\rEpoch: {epoch+1:<4d} ¦¦ "
                 f"Loss: {full_loss.item():<10.5f} ¦¦ ",
                 f"LR: {current_lr:.6f} ¦¦ "
                 f"Time: {time_epoch:.3f} seconds¦¦",
