@@ -11,11 +11,12 @@ from scripts.setup.helpers import true_conv1d
 class SingleSourceBinauralFreeFieldPropagation(nn.Module):
     """One source, multiple listeners. Returns binaural (L/R ear) per listener."""
 
-    def __init__(self, stim, lstn_pos, source_pos, sofa_file_path, fs=48000, delay_samples=None):
+    def __init__(self, stim, lstn_pos, source_pos, sofa_file_path, fs=48000, delay_samples=None, apply_distance_attenuation=False):
         super().__init__()
         self.fs = fs
         self.dtype = stim.dtype
         self.device = stim.device
+        self.apply_distance_attenuation = apply_distance_attenuation
 
         self.stim = stim.detach()
         self.lstn_pos = torch.tensor(lstn_pos, device=self.device, dtype=self.dtype)
@@ -23,8 +24,14 @@ class SingleSourceBinauralFreeFieldPropagation(nn.Module):
         self.source_pos = torch.tensor(source_pos, device=self.device, dtype=self.dtype)
         self.sofaile = sf.read_sofa(sofa_file_path)
 
-        # Vector from each listener to source
+        # Broadcast source_pos across listeners to get one [dx, dy] vector per listener.
         source_vec = self.source_pos[None, :] - self.lstn_pos
+        # Convert each 2D offset vector into a source-listener distance.
+        source_distance = torch.linalg.vector_norm(source_vec.float(), dim=-1)
+        self.distance_gain = torch.reciprocal(torch.clamp(source_distance, min=1e-6)).to(
+            device=self.device,
+            dtype=self.dtype,
+        )
 
         # Angle from listener to source (degrees, 0–360)
         source_angle = torch.remainder(
@@ -91,17 +98,23 @@ class SingleSourceBinauralFreeFieldPropagation(nn.Module):
         src_signal = true_conv1d(self.stim, source_filter).permute(1, 0, 2)
         L_ear = true_conv1d(src_signal, hrirs[:, 0:1, :])
         R_ear = true_conv1d(src_signal, hrirs[:, 1:2, :])
+        if self.apply_distance_attenuation:
+            distance_gain = self.distance_gain if listener_indices is None else self.distance_gain[listener_indices]
+            distance_gain = distance_gain.view(1, -1, 1)
+            L_ear = L_ear * distance_gain
+            R_ear = R_ear * distance_gain
         return torch.cat([L_ear.unsqueeze(2), R_ear.unsqueeze(2)], dim=2)
 
 ## Multiple source anechoic class definition (omitting the "MultipleSource" prefix for brevity)
 class BinauralFreeFieldPropagation(nn.Module):
     """Generic multi-source anechoic propagation with summed binaural output."""
 
-    def __init__(self, stim, lstn_pos, spk_pos, sofa_file_path, fs=48000):
+    def __init__(self, stim, lstn_pos, spk_pos, sofa_file_path, fs=48000, apply_distance_attenuation=False):
         super().__init__()
         self.fs = fs
         self.dtype = stim.dtype
         self.device = stim.device
+        self.apply_distance_attenuation = apply_distance_attenuation
 
         self.stim = stim.detach()
         self.lstn_pos = torch.tensor(lstn_pos, device=self.device, dtype=self.dtype)
@@ -134,6 +147,7 @@ class BinauralFreeFieldPropagation(nn.Module):
                     sofa_file_path=sofa_file_path,
                     fs=fs,
                     delay_samples=source_delay_samples,
+                    apply_distance_attenuation=apply_distance_attenuation,
                 )
             )
 
