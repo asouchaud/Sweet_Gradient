@@ -29,16 +29,16 @@ if __name__ == "__main__":
     repo_root = Path(__file__).resolve().parent
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
         near_field=0,
-        epochs=1000,
+        epochs=50,
         num_lstn_pos=101,
-        listener_batch_size=6,  # 5 mirrored pairs plus the centre listener
+        listener_batch_size=11,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=True,
         n_samples=10,
         target_angle=15.0,
         selected_stim="random",
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
-        lr=0.01,
+        lr=0.1,
         seed=46,
         log=1,
         fs=48000,
@@ -104,7 +104,6 @@ if __name__ == "__main__":
     logger = saver_obj if env.log else None
 
 ## Training loop
-
     # Train the neural network
     trainer = Train(n_epoch=env.epochs,
                     nn=nn_model,
@@ -113,8 +112,7 @@ if __name__ == "__main__":
                     optimiser=nn_optimiser,
                     loggers = [logger, None], 
                     listener_batch_size=env.listener_batch_size,
-                    symmetric_listener_sampling=env.symmetric_listener_sampling,
-                    scheduler=None) # Initialize training class
+                    symmetric_listener_sampling=env.symmetric_listener_sampling) # Initialize training class
     time_train_start = time.time()
     trainer.train()
     env.time_train_seconds = time.time() - time_train_start

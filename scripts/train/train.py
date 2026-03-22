@@ -18,7 +18,7 @@ class ListenerBasedLoss:
             bin_stim: Tensor shaped (batch, n_listeners, 2, n_samples), propagated binaural signals, 
             and 2 is the number of ears.
             h_full: Tensor shaped (batch, n_sources, n_samples), source filters (unused here).
-            listener_indices: Optional listener subset used for stochastic listener mini-batching.
+            listener_indices: Optional listener subset used for listener mini-batching.
 
         Why include an unused input:
             Train uses one generic loop over `loss_dict` and always calls
@@ -32,7 +32,10 @@ class ListenerBasedLoss:
             loss: Scalar tensor.
             model_estimation: Tensor output of the perceptual model, shape depends on the model.
         """
-        model_estimation = self.model(bin_stim)
+        if getattr(self.model, "supports_listener_indices", False):
+            model_estimation = self.model(bin_stim, listener_indices=listener_indices)
+        else:
+            model_estimation = self.model(bin_stim)
 
         target = torch.as_tensor(self.model.target, device=self.device, dtype=self.dtype)
         if listener_indices is not None and target.numel() > 1:
@@ -59,7 +62,7 @@ class SourceBasedLoss:
             bin_stim: Tensor shaped (batch, n_listeners, 2, n_samples), propagated binaural signals, 
             and 2 is the number of ears (unused here).
             h_full: Tensor shaped (batch, n_sources, n_samples), source filters.
-            listener_indices: Optional listener subset used for stochastic listener mini-batching (unused here).
+            listener_indices: Optional listener subset used for listener mini-batching (unused here).
 
         Why include an unused input:
             This class shares the same `compute_loss` signature as
@@ -172,48 +175,102 @@ class Train:
 
         return sorted(selected_listener_indices)
 
+    def _build_listener_batches(self):
+        if self.listener_batch_size is None or self.listener_batch_size >= int(self.prop.n_listeners):
+            return [None]
+
+        if not self.symmetric_listener_sampling:
+            shuffled_indices = torch.randperm(int(self.prop.n_listeners)).tolist()
+            return [
+                sorted(shuffled_indices[start:start + self.listener_batch_size])
+                for start in range(0, len(shuffled_indices), self.listener_batch_size)
+            ]
+
+        shuffled_groups = [
+            self.listener_groups[group_idx]
+            for group_idx in torch.randperm(len(self.listener_groups)).tolist()
+        ]
+
+        listener_batches = []
+        current_batch = []
+        current_batch_size = 0
+
+        for group in shuffled_groups:
+            group_size = len(group)
+            if group_size > self.listener_batch_size:
+                raise ValueError("listener_batch_size is too small for symmetric listener sampling.")
+
+            if current_batch_size + group_size > self.listener_batch_size and current_batch:
+                listener_batches.append(sorted(current_batch))
+                current_batch = list(group)
+                current_batch_size = group_size
+            else:
+                current_batch.extend(group)
+                current_batch_size += group_size
+
+        if current_batch:
+            listener_batches.append(sorted(current_batch))
+
+        return listener_batches
+
     def train(self):
+        unit_input = torch.ones(1,1, device=self.device, dtype=self.dtype)
+
         for epoch in range(self.n_epoch):
             time_epoch_start = time.time()
 
-            # Estimate FIRs 
-            h_full = self.nn(torch.ones(1,1, device=self.device, dtype=self.dtype))
-            # h_full_normalised = energy_normalisation(h_full)
-            with torch.no_grad():
-                self.h_history.append(h_full.squeeze(0).detach().cpu().numpy())
+            listener_batches = self._build_listener_batches()
 
-            listener_indices = self._sample_listener_indices()
-
-            # Propagate sound from speakers
-            if listener_indices is None:
-                bin_stim = self.prop(h_full)
-            else:
-                bin_stim = self.prop(h_full, listener_indices=listener_indices)
-
-            # Get perceptual estimations and compute losses
             est_dict = {}
             weighted_loss_dict = {}
             full_loss = torch.tensor(0.0, device=self.device, dtype=self.dtype)
-            for key, loss_cfg in self.loss_dict.items():
-                loss, estimation = loss_cfg.compute_loss(bin_stim=bin_stim, h_full=h_full, listener_indices=listener_indices)
-                weighted_loss = loss * self.loss_weights[key]
-                weighted_loss_dict[key] = weighted_loss # For logging purposes only
-                full_loss = full_loss + weighted_loss
-                if estimation is not None:
-                    est_dict[key] = estimation
+            bin_stim = None
+            listener_indices = None
+            h_full_snapshot = None
 
-            # Optimize Losses
-            self.optimiser.zero_grad()
-            full_loss.backward(retain_graph = True)
-            self.optimiser.step()
+            for batch_idx, listener_indices in enumerate(listener_batches):
+                # Estimate FIRs
+                h_full = self.nn(unit_input)
 
-            if self.scheduler is not None:
+                if batch_idx == 0:
+                    h_full_snapshot = h_full.detach()
+                    self.h_history.append(h_full_snapshot.squeeze(0).cpu().numpy())
+
+                # Propagate sound from speakers
+                if listener_indices is None:
+                    bin_stim = self.prop(h_full)
+                else:
+                    bin_stim = self.prop(h_full, listener_indices=listener_indices)
+
+                batch_scale = 1.0 if listener_indices is None else len(listener_indices) / float(self.prop.n_listeners)
+
+                # Get perceptual estimations and compute losses
+                est_dict = {}
+                batch_full_loss = torch.tensor(0.0, device=self.device, dtype=self.dtype)
+                for key, loss_cfg in self.loss_dict.items():
+                    loss, estimation = loss_cfg.compute_loss(bin_stim=bin_stim, h_full=h_full, listener_indices=listener_indices)
+                    weighted_loss = loss * self.loss_weights[key] * batch_scale
+                    if key in weighted_loss_dict:
+                        weighted_loss_dict[key] = weighted_loss_dict[key] + weighted_loss.detach()
+                    else:
+                        weighted_loss_dict[key] = weighted_loss.detach()
+                    batch_full_loss = batch_full_loss + weighted_loss
+                    if estimation is not None:
+                        est_dict[key] = estimation
+
+                self.optimiser.zero_grad()
+                batch_full_loss.backward()
+                full_loss = full_loss + batch_full_loss.detach()
+
+                self.optimiser.step()
+
+            if self.scheduler is not None: # Update learning rate once per epoch
                 self.scheduler.step()
 
             # Log training in Tensorboard
             if self.logger is not None:
                 self.logger.log_losses(weighted_loss_dict, full_loss, epoch)
-                self.logger.log_h_full(h_full, epoch)
+                self.logger.log_h_full(h_full_snapshot, epoch)
 
                 if 'localisation' in self.perceptual_models or 'uncertainty' in self.perceptual_models:
                     self.logger.log_bin_cues(bin_stim, epoch)
@@ -240,17 +297,18 @@ class Train:
                                                    est_dict['coloration'] if 'coloration' in self.perceptual_models else None, 
                                                    epoch)
             
+            current_lr = self.optimiser.param_groups[0]['lr']
             time_epoch = time.time() - time_epoch_start
             # Print progress
-            if epoch % 50 == 0:
-                print(
+            print(
                 f"\rIter: {epoch+1:<4d} ¦¦ "
                 f"Loss: {full_loss.item():<10.5f} ¦¦ ",
+                f"LR: {current_lr:.6f} ¦¦ "
                 f"Time: {time_epoch:.3f} seconds¦¦",
                 end="",
                 flush=True
-                )
-                print()
+            )
+            print()
                 
 
 
