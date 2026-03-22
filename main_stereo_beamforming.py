@@ -29,10 +29,10 @@ if __name__ == "__main__":
     repo_root = Path(__file__).resolve().parent
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
         near_field=1,
-        epochs=3000,
+        epochs=0,
         n_samples=41,
-        num_lstn_pos=201,
-        listener_batch_size=5,  # 5 mirrored pairs plus the centre listener
+        num_lstn_pos=101,
+        listener_batch_size=10,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=True,
         target_angle=0,
         selected_stim="random",
@@ -46,7 +46,7 @@ if __name__ == "__main__":
         directivity_freqs_hz=[250, 500, 1000, 2000, 4000, 8000],
         directivity_db_floor=-40,
         speakers_per_array=2,
-        speaker_distance=2.0,  # Distance from each array centre to the reference-system center (0, 0)
+        speaker_distance=2.5,  # Distance from each array centre to the reference-system center (0, 0)
         array_centre_angles_deg=[30.0, -30.0],
         speaker_spacing_m=0.02,  # Adjacent spacing within each array (global y-axis)
     )
@@ -198,26 +198,11 @@ if __name__ == "__main__":
         show=False,
     )
 
-    # Rodenas (2004) reference directivity points from the right loudspeaker of figure 2:
-    # [angle_deg, level_db] where angle_deg is 0 when facing the centre of the sweet spot
-    rodenas2004_data = [
-        [330.71, -0.16],
-        [333.43, -1.54],
-        [336.62, -2.35],
-        [340.14, -3.58],
-        [343.69, -5.35],
-        [346.94, -7.27],
-        [349.64, -9.66],
-        [352.86, -12.18],
-        [356.18, -14.30],
-        [0.10, -16.16],
-        [4.84, -17.41],
-        [9.60, -18.59],
-        [14.40, -19.56],
-        [21.08, -20.18],
-    ]
-    rodenas2004_data = [[(angle_deg + 180 - 30) % 360.0, level_db] for angle_deg, level_db in rodenas2004_data]
-
+    rodenas2004_fig12_opt = np.loadtxt(repo_root / "data" / "miscellaneous" / "rodenas2004_fig12_opt.csv", delimiter=",", skiprows=1)
+    rodenas2004_fig12_opt = [[-((angle_deg + 180) % 360.0), level_db] for angle_deg, level_db in rodenas2004_fig12_opt]
+    rodenas2004_fig12_1000Hz = np.loadtxt(repo_root / "data" / "miscellaneous" / "rodenas2004_fig12_1000Hz.csv", delimiter=",", skiprows=1)
+    rodenas2004_fig12_1000Hz = [[-((angle_deg + 180) % 360.0), level_db] for angle_deg, level_db in rodenas2004_fig12_1000Hz]
+    
     right_array_indices = tuple(range(env.speakers_per_array, 2 * env.speakers_per_array))
     plots["directivity_plot"] = plot_pair_directivity_polar(
         est_filters=est_filters,
@@ -226,7 +211,8 @@ if __name__ == "__main__":
         group_indices=right_array_indices,
         radius=env.directivity_radius_m,
         freqs_eval_hz=env.directivity_freqs_hz,
-        overlay_curve=rodenas2004_data,
+        overlay_curves=[rodenas2004_fig12_opt, rodenas2004_fig12_1000Hz],
+        overlay_labels=["rodenas2004 (optimum)", "rodenas2004 (1000 Hz)"],
         db_floor=env.directivity_db_floor,
         show=False,
     )
