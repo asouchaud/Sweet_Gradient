@@ -101,6 +101,8 @@ def plot_pair_directivity_polar(
     freqs_eval_hz=(250, 500, 1000, 2000, 4000),
     c=343.0,
     overlay_curve=None,
+    overlay_curves=None,
+    overlay_labels=None,
     show=False,
     db_floor=None,
     overlay_avg_directivity=True,
@@ -122,6 +124,10 @@ def plot_pair_directivity_polar(
 
     If ``overlay_curve`` is provided, it must be shape (N, 2) with
     ``[angle_deg, level_db]`` samples; these are overlaid for reference.
+    If ``overlay_curves`` is provided, it must contain one or more arrays with
+    that same shape.
+    If ``overlay_labels`` is provided, it must contain one label per
+    overlay curve.
     If ``db_floor`` is ``None``, the lower dB limit is computed from the data
     (including the optional overlay), preserving the existing behavior.
     """
@@ -191,21 +197,30 @@ def plot_pair_directivity_polar(
             zorder=6,
         )
 
+    overlay_curve_list = []
     if overlay_curve is not None:
-        overlay_curve = np.asarray(overlay_curve, dtype=float)
-        if overlay_curve.ndim != 2 or overlay_curve.shape[1] != 2:
-            raise ValueError("overlay_curve must have shape (N, 2) as [angle_deg, level_db].")
-        overlay_theta = np.deg2rad(np.mod(overlay_curve[:, 0], 360.0))
-        overlay_db = overlay_curve[:, 1]
+        overlay_curve_list.append(overlay_curve)
+    if overlay_curves is not None:
+        overlay_curve_list.extend(overlay_curves)
+    if overlay_labels is not None and len(overlay_labels) != len(overlay_curve_list):
+        raise ValueError("overlay_labels must contain one label per overlay curve.")
+
+    overlay_colors = ["k", "tab:purple", "tab:brown", "tab:gray", "tab:olive"]
+    for curve_idx, curve in enumerate(overlay_curve_list):
+        curve = np.asarray(curve, dtype=float)
+        if curve.ndim != 2 or curve.shape[1] != 2:
+            raise ValueError("Each overlay curve must have shape (N, 2) as [angle_deg, level_db].")
+        overlay_theta = np.deg2rad(np.mod(curve[:, 0], 360.0))
+        overlay_db = curve[:, 1]
         min_db = min(min_db, float(np.min(overlay_db)))
         max_db = max(max_db, float(np.max(overlay_db)))
         ax.scatter(
             overlay_theta,
             overlay_db,
-            color="k",
+            color=overlay_colors[curve_idx % len(overlay_colors)],
             s=20,
             marker="o",
-            label="Data overlay",
+            label=overlay_labels[curve_idx] if overlay_labels is not None else ("Data overlay" if curve_idx == 0 else f"Data overlay {curve_idx + 1}"),
             zorder=5,
         )
 
