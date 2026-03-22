@@ -42,6 +42,7 @@ if __name__ == "__main__":
         seed=46,
         log=1,
         fs=48000,
+        apply_distance_attenuation=True,
         directivity_radius_m=10.0,
         directivity_freqs_hz=[250, 500, 1000, 2000, 4000, 8000],
         directivity_db_floor=-40,
@@ -61,18 +62,7 @@ if __name__ == "__main__":
     set_seed(seed=env.seed)
 
     # Loudspkeaker and listener positions
-    env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)]  # 10 listener positions
-    # speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
-    # speaker_angles_deg = [30.5, 29.5, -29.5, -30.5]
-    # # speaker_angles_deg = [30.0, 30.0, -30.0, -30.0]
-    # spk_pos = [
-    #     [
-    #         speaker_distance * np.cos(np.deg2rad(angle_deg)),
-    #         speaker_distance * np.sin(np.deg2rad(angle_deg)),
-    #     ]
-    #     for angle_deg in speaker_angles_deg
-    # ]
-
+    env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)]  
     relative_offsets = (np.arange(env.speakers_per_array, dtype=float) - (env.speakers_per_array - 1) / 2.0) * env.speaker_spacing_m
     upper_angle_deg, lower_angle_deg = env.array_centre_angles_deg
     upper_centre = np.array(
@@ -104,7 +94,7 @@ if __name__ == "__main__":
 
 ## Initialize model
     # Initialize sound propagation module
-    stereo_prop = BinauralFreeFieldPropagation(stim=stim, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, fs=env.fs, sofa_file_path=env.sofa_path) # Load stereo anechoic propagation module
+    stereo_prop = BinauralFreeFieldPropagation(stim=stim, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, fs=env.fs, sofa_file_path=env.sofa_path, apply_distance_attenuation=env.apply_distance_attenuation) # Load stereo anechoic propagation module
 
     # Initiate perceptual models
     near_field_kwargs = {"lstn_pos_conf": env.lstn_pos} if env.near_field == 1 else {}
