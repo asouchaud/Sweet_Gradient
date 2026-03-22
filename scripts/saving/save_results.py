@@ -69,8 +69,24 @@ def _coerce_env_to_dict(env):
     )
 
 
+def _build_run_name(run_label=None):
+    """Build a compact, filesystem-safe run name with a timestamp."""
+    now = datetime.now()
+    timestamp = now.strftime("%y%m%d_%H%M%S_%f")
+    entrypoint_stem = Path(sys.argv[0]).stem or "run"
+    run_label = "" if run_label is None else str(run_label)
+    run_label = run_label.strip().replace("/", "-").replace("\\", "-")
+    run_label = "_".join(run_label.split())
+
+    name_parts = [entrypoint_stem]
+    if run_label:
+        name_parts.append(run_label)
+    name_parts.append(timestamp)
+    return now, "_".join(name_parts)
+
+
 class saver():
-    def __init__(self, loss_dict, lstn_pos):
+    def __init__(self, loss_dict, lstn_pos, run_label=None):
         # Root experiment directory
         exp_root = Path("results")
         exp_root.mkdir(exist_ok=True)
@@ -78,19 +94,13 @@ class saver():
         # -------------------------
         # Generate run folder name
         # -------------------------
-        now = datetime.now()
-        date_prefix = now.strftime("%y%m%d")
-        time_suffix = now.strftime("%H%M%S")
-        entrypoint_stem = Path(sys.argv[0]).stem
-
-        # Build run folder name
-        run_name = f"{entrypoint_stem}_{date_prefix}_{time_suffix}"
+        now, run_name = _build_run_name(run_label)
         run_dir = exp_root / run_name
         
         self.run_dir = run_dir
         self.run_name = run_name
         self.now = now
-        self.run_dir.mkdir(parents=True, exist_ok=True)
+        self.run_dir.mkdir(parents=True, exist_ok=False)
 
     def save_filter_video(
         self,
