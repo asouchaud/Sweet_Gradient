@@ -59,8 +59,10 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None,
                 clip_on=True,
             )
         
+        loc_pos = None
         if loc_target is not None:
-            loc_pos = [1.732, 1.732*np.tan(np.deg2rad(loc_target.item()))]
+            target_radius = float(np.mean(np.linalg.norm(spk_pos, axis=1)))
+            loc_pos = [target_radius, target_radius*np.tan(np.deg2rad(loc_target.item()))]
             ax.scatter(loc_pos[0], loc_pos[1], c='green', label='Target position')
 
         arrow_len = 0.2
@@ -116,11 +118,23 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None,
         ax.legend(handles=ax.get_legend_handles_labels()[0] + legend_elements,
                 labels=ax.get_legend_handles_labels()[1] + [le.get_label() for le in legend_elements])
 
-        ax.set_ylim(-1.25,1.25)
-        ax.set_xlim(-0.5,2.0)
+        x_values = [lstn_pos[:,0], spk_pos[:,0]]
+        y_values = [lstn_pos[:,1], spk_pos[:,1]]
+        if loc_pos is not None:
+            x_values.append(np.array([loc_pos[0]]))
+            y_values.append(np.array([loc_pos[1]]))
+        x_min = float(np.min(np.concatenate(x_values)))
+        x_max = float(np.max(np.concatenate(x_values)))
+        y_min = float(np.min(np.concatenate(y_values)))
+        y_max = float(np.max(np.concatenate(y_values)))
+        x_pad = max(0.1, 0.1 * max(x_max - x_min, 1e-9))
+        y_pad = max(0.1, 0.1 * max(y_max - y_min, 1e-9))
+        ax.set_xlim(x_min - x_pad, x_max + x_pad)
+        ax.set_ylim(y_min - y_pad, y_max + y_pad)
         ax.grid()
         ax.set_ylabel('Y position (m)')
         ax.set_xlabel('X position (m)')
+        ax.set_aspect('equal', adjustable='box')
 
         fig_arrow.tight_layout()
 
