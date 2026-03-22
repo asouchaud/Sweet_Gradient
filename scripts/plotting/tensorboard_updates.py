@@ -54,11 +54,11 @@ class TensorboardLogger:
         plt.close(fig_bin_cues)
 
 
-    def log_plot_arrows(self, lstn_pos, spk_pos, loc, unc = None, col=None, epoch=None, loc_target = None):
+    def log_plot_arrows(self, lstn_pos, spk_pos, loc, unc = None, col=None, epoch=None, target_pos = None):
         if epoch % self.h_log_interval != 0:
             return
         
-        fig_arrows = plot_arrows(lstn_pos, spk_pos, loc, unc, col, loc_target, show=False)
+        fig_arrows = plot_arrows(lstn_pos, spk_pos, loc, unc, col, target_pos, show=False)
 
         self.writer.add_figure("Arrow Plot", fig_arrows, global_step=epoch)
         plt.close(fig_arrows)

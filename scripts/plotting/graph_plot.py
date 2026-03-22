@@ -337,7 +337,7 @@ def plot_freq(est_filters, fs, show = True):
 
     return fig_freq   
 
-def plot_arrows(lstn_pos, spk_pos, loc, unc=None, col=None, loc_target=None, show=True):
+def plot_arrows(lstn_pos, spk_pos, loc, unc=None, col=None, target_pos=None, show=True):
 
     if unc is None:
         unc = torch.zeros_like(loc, device=loc.device, dtype=loc.dtype)
@@ -356,9 +356,17 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc=None, col=None, loc_target=None, sho
     ax.scatter(spk_pos[:,0], spk_pos[:,1], c='red', label='Speaker')
     ax.scatter(lstn_pos[:,0], lstn_pos[:,1], c='blue', label='Listener positions')
 
-    if loc_target is not None:
-        loc_pos = [1.732, np.tan(np.deg2rad(loc_target.item()))]
-        ax.scatter(loc_pos[0], loc_pos[1], c='green', label='Target position')
+    target_pos_np = None
+    if target_pos is not None:
+        if torch.is_tensor(target_pos):
+            target_pos_np = target_pos.detach().cpu().numpy().reshape(-1)
+        else:
+            target_pos_np = np.asarray(target_pos, dtype=float).reshape(-1)
+
+        if target_pos_np.size != 2:
+            raise ValueError("target_pos must be a 2D position.")
+
+        ax.scatter(target_pos_np[0], target_pos_np[1], c='green', label='Target position')
 
     arrow_len = 0.2
 
@@ -382,8 +390,19 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc=None, col=None, loc_target=None, sho
     cbar = fig_arrow.colorbar(sm, ax=ax)
     cbar.set_label("Colouration / Loss")
 
-    ax.set_ylim(-1.25,1.25)
-    ax.set_xlim(-0.5,2.0)
+    x_values = [lstn_pos[:,0], spk_pos[:,0]]
+    y_values = [lstn_pos[:,1], spk_pos[:,1]]
+    if target_pos_np is not None:
+        x_values.append(np.array([target_pos_np[0]]))
+        y_values.append(np.array([target_pos_np[1]]))
+    x_min = float(np.min(np.concatenate(x_values)))
+    x_max = float(np.max(np.concatenate(x_values)))
+    y_min = float(np.min(np.concatenate(y_values)))
+    y_max = float(np.max(np.concatenate(y_values)))
+    x_pad = max(0.1, 0.1 * max(x_max - x_min, 1e-9))
+    y_pad = max(0.1, 0.1 * max(y_max - y_min, 1e-9))
+    ax.set_xlim(x_min - x_pad, x_max + x_pad)
+    ax.set_ylim(y_min - y_pad, y_max + y_pad)
     ax.grid()
     ax.set_ylabel('Y position (m)')
     ax.set_xlabel('X position (m)')

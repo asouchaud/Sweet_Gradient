@@ -21,7 +21,7 @@ from scripts.perceptual_models.spectral_matching.spectral_matching import spectr
 
 DTYPE = torch.float32
 
-def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None, show = True, vbap_values = None):
+def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, target_pos = None, show = True, vbap_values = None):
         
         if unc is None:
             unc = torch.zeros_like(loc, device=loc.device, dtype=loc.dtype)
@@ -59,11 +59,17 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None,
                 clip_on=True,
             )
         
-        loc_pos = None
-        if loc_target is not None:
-            target_radius = float(np.mean(np.linalg.norm(spk_pos, axis=1)))
-            loc_pos = [target_radius, target_radius*np.tan(np.deg2rad(loc_target.item()))]
-            ax.scatter(loc_pos[0], loc_pos[1], c='green', label='Target position')
+        target_pos_np = None
+        if target_pos is not None:
+            if torch.is_tensor(target_pos):
+                target_pos_np = target_pos.detach().cpu().numpy().reshape(-1)
+            else:
+                target_pos_np = np.asarray(target_pos, dtype=float).reshape(-1)
+
+            if target_pos_np.size != 2:
+                raise ValueError("target_pos must be a 2D position.")
+
+            ax.scatter(target_pos_np[0], target_pos_np[1], c='green', label='Target position')
 
         arrow_len = 0.2
 
@@ -120,9 +126,9 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc = None, col=None, loc_target = None,
 
         x_values = [lstn_pos[:,0], spk_pos[:,0]]
         y_values = [lstn_pos[:,1], spk_pos[:,1]]
-        if loc_pos is not None:
-            x_values.append(np.array([loc_pos[0]]))
-            y_values.append(np.array([loc_pos[1]]))
+        if target_pos_np is not None:
+            x_values.append(np.array([target_pos_np[0]]))
+            y_values.append(np.array([target_pos_np[1]]))
         x_min = float(np.min(np.concatenate(x_values)))
         x_max = float(np.max(np.concatenate(x_values)))
         y_min = float(np.min(np.concatenate(y_values)))
@@ -148,18 +154,20 @@ def load_data(folder_path):
     config = json.load(open(folder_path + '/config.json', 'r')) 
     results = json.load(open(folder_path + '/results.json', 'r'))
 
-    optim_lstn_pos = config['listeners_position']
-    spk_pos = config['speakers_position']
+    main_config = config.get("main", config)
 
-    stim_type = config['stimulus']
-    fs = config['fs']
-    target_angle = config['target_angle']
+    optim_lstn_pos = main_config.get("lstn_pos", main_config.get("listeners_position"))
+    spk_pos = main_config.get("spk_pos", main_config.get("speakers_position"))
+
+    stim_type = main_config.get("selected_stim", main_config.get("stimulus"))
+    fs = main_config["fs"]
+    target_pos = main_config["target_pos"]
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     filters_path = os.path.join(folder_path, "artifacts", "est_filters.npy")
     filters = torch.tensor(np.load(filters_path), dtype=DTYPE, device=device).unsqueeze(0)
 
-    return filters, optim_lstn_pos, spk_pos, target_angle, stim_type, fs, device
+    return filters, optim_lstn_pos, spk_pos, target_pos, stim_type, fs, device
 
 def create_grid(n_points_x, n_points_y):
     x = np.linspace(-0.75, 0.75, n_points_x)
@@ -171,7 +179,7 @@ def create_grid(n_points_x, n_points_y):
 
     return grid
 
-def setup_evaluation(dense_grid, spk_pos, target_angle, stim_type, fs, device, args):
+def setup_evaluation(dense_grid, spk_pos, target_pos, stim_type, fs, device, args):
 
     stim = load_stim(fs, device, DTYPE, stim_type)
     prop_model = BinauralFreeFieldPropagation(stim, 
@@ -182,7 +190,7 @@ def setup_evaluation(dense_grid, spk_pos, target_angle, stim_type, fs, device, a
     hrirs = load_hrirs(DTYPE, device=device, sofa_path=args.sofa_path, idx_path=args.sofa_idx)
     gtfb = load_gtfb(fs, device=device, dtype=DTYPE)
     localisation_model = llado2025(torch.nn.functional.mse_loss, 
-                                   0, 
+                                   target_pos=target_pos,
                                    hrirs=hrirs,
                                    fs=fs,
                                    gtfb=gtfb
@@ -198,7 +206,7 @@ def setup_evaluation(dense_grid, spk_pos, target_angle, stim_type, fs, device, a
                                           0,
                                           stim=stim,
                                           hrirs=torch.ones(1, device=device, dtype=DTYPE),
-                                          target_angle=target_angle,
+                                          target_pos=target_pos,
                                           fs=fs
                                           )
     
@@ -257,14 +265,14 @@ if __name__ == "__main__":
     if args.sofa_path and args.sofa_idx is None:
         parser.error("--sofa_path requires --sofa_idx")
     
-    filters, opt_lstn_pos, spk_pos, target_angle, stim_type, fs, device = load_data(args.folder_path)
+    filters, opt_lstn_pos, spk_pos, target_pos, stim_type, fs, device = load_data(args.folder_path)
 
     dense_grid = create_grid(3,3)
 
 
     prop_model, localisation_model, uncertainty_model, colouration_model = setup_evaluation(dense_grid,
                                                                                             spk_pos, 
-                                                                                            target_angle, 
+                                                                                            target_pos,
                                                                                             stim_type,
                                                                                             fs,
                                                                                             device,
@@ -272,7 +280,7 @@ if __name__ == "__main__":
                                                                                             )
 
     if args.vbap_comp:
-        g = vbap_stereo_gains(target_angle)
+        g = vbap_stereo_gains(0.0)
 
         filters_vbap = torch.zeros((1,2,256),dtype=DTYPE, device=device)
         filters_vbap[0,:,0] = torch.tensor(g, dtype=DTYPE, device=device)
@@ -283,7 +291,4 @@ if __name__ == "__main__":
 
 
     
-    plot_arrows(torch.tensor(dense_grid),torch.tensor(spk_pos),loc,unc,col,torch.tensor(target_angle),True, vbap_values = vbap_values)
-
-
-    
+    plot_arrows(torch.tensor(dense_grid),torch.tensor(spk_pos),loc,unc,col,torch.tensor(target_pos),True, vbap_values = vbap_values)

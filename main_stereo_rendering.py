@@ -28,13 +28,12 @@ from scripts.saving.save_results import saver
 def run_experiment(loss_dict_builder, run_label):
     repo_root = Path(__file__).resolve().parent
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
-        near_field=0,
         epochs=50,
         num_lstn_pos=101,
         listener_batch_size=11,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=True,
         n_samples=10,
-        target_angle=15.0,
+        target_pos=[1.732, float(np.tan(np.deg2rad(15.0)) * 1.732)],
         selected_stim="random",
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
@@ -73,9 +72,8 @@ def run_experiment(loss_dict_builder, run_label):
     stereo_prop = BinauralFreeFieldPropagation(stim=stim, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, fs=env.fs, sofa_file_path=env.sofa_path) # Load stereo anechoic propagation module
 
     # Initiate perceptual models
-    near_field_kwargs = {"lstn_pos_conf": env.lstn_pos} if env.near_field == 1 else {}
-    loc_model = llado2025(loss = F.mse_loss, target = env.target_angle, hrirs=hrirs, fs=env.fs, gtfb=gtfb, **near_field_kwargs).to(device=env.device, dtype=env.dtype) # Llado et al. 2025 model
-    col_model = spectral_matching(loss = F.l1_loss, target = 0, stim=stim, hrirs=hrirs, target_angle=env.target_angle, fs=env.fs, **near_field_kwargs).to(device=env.device, dtype=env.dtype) # Spectral Matching model
+    loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, hrirs=hrirs, fs=env.fs, gtfb=gtfb).to(device=env.device, dtype=env.dtype) # Llado et al. 2025 model
+    col_model = spectral_matching(loss = F.l1_loss, target = 0, stim=stim, hrirs=hrirs, target_pos=env.target_pos, fs=env.fs).to(device=env.device, dtype=env.dtype) # Spectral Matching model
     unc_model = desena2020(loss = F.l1_loss, target = 0, hrirs=hrirs, fs=env.fs, gtfb=gtfb).to(device=env.device, dtype=env.dtype) # De Sena et al. 2020 model
     regularisation = second_moment_regularisation(n_samples=env.n_samples, device=env.device, dtype=env.dtype)
     loss_dict = loss_dict_builder(loc_model, col_model, unc_model, regularisation, env.device, env.dtype)
@@ -94,7 +92,7 @@ def run_experiment(loss_dict_builder, run_label):
     nn_optimiser = torch.optim.Adam(nn_model.parameters(), lr=env.lr)
 
 ## Initliase saving folder and logger
-    saver_obj = saver(loss_dict, env.lstn_pos, run_label=run_label)
+    saver_obj = saver(loss_dict, env.lstn_pos)
     logger = saver_obj if env.log else None
 
 ## Training loop
@@ -137,7 +135,7 @@ def run_experiment(loss_dict_builder, run_label):
         bin_stim=bin_stim,
         prop_model=stereo_prop,
         loss_dict=loss_dict,
-        target_angle=env.target_angle,
+        target_pos=env.target_pos,
         fs=env.fs,
         device=env.device,
         dtype=env.dtype,

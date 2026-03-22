@@ -28,13 +28,12 @@ from scripts.saving.save_results import saver
 if __name__ == "__main__":
     repo_root = Path(__file__).resolve().parent
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
-        near_field=1,
         epochs=0,
         n_samples=41,
         num_lstn_pos=101,
         listener_batch_size=10,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=True,
-        target_angle=0,
+        target_pos=None,
         selected_stim="random",
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
@@ -42,7 +41,6 @@ if __name__ == "__main__":
         seed=46,
         log=1,
         fs=48000,
-        apply_distance_attenuation=True,
         directivity_radius_m=10.0,
         directivity_freqs_hz=[250, 500, 1000, 2000, 4000, 8000],
         directivity_db_floor=-40,
@@ -62,7 +60,8 @@ if __name__ == "__main__":
     set_seed(seed=env.seed)
 
     # Loudspkeaker and listener positions
-    env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)]  
+    env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)]  # 10 listener positions
+
     relative_offsets = (np.arange(env.speakers_per_array, dtype=float) - (env.speakers_per_array - 1) / 2.0) * env.speaker_spacing_m
     upper_angle_deg, lower_angle_deg = env.array_centre_angles_deg
     upper_centre = np.array(
@@ -86,6 +85,8 @@ if __name__ == "__main__":
     lower_array = [[float(lower_centre[0]), float(lower_centre[1] - off)] for off in relative_offsets]
     env.spk_pos = upper_array + lower_array
     env.n_sources = len(env.spk_pos)
+    target_x = float(np.mean(np.asarray(env.spk_pos, dtype=float)[:, 0]))
+    env.target_pos = [target_x, 0.0]
 
 ## Load data
     gtfb = load_gtfb(fs=env.fs, device=env.device, dtype=env.dtype)  # Load Gamma Tone Filter Bank
@@ -94,12 +95,11 @@ if __name__ == "__main__":
 
 ## Initialize model
     # Initialize sound propagation module
-    stereo_prop = BinauralFreeFieldPropagation(stim=stim, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, fs=env.fs, sofa_file_path=env.sofa_path, apply_distance_attenuation=env.apply_distance_attenuation) # Load stereo anechoic propagation module
+    stereo_prop = BinauralFreeFieldPropagation(stim=stim, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, fs=env.fs, sofa_file_path=env.sofa_path) # Load stereo anechoic propagation module
 
     # Initiate perceptual models
-    near_field_kwargs = {"lstn_pos_conf": env.lstn_pos} if env.near_field == 1 else {}
-    loc_model = llado2025(loss = F.mse_loss, target = env.target_angle, hrirs=hrirs, fs=env.fs, gtfb=gtfb, **near_field_kwargs).to(device=env.device, dtype=env.dtype) # Llado et al. 2025 model
-    col_model = spectral_matching(loss = F.l1_loss, target = 0, stim=stim, hrirs=hrirs, target_angle=env.target_angle, fs=env.fs, **near_field_kwargs).to(device=env.device, dtype=env.dtype) # Spectral Matching model
+    loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, hrirs=hrirs, fs=env.fs, gtfb=gtfb, lstn_pos_conf=env.lstn_pos).to(device=env.device, dtype=env.dtype) # Llado et al. 2025 model
+    col_model = spectral_matching(loss = F.l1_loss, target = 0, stim=stim, hrirs=hrirs, target_pos=env.target_pos, fs=env.fs, lstn_pos_conf=env.lstn_pos).to(device=env.device, dtype=env.dtype) # Spectral Matching model
     unc_model = desena2020(loss = F.l1_loss, target = 0, hrirs=hrirs, fs=env.fs, gtfb=gtfb).to(device=env.device, dtype=env.dtype) # De Sena et al. 2020 model
     regularisation = second_moment_regularisation(n_samples=env.n_samples, device=env.device, dtype=env.dtype)
 
@@ -181,7 +181,7 @@ if __name__ == "__main__":
         bin_stim=bin_stim,
         prop_model=stereo_prop,
         loss_dict=loss_dict,
-        target_angle=env.target_angle,
+        target_pos=env.target_pos,
         fs=env.fs,
         device=env.device,
         dtype=env.dtype,

@@ -51,7 +51,7 @@ def select_regularistion(reg: str, n_samples: int, device='cuda', dtype=torch.fl
 def test_reference_100_epoch_matches_known_output() -> None:
 
     """
-    Runs the exact same code as: python main.py --epochs=100 --n_samples=10 --target_angle=15
+    Runs the same legacy 15 degree reference case, now expressed via ``target_pos``,
     with device=cpu for determinism. We chdir to repo root and call main() so there is no
     duplicated logic or path/cwd mismatch.
     """
@@ -63,10 +63,9 @@ def test_reference_100_epoch_matches_known_output() -> None:
     default_sofa_path = repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"
     default_idx_path = repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"
     args = SimpleNamespace(
-        near_field=0,
         epochs=100,
         n_samples=10,
-        target_angle=15.0,
+        target_pos=[1.732, float(np.tan(np.deg2rad(15.0)) * 1.732)],
         stimulus="random",
         sofa_path=default_sofa_path,
         idx_path=default_idx_path,
@@ -109,13 +108,12 @@ def test_reference_100_epoch_matches_known_output() -> None:
     unc_loss = F.l1_loss
     col_loss = F.l1_loss
 
-    loc_target = args.target_angle
     unc_target = 0
     col_target = 0
 
     
-    loc_model = llado2025(loss = loc_loss, target = loc_target, hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # Llado et al. 2025 model
-    col_model = spectral_matching(loss = col_loss, target = col_target, stim=stim, hrirs=hrirs, target_angle=args.target_angle, fs=fs).to(device=device, dtype=dtype) # Spectral Matching model
+    loc_model = llado2025(loss = loc_loss, target_pos=args.target_pos, hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # Llado et al. 2025 model
+    col_model = spectral_matching(loss = col_loss, target = col_target, stim=stim, hrirs=hrirs, target_pos=args.target_pos, fs=fs).to(device=device, dtype=dtype) # Spectral Matching model
     unc_model = desena2020(loss = unc_loss, target = unc_target, hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # De Sena et al. 2020 model
     
 
@@ -171,7 +169,7 @@ def test_reference_100_epoch_matches_known_output() -> None:
     # Normalise filters to prevent clipping
     est_filters /= np.max(np.abs(est_filters)) / 0.9  # TODO: move this to a more appropriate place at the end of the training loop
 
-    # Expected from: python main.py --epochs=100 --n_samples=10 --target_angle=15 (with device=cpu)
+    # Expected from the legacy 15 degree reference case, now expressed as target_pos.
     expected_path = Path(__file__).resolve().parent / "reference_outputs" / "test_reference_100_epoch_matches_known_output.json"
     with open(expected_path) as f:
         expected = json.load(f)

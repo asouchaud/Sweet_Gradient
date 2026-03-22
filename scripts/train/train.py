@@ -281,21 +281,13 @@ class Train:
                         if listener_indices is None
                         else self.prop.lstn_pos[listener_indices]
                     )
-                    if self.perceptual_models['localisation'].lstn_pos_conf is not None:
-                        self.logger.log_plot_arrows(current_lstn_pos,
+                    self.logger.log_plot_arrows(current_lstn_pos,
                                                    self.prop.spk_pos, 
                                                    est_dict['localisation'], 
                                                    est_dict['uncertainty'] if 'uncertainty' in self.perceptual_models else None, 
                                                    est_dict['coloration'] if 'coloration' in self.perceptual_models else None, 
                                                    epoch, 
-                                                   loc_target=self.perceptual_models['localisation'].target[0])
-                    else:
-                        self.logger.log_plot_arrows(current_lstn_pos,
-                                                   self.prop.spk_pos, 
-                                                   est_dict['localisation'], 
-                                                   est_dict['uncertainty'] if 'uncertainty' in self.perceptual_models else None, 
-                                                   est_dict['coloration'] if 'coloration' in self.perceptual_models else None, 
-                                                   epoch)
+                                                   target_pos=getattr(self.perceptual_models['localisation'], 'target_pos', None))
             
             current_lr = self.optimiser.param_groups[0]['lr']
             time_epoch = time.time() - time_epoch_start

@@ -9,7 +9,7 @@ from scripts.plotting.dense_arrows_plot import plot_arrows
 from scripts.plotting.graph_plot import plot_color
 
 
-def plot_results(estimation_dict, est_filters, bin_stim, prop_model, loss_dict, target_angle, fs, device, dtype, show=True):
+def plot_results(estimation_dict, est_filters, bin_stim, prop_model, loss_dict, target_pos, fs, device, dtype, show=True):
     """
     Plot generic multi-source results (time/frequency filters, localisation arrows,
     and colouration comparison).
@@ -27,28 +27,20 @@ def plot_results(estimation_dict, est_filters, bin_stim, prop_model, loss_dict, 
     time_plot = plot_time(est_filters, show=False)
     freq_plot = plot_freq(est_filters, fs, show=False)
 
+    target_marker = torch.as_tensor(target_pos, device=device, dtype=dtype)
+
     arrow_plot = None
     loc_model = perceptual_models.get("localisation")
     if "localisation" in estimation_dict and loc_model is not None:
-        if loc_model.lstn_pos_conf is not None:
-            arrow_plot = plot_arrows(
-                prop_model.lstn_pos,
-                prop_model.spk_pos,
-                torch.tensor(estimation_dict["localisation"], device=device, dtype=dtype),
-                torch.tensor(estimation_dict["uncertainty"], device=device, dtype=dtype) if "uncertainty" in estimation_dict else None,
-                torch.tensor(estimation_dict["colouration"], device=device, dtype=dtype) if "colouration" in estimation_dict else None,
-                loc_target=torch.tensor(target_angle),
-                show=False,
-            )
-        else:
-            arrow_plot = plot_arrows(
-                prop_model.lstn_pos,
-                prop_model.spk_pos,
-                torch.tensor(estimation_dict["localisation"], device=device, dtype=dtype),
-                torch.tensor(estimation_dict["uncertainty"], device=device, dtype=dtype) if "uncertainty" in estimation_dict else None,
-                torch.tensor(estimation_dict["colouration"], device=device, dtype=dtype) if "colouration" in estimation_dict else None,
-                show=False,
-            )
+        arrow_plot = plot_arrows(
+            prop_model.lstn_pos,
+            prop_model.spk_pos,
+            torch.tensor(estimation_dict["localisation"], device=device, dtype=dtype),
+            torch.tensor(estimation_dict["uncertainty"], device=device, dtype=dtype) if "uncertainty" in estimation_dict else None,
+            torch.tensor(estimation_dict["colouration"], device=device, dtype=dtype) if "colouration" in estimation_dict else None,
+            target_pos=target_marker,
+            show=False,
+        )
 
     color_l_plot = None
     color_r_plot = None
@@ -75,7 +67,7 @@ def plot_results(estimation_dict, est_filters, bin_stim, prop_model, loss_dict, 
     }
 
 
-def plot_stereo_results(estimation_dict, est_filters, bin_stim, stereo_prop, loss_dict, target_angle, fs, device, dtype, show=True):
+def plot_stereo_results(estimation_dict, est_filters, bin_stim, stereo_prop, loss_dict, target_pos, fs, device, dtype, show=True):
     """Backward-compatible alias for older call sites."""
     return plot_results(
         estimation_dict=estimation_dict,
@@ -83,7 +75,7 @@ def plot_stereo_results(estimation_dict, est_filters, bin_stim, stereo_prop, los
         bin_stim=bin_stim,
         prop_model=stereo_prop,
         loss_dict=loss_dict,
-        target_angle=target_angle,
+        target_pos=target_pos,
         fs=fs,
         device=device,
         dtype=dtype,
