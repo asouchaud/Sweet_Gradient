@@ -28,16 +28,15 @@ from scripts.saving.save_results import saver
 if __name__ == "__main__":
     repo_root = Path(__file__).resolve().parent
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
-        epochs=0,
+        epochs=100,
         n_samples=41,
         num_lstn_pos=101,
         listener_batch_size=10,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=True,
-        target_pos=None,
-        selected_stim="random",
+        selected_stim="impulse",
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
-        lr=0.005,
+        lr=0.1,
         seed=46,
         log=1,
         fs=48000,
@@ -48,6 +47,8 @@ if __name__ == "__main__":
         speaker_distance=2.5,  # Distance from each array centre to the reference-system center (0, 0)
         array_centre_angles_deg=[30.0, -30.0],
         speaker_spacing_m=0.02,  # Adjacent spacing within each array (global y-axis)
+        target_pos=[float(2.5 * np.cos(np.deg2rad(30.0))), 0.0],
+        apply_distance_attenuation=True,
     )
     env.dtype = torch.float32
     env.device_str = "cuda" if torch.cuda.is_available() else "cpu"
@@ -85,8 +86,6 @@ if __name__ == "__main__":
     lower_array = [[float(lower_centre[0]), float(lower_centre[1] - off)] for off in relative_offsets]
     env.spk_pos = upper_array + lower_array
     env.n_sources = len(env.spk_pos)
-    target_x = float(np.mean(np.asarray(env.spk_pos, dtype=float)[:, 0]))
-    env.target_pos = [target_x, 0.0]
 
 ## Load data
     gtfb = load_gtfb(fs=env.fs, device=env.device, dtype=env.dtype)  # Load Gamma Tone Filter Bank
@@ -95,7 +94,13 @@ if __name__ == "__main__":
 
 ## Initialize model
     # Initialize sound propagation module
-    stereo_prop = BinauralFreeFieldPropagation(stim=stim, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, fs=env.fs, sofa_file_path=env.sofa_path) # Load stereo anechoic propagation module
+    stereo_prop = BinauralFreeFieldPropagation(
+        stim=stim, 
+        lstn_pos=env.lstn_pos, 
+        spk_pos=env.spk_pos, 
+        fs=env.fs, 
+        sofa_file_path=env.sofa_path, 
+        apply_distance_attenuation=env.apply_distance_attenuation) # Load stereo anechoic propagation module
 
     # Initiate perceptual models
     loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, hrirs=hrirs, fs=env.fs, gtfb=gtfb, lstn_pos_conf=env.lstn_pos).to(device=env.device, dtype=env.dtype) # Llado et al. 2025 model
@@ -161,6 +166,7 @@ if __name__ == "__main__":
     est_filters, estimation_dict, bin_stim = trainer.evaluate()
     # Normalise filters to prevent clipping 
     est_filters /= np.max(np.abs(est_filters)) / 0.9 # TODO: move this to a more appropriate place at the end of the training loop
+    est_filters = est_filters * 1.41
 
     # Print estimated perceptual metrics
     for key, value in estimation_dict.items():
@@ -182,6 +188,7 @@ if __name__ == "__main__":
         prop_model=stereo_prop,
         loss_dict=loss_dict,
         target_pos=env.target_pos,
+        stim=stim,
         fs=env.fs,
         device=env.device,
         dtype=env.dtype,
@@ -209,7 +216,7 @@ if __name__ == "__main__":
     saver_obj.save_plots(plots)
 
     # Save per-epoch source FIR evolution as videos (one per source)
-    # saver_obj.save_filter_video(trainer.h_history, source_index=0, fs=env.fs)
-    # saver_obj.save_filter_video(trainer.h_history, source_index=1, fs=env.fs)
-    # saver_obj.save_filter_video(trainer.h_history, source_index=2, fs=env.fs)
-    # saver_obj.save_filter_video(trainer.h_history, source_index=3, fs=env.fs)
+    saver_obj.save_filter_video(trainer.h_history, source_index=0, fs=env.fs)
+    saver_obj.save_filter_video(trainer.h_history, source_index=1, fs=env.fs)
+    saver_obj.save_filter_video(trainer.h_history, source_index=2, fs=env.fs)
+    saver_obj.save_filter_video(trainer.h_history, source_index=3, fs=env.fs)
