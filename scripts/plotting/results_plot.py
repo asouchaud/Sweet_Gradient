@@ -189,7 +189,7 @@ def plot_pair_directivity_polar(
 
     log_mean_mag2 = 10.0 * np.log10(np.mean(mag2_by_freq, axis=0) + eps)
 
-    fig = plt.figure(figsize=(6, 6))
+    fig = plt.figure(figsize=(8.5, 6))
     ax = fig.add_subplot(111, projection="polar")
     min_db = float("inf")
     max_db = float("-inf")
@@ -208,7 +208,7 @@ def plot_pair_directivity_polar(
             linewidth=2.0,
             linestyle="--",
             color="tab:red",
-            label=r"10 log$_{10}$(mean $|H|^2$) over eval. freqs",
+            label=r"Average over eval. freqs",
             zorder=6,
         )
 
@@ -247,7 +247,7 @@ def plot_pair_directivity_polar(
     idx_str = ", ".join(str(int(i)) for i in group_indices.tolist())
     ax.set_title(f"Group directivity (sources {idx_str}), r={radius:.1f} m")
     # Keep legend fully inside figure bounds so saved PNGs don't clip it.
-    fig.subplots_adjust(right=0.80)
+    fig.subplots_adjust(right=0.72)
     ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=True, fontsize=8)
     ax.grid(True)
 
