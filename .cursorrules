@@ -1,2 +1,3 @@
-Only make the necessary changes to the code (for instance, don't change indentation, or from single to double quotes, or spacing around equals, etc). 
-Prefer inlining the input variables in function calls (unless it is very long). 
+- Only make the necessary changes to the code. For instance, unless I ask you to, please do not change indentation, or from single to double quotes, or spacing around equals, etc. 
+- Prefer inlining the input variables in function calls (unless it is very long). 
+- Do not remove existing comments from the code unless you are changing something that makes them outdated. 
