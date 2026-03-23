@@ -356,18 +356,6 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc=None, col=None, target_pos=None, sho
     ax.scatter(spk_pos[:,0], spk_pos[:,1], c='red', label='Speaker')
     ax.scatter(lstn_pos[:,0], lstn_pos[:,1], c='blue', label='Listener positions')
 
-    target_pos_np = None
-    if target_pos is not None:
-        if torch.is_tensor(target_pos):
-            target_pos_np = target_pos.detach().cpu().numpy().reshape(-1)
-        else:
-            target_pos_np = np.asarray(target_pos, dtype=float).reshape(-1)
-
-        if target_pos_np.size != 2:
-            raise ValueError("target_pos must be a 2D position.")
-
-        ax.scatter(target_pos_np[0], target_pos_np[1], c='green', label='Target position')
-
     arrow_len = 0.2
 
     # Create a colormap with log scaling
@@ -390,19 +378,29 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc=None, col=None, target_pos=None, sho
     cbar = fig_arrow.colorbar(sm, ax=ax)
     cbar.set_label("Colouration / Loss")
 
-    x_values = [lstn_pos[:,0], spk_pos[:,0]]
-    y_values = [lstn_pos[:,1], spk_pos[:,1]]
-    if target_pos_np is not None:
-        x_values.append(np.array([target_pos_np[0]]))
-        y_values.append(np.array([target_pos_np[1]]))
-    x_min = float(np.min(np.concatenate(x_values)))
-    x_max = float(np.max(np.concatenate(x_values)))
-    y_min = float(np.min(np.concatenate(y_values)))
-    y_max = float(np.max(np.concatenate(y_values)))
+    x_min = float(np.min(spk_pos[:,0]))
+    x_max = float(np.max(spk_pos[:,0]))
+    y_min = float(np.min(spk_pos[:,1]))
+    y_max = float(np.max(spk_pos[:,1]))
     x_pad = max(0.1, 0.1 * max(x_max - x_min, 1e-9))
     y_pad = max(0.1, 0.1 * max(y_max - y_min, 1e-9))
-    ax.set_xlim(x_min - x_pad, x_max + x_pad)
-    ax.set_ylim(y_min - y_pad, y_max + y_pad)
+    current_x_min = float(np.min(lstn_pos[:,0]))
+    current_x_max = float(np.max(lstn_pos[:,0]))
+    current_y_min = float(np.min(lstn_pos[:,1]))
+    current_y_max = float(np.max(lstn_pos[:,1]))
+    ax.set_xlim(min(current_x_min, x_min - x_pad), max(current_x_max, x_max + x_pad))
+    ax.set_ylim(min(current_y_min, y_min - y_pad), max(current_y_max, y_max + y_pad))
+    ax.autoscale(enable=False)
+
+    if target_pos is not None:
+        target_pos_np = None
+        if torch.is_tensor(target_pos):
+            target_pos_np = target_pos.detach().cpu().numpy().reshape(-1)
+        else:
+            target_pos_np = np.asarray(target_pos, dtype=float).reshape(-1)
+
+        ax.scatter(target_pos_np[0], target_pos_np[1], c='green', marker='X', label='Target position')
+
     ax.grid()
     ax.set_ylabel('Y position (m)')
     ax.set_xlabel('X position (m)')
