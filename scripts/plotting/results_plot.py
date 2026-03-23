@@ -77,8 +77,6 @@ def plot_results(estimation_dict, est_filters, bin_stim, prop_model, loss_dict, 
         )
 
     if show:
-        import matplotlib.pyplot as plt
-
         plt.show()
 
     return {
