@@ -13,6 +13,8 @@ from scripts.setup.helpers import true_conv1d
 
 
 class spectral_matching(nn.Module):
+    supports_listener_indices = True
+
     def __init__(self, loss, target, stim, hrirs, target_pos, fs, lstn_pos_conf = None, n_fft=4096, sofa_path = os.path.join('data', 'impulses', 'SOFA', 'D1_48K_24bit_256tap_FIR_SOFA.sofa')):
         super(spectral_matching, self).__init__()
         
@@ -83,7 +85,7 @@ class spectral_matching(nn.Module):
 
         return hrir
 
-    def forward(self, bin_stim):
+    def forward(self, bin_stim, listener_indices=None):
         # Expects bin_stim as (batch, n_listeners, 2, T), where 2 is the left and right ear and T is the number of time samples of each ear signal;
         # returns flattened coloration scores with shape (batch * n_listeners,).
 
@@ -107,12 +109,18 @@ class spectral_matching(nn.Module):
         L_signal = bin_stim.shape[-1]
         bin_stim_reshaped = bin_stim.view(N_signals, 2, L_signal)
 
-        if self.reference_stim.shape[0] == 1:
-            reference_stim = self.reference_stim.expand_as(bin_stim_reshaped)
+        reference_stim_base = self.reference_stim
+        if reference_stim_base.ndim == 2:
+            reference_stim_base = reference_stim_base.unsqueeze(0)
+        elif listener_indices is not None:
+            reference_stim_base = reference_stim_base[listener_indices]
+
+        if reference_stim_base.shape[0] == 1:
+            reference_stim = reference_stim_base.expand_as(bin_stim_reshaped)
         else:
-            if self.reference_stim.shape[0] != N_lstn_pos:
+            if reference_stim_base.shape[0] != N_lstn_pos:
                 raise ValueError("reference_stim and bin_stim disagree on the number of listener positions.")
-            reference_stim = self.reference_stim.repeat(batch_size, 1, 1)
+            reference_stim = reference_stim_base.repeat(batch_size, 1, 1)
         
         coloration = log_spectral_distortion(bin_stim_reshaped, reference_stim)
 
