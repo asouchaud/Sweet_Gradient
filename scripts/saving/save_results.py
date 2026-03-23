@@ -1,6 +1,7 @@
 from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
+from io import BytesIO
 import json
 import sys
 from types import SimpleNamespace
@@ -8,8 +9,10 @@ import numpy as np
 from datetime import datetime
 import scipy.io as sio
 import matplotlib.pyplot as plt
+from PIL import Image
 
 from scripts.plotting.graph_plot import plot_frequency_response, plot_stem_signal, rfft_mag_db_phase, update_stem_artists
+from scripts.plotting.results_plot import plot_pair_directivity_polar
 
 
 def _to_json_safe(obj):
@@ -257,6 +260,89 @@ class saver():
         )
         anim.save(out_path, writer=PillowWriter(fps=fps))
         plt.close(fig)
+
+    def save_directivity_video(
+        self,
+        h_history,
+        spk_pos,
+        fs,
+        group_indices,
+        radius=None,
+        n_angles=720,
+        freqs_eval_hz=(250, 500, 1000, 2000, 4000),
+        c=343.0,
+        overlay_curve=None,
+        overlay_curves=None,
+        overlay_labels=None,
+        fps: int = 20,
+        hold_last_seconds: float = 2.0,
+        resolution_scale: float = 0.7,
+        db_floor=None,
+        overlay_avg_directivity: bool = True,
+    ):
+        if h_history is None or len(h_history) == 0:
+            return
+
+        arr = np.asarray(h_history)
+        if arr.ndim != 3:
+            raise ValueError(f"h_history must be 3D, got shape {arr.shape}")
+
+        if arr.shape[1] <= arr.shape[2]:
+            est_filters_epoch = arr
+        else:
+            est_filters_epoch = np.swapaxes(arr, 1, 2)
+
+        group_indices = np.asarray(group_indices, dtype=int).reshape(-1)
+        if group_indices.size < 1:
+            raise ValueError("group_indices must contain at least one loudspeaker index.")
+        if np.any(group_indices < 0) or np.any(group_indices >= est_filters_epoch.shape[1]):
+            raise IndexError("group_indices contain an out-of-bounds loudspeaker index.")
+
+        video_dir = self.run_dir / "videos"
+        video_dir.mkdir(parents=True, exist_ok=True)
+        idx_str = "_".join(str(int(i)) for i in group_indices.tolist())
+        out_path = video_dir / f"directivity_sources_{idx_str}.gif"
+
+        dpi = max(20, int(round(100 * max(0.1, float(resolution_scale)))))
+        frames = []
+        for epoch_idx, est_filters in enumerate(est_filters_epoch):
+            fig = plot_pair_directivity_polar(
+                est_filters=est_filters,
+                spk_pos=spk_pos,
+                fs=fs,
+                group_indices=group_indices,
+                radius=radius,
+                n_angles=n_angles,
+                freqs_eval_hz=freqs_eval_hz,
+                c=c,
+                overlay_curve=overlay_curve,
+                overlay_curves=overlay_curves,
+                overlay_labels=overlay_labels,
+                show=False,
+                db_floor=db_floor,
+                overlay_avg_directivity=overlay_avg_directivity,
+            )
+            fig.axes[0].set_title(f"{fig.axes[0].get_title()} - epoch {epoch_idx}")
+
+            buf = BytesIO()
+            fig.savefig(buf, format="png", dpi=dpi)
+            plt.close(fig)
+            buf.seek(0)
+            frames.append(Image.open(buf).convert("RGB").copy())
+            buf.close()
+
+        if len(frames) == 0:
+            return
+
+        hold_n = int(round(max(0.0, float(hold_last_seconds)) * max(int(fps), 1)))
+        frames.extend([frames[-1].copy() for _ in range(hold_n)])
+        frames[0].save(
+            out_path,
+            save_all=True,
+            append_images=frames[1:],
+            duration=int(round(1000 / max(int(fps), 1))),
+            loop=0,
+        )
 
 
     def save_results(self, estimation_dict, est_filters, fs, lstn_pos, spk_pos, trainer, env=None):

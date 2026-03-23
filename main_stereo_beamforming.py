@@ -110,7 +110,7 @@ if __name__ == "__main__":
 
     env.loc_weight = 1.0
     env.unc_weight = 1.0e1
-    env.col_weight = 1.0e-1
+    env.col_weight = 1.0e-2
     env.reg_weight = 1.0e-2
 
     loss_dict = {
@@ -220,3 +220,14 @@ if __name__ == "__main__":
     saver_obj.save_filter_video(trainer.h_history, source_index=1, fs=env.fs)
     saver_obj.save_filter_video(trainer.h_history, source_index=2, fs=env.fs)
     saver_obj.save_filter_video(trainer.h_history, source_index=3, fs=env.fs)
+    saver_obj.save_directivity_video(
+        trainer.h_history,
+        spk_pos=env.spk_pos,
+        fs=env.fs,
+        group_indices=right_array_indices,
+        radius=env.directivity_radius_m,
+        freqs_eval_hz=env.directivity_freqs_hz,
+        overlay_curves=[rodenas2004_fig12_opt, rodenas2004_fig12_1000Hz],
+        overlay_labels=["rodenas2004 (optimum)", "rodenas2004 (1000 Hz)"],
+        db_floor=env.directivity_db_floor,
+    )
