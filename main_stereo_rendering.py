@@ -136,6 +136,7 @@ def run_experiment(loss_dict_builder, run_label):
         prop_model=stereo_prop,
         loss_dict=loss_dict,
         target_pos=env.target_pos,
+        stim=stim,
         fs=env.fs,
         device=env.device,
         dtype=env.dtype,

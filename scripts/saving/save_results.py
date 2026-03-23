@@ -319,12 +319,14 @@ class saver():
         if isinstance(plots_or_time_plot, dict):
             time_plot = plots_or_time_plot.get("time_plot")
             freq_plot = plots_or_time_plot.get("freq_plot")
+            stimulus_plot = plots_or_time_plot.get("stimulus_plot")
             arrows_plot = plots_or_time_plot.get("arrow_plot")
             color_l = plots_or_time_plot.get("color_l_plot")
             color_r = plots_or_time_plot.get("color_r_plot")
             directivity_plot = plots_or_time_plot.get("directivity_plot")
         else:
             time_plot = plots_or_time_plot
+            stimulus_plot = None
             directivity_plot = None
 
         plot_folder = self.run_dir / "plots"
@@ -334,6 +336,8 @@ class saver():
             time_plot.savefig(plot_folder / "time_filters.png")
         if freq_plot is not None:
             freq_plot.savefig(plot_folder / "freq_filters.png")
+        if stimulus_plot is not None:
+            stimulus_plot.savefig(plot_folder / "stimulus.png")
 
         if arrows_plot is not None:
             arrows_plot.savefig(plot_folder / "arrow_plot.png")

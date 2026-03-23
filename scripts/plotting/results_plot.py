@@ -5,11 +5,13 @@ import matplotlib.pyplot as plt
 
 from scripts.plotting.graph_plot import plot_time
 from scripts.plotting.graph_plot import plot_freq
+from scripts.plotting.graph_plot import plot_stem_signal
+from scripts.plotting.graph_plot import plot_frequency_response
 from scripts.plotting.dense_arrows_plot import plot_arrows
 from scripts.plotting.graph_plot import plot_color
 
 
-def plot_results(estimation_dict, est_filters, bin_stim, prop_model, loss_dict, target_pos, fs, device, dtype, show=True):
+def plot_results(estimation_dict, est_filters, bin_stim, prop_model, loss_dict, target_pos, stim, fs, device, dtype, show=True):
     """
     Plot generic multi-source results (time/frequency filters, localisation arrows,
     and colouration comparison).
@@ -26,6 +28,27 @@ def plot_results(estimation_dict, est_filters, bin_stim, prop_model, loss_dict, 
 
     time_plot = plot_time(est_filters, show=False)
     freq_plot = plot_freq(est_filters, fs, show=False)
+    stim_np = torch.as_tensor(stim, device=device, dtype=dtype).detach().cpu().numpy().reshape(-1)
+    stimulus_plot, (stimulus_time_ax, stimulus_freq_ax) = plt.subplots(
+        1,
+        2,
+        figsize=(10, 3),
+        gridspec_kw={"width_ratios": [2.0, 1.3]},
+    )
+    plot_stem_signal(
+        stim_np,
+        ax=stimulus_time_ax,
+        title="Input stimulus (time domain)",
+        max_min=float(np.max(np.abs(stim_np))) if stim_np.size and np.max(np.abs(stim_np)) > 0.0 else 1.0,
+    )
+    plot_frequency_response(
+        h=stim_np,
+        fs=fs,
+        ax_mag=stimulus_freq_ax,
+        mag_title="Input stimulus (frequency domain)",
+        include_phase=False,
+    )
+    stimulus_plot.tight_layout()
 
     target_marker = torch.as_tensor(target_pos, device=device, dtype=dtype)
 
@@ -61,13 +84,14 @@ def plot_results(estimation_dict, est_filters, bin_stim, prop_model, loss_dict, 
     return {
         "time_plot": time_plot,
         "freq_plot": freq_plot,
+        "stimulus_plot": stimulus_plot,
         "arrow_plot": arrow_plot,
         "color_l_plot": color_l_plot,
         "color_r_plot": color_r_plot,
     }
 
 
-def plot_stereo_results(estimation_dict, est_filters, bin_stim, stereo_prop, loss_dict, target_pos, fs, device, dtype, show=True):
+def plot_stereo_results(estimation_dict, est_filters, bin_stim, stereo_prop, loss_dict, target_pos, stim, fs, device, dtype, show=True):
     """Backward-compatible alias for older call sites."""
     return plot_results(
         estimation_dict=estimation_dict,
@@ -76,6 +100,7 @@ def plot_stereo_results(estimation_dict, est_filters, bin_stim, stereo_prop, los
         prop_model=stereo_prop,
         loss_dict=loss_dict,
         target_pos=target_pos,
+        stim=stim,
         fs=fs,
         device=device,
         dtype=dtype,
