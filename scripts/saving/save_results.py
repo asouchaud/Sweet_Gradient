@@ -389,6 +389,10 @@ class saver():
                 results[key] = np.asarray(value).tolist()
             except Exception:
                 results[key] = str(value)
+        
+        # Save Stimulus
+        stim_np = trainer.prop.stim.detach().cpu().numpy().squeeze()
+        np.save(artifacts_dir / "stimulus.npy", stim_np)
 
         # Include final estimated source filters as well (same as artifacts/est_filters.npy)
         try:
