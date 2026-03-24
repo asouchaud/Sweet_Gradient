@@ -258,8 +258,8 @@ def DAFx2026_fig7_plots(run_folder, CTC_filts):
     ctc_rms = np.sqrt(np.mean(CTC_filts**2))
     filts_rms = np.sqrt(np.mean(filts**2))
 
-    CTC_fft = np.fft.rfft(CTC_filts/ctc_rms, axis=-1)
-    filts_fft = np.fft.rfft(filts/filts_rms, axis=-1)
+    CTC_fft = np.fft.rfft(CTC_filts/ctc_rms, n = N, axis=-1)
+    filts_fft = np.fft.rfft(filts/filts_rms, n = N, axis=-1)
 
     # Magnitude (already yours)
     CTC_f = 20*np.log10(np.abs(CTC_fft))
