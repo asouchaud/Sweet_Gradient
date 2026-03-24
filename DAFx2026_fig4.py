@@ -34,7 +34,7 @@ from scripts.train.train import ListenerBasedLoss, SourceBasedLoss, Train
 from scripts.saving.save_results import saver
 
 
-def run_experiment(loss_dict_builder, run_label, target_angle):
+def run_experiment(loss_dict_builder, run_label, init):
     repo_root = Path(__file__).resolve().parent
     d = 10
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
@@ -43,11 +43,11 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
         listener_batch_size=None,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=True,
         n_samples=128,
-        target_pos=[d, float(np.tan(np.deg2rad(target_angle)) * d)],
+        target_pos=[d, float(np.tan(np.deg2rad(0.0)) * d)],
         selected_stim="random",
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
-        lr=0.01,
+        lr=0.001,
         seed=46,
         log=1,
         fs=48000,
@@ -94,10 +94,11 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
         n_sources=env.n_sources,
     ).to(device=env.device, dtype=env.dtype)
     # Initialise FIR filter weights
-    with torch.no_grad():
-        for i, branch in enumerate(nn_model.branches):
-            branch.weight.fill_(0.0)
-            branch.weight[0, 0] = 1.0
+    if init:
+        with torch.no_grad():
+            for i, branch in enumerate(nn_model.branches):
+                branch.weight.fill_(0.0)
+                branch.weight[0, 0] = 1.0
 
     nn_optimiser = torch.optim.Adam(nn_model.parameters(), lr=env.lr)
 
@@ -211,20 +212,13 @@ def sofa_find(source_angle, sofaile):
     return np.argmin(dists)
 
 
-def DAFx2026_fig4_plots(run_folders, lstn_pos, spk_pos):
+def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos):
 
-    sofaile = sf.read_sofa(r"data\impulses\SOFA\D1_48K_24bit_256tap_FIR_SOFA.sofa")
-    idx = sofa_find(0, sofaile)
-    ref_hrir = sofaile.Data_IR[idx]
-
-    fig_colors = [ "#33a02c", "#1f78b4", "#e31a1c"]
 
     arrow_width = 3
     arrow_head_width = 0.12
     arrow_head_len = 0.14
     arrow_len = 1.2
-    ref_mag_width = 5
-    est_mag_width = 3
     left_ir_width = 3
     right_ir_width = 2 
     fontsize = 14
@@ -241,17 +235,17 @@ def DAFx2026_fig4_plots(run_folders, lstn_pos, spk_pos):
     sm.set_array([])
 
 
-    fig, axes = plt.subplots(3, 3, figsize=(9, 9))  # 3 columns × 7 rows
+    fig, axes = plt.subplots(4, 2, figsize=(9, 12))  # 3 columns × 7 rows
     axes = axes.flatten()  # easier indexing
 
     for i, ax in enumerate(axes):
 
-        folder_name = run_folders[i//3]
+        folder_name = run_folders[i//2]
         json_file_path = os.path.join(folder_name, "results.json")
         json_data = json.load(open(json_file_path))
 
         #### IRs PLOT ####
-        if i % 3 == 0:
+        if i % 2 == 0:
             filters_path = os.path.join(folder_name, "artifacts", "est_filters.npy")
             filters = np.load(filters_path)
             filters = filters * 0.9 / np.max(np.abs(filters))
@@ -259,45 +253,14 @@ def DAFx2026_fig4_plots(run_folders, lstn_pos, spk_pos):
             ax.plot(filters[0], linewidth = left_ir_width)
             ax.plot(filters[1], linewidth = right_ir_width)
             ax.grid()
-            ax.set_ylim(-0.5,1)
+            ax.set_ylim(-1,1)
             ax.set_ylabel("Amplitude", fontsize = fontsize)
 
             if i > 5:
                 ax.set_xlabel("Coefficients", fontsize = fontsize)
 
-        #### COLOURATION PLOT ####
-        if i % 3 == 1:
-            stimulus_path = os.path.join(folder_name, "artifacts", "stimulus.npy")
-            stimulus = np.load(stimulus_path)
-        
-            prop = BinauralFreeFieldPropagation(torch.tensor(stimulus, dtype=torch.float32).view(1,1,-1), lstn_pos, spk_pos, r"data\impulses\SOFA\D1_48K_24bit_256tap_FIR_SOFA.sofa")
-            filters_torch = torch.tensor(filters, dtype=torch.float32).unsqueeze(0)
-            bin_stim = prop(filters_torch).numpy()
-
-            n_fft = 4096
-            freq = np.fft.rfftfreq(n=n_fft,d=1/48000)
-            bin_stim_fft = 20*np.log10(np.abs(np.fft.rfft(bin_stim, n=n_fft, axis = -1))).squeeze()
-
-            ref_stim = causal_conv1d(stimulus, ref_hrir[0])
-            ref_fft = 20*np.log10(np.abs(np.fft.rfft(ref_stim, n=n_fft)))
-
-            ref_fft_s = smooth_third_octave(freq, ref_fft)
-            bin_fft_s = np.zeros_like(bin_stim_fft[:,0,:])
-            for j in range(3):
-                bin_fft_s[j] = smooth_third_octave(freq, bin_stim_fft[j,0,:])
-
-            
-            for j in range(3):
-                ax.semilogx(freq[9:], bin_fft_s[j,9:], color=fig_colors[j], linewidth = est_mag_width)
-            ax.semilogx(freq[9:], ref_fft_s[9:], color="#000000", linewidth=ref_mag_width)
-            ax.set_ylim(-10,40)
-            ax.grid()
-            ax.set_ylabel("Magnitude [dB]", fontsize = fontsize)
-            if i > 5:
-                ax.set_xlabel("Frequency [Hz]", fontsize = fontsize)
-        
         #### ARROWS PLOT #####
-        if i % 3 == 2:
+        if i % 2 == 1:
             loc = json_data['localisation']
             unc = json_data['uncertainty']
             col = json_data['colouration']
@@ -327,10 +290,7 @@ def DAFx2026_fig4_plots(run_folders, lstn_pos, spk_pos):
             sm.set_array([])
 
 
-            legend_elements = [
-                Line2D([0], [0], color='orange', lw=2, label='Model prediction'),
-            ]
-
+  
             ax.set_ylim(-1.25,1.25)
             ax.set_xlim(-0.5,2.0)
             ax.grid(zorder = 1)
@@ -351,38 +311,49 @@ def DAFx2026_fig4_plots(run_folders, lstn_pos, spk_pos):
 
     
 
-
-
 if __name__ == "__main__":
-    run_dir_loc, _, _ = run_experiment(
+    run_dir_init_0_r_0, _, _ = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "localisation": ListenerBasedLoss(model=loc_model, weight=1.0, device=device, dtype=dtype),
         },
-        run_label="localisation_only_0",
-        target_angle=0.0
+        run_label="init_0_r_0",
+        init=0
     )
 
-    run_dir_unc, _, _ = run_experiment(
+    run_dir_init_0_r_2, _, _ = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "uncertainty": ListenerBasedLoss(model=unc_model, weight=1.0, device=device, dtype=dtype),
+            "localisation": ListenerBasedLoss(model=loc_model, weight=1.0, device=device, dtype=dtype),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1.0),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1.0),
         },
-        run_label="localisation_only_10",
-        target_angle=00.0
+        run_label="init_0_r_2",
+        init=0
     )
 
-    run_dir_col, lstn_pos, spk_pos = run_experiment(
+    run_dir_init_2_r_0, _, _ = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "colouration": ListenerBasedLoss(model=col_model, weight=1.0, device=device, dtype=dtype),
+            "localisation": ListenerBasedLoss(model=loc_model, weight=1.0, device=device, dtype=dtype),
         },
-        run_label="localisation_only_20",
-        target_angle=00.0
+        run_label="init_2_r_0",
+       init=1
     )
 
-    folders = [run_dir_loc,
-               run_dir_unc,
-               run_dir_col]
+    run_dir_init_2_r_2, lstn_pos, spk_pos = run_experiment(
+        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
+            "localisation": ListenerBasedLoss(model=loc_model, weight=1.0, device=device, dtype=dtype),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1.0),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1.0),
+        },
+        run_label="init_2_r_2",
+       init=1
+    )
+
+    folders = [run_dir_init_0_r_0,
+               run_dir_init_0_r_2,
+               run_dir_init_2_r_0,
+               run_dir_init_2_r_2]
     
-    DAFx2026_fig4_plots(folders, np.array(lstn_pos), np.array(spk_pos))
+    DAFx2026_fig5_plots(folders, np.array(lstn_pos), np.array(spk_pos))
 
 
 

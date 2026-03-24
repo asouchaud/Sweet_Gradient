@@ -1,6 +1,7 @@
 # Enable MPS fallback for PyTorch on macOS
 import os
 import json
+import sofar as sf
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 
 # Import interface libraries
@@ -46,7 +47,7 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
         selected_stim="random",
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
-        lr=0.01,
+        lr=0.001,
         seed=46,
         log=1,
         fs=48000,
@@ -166,13 +167,64 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
 
     return(saver_obj.run_dir, env.lstn_pos, env.spk_pos)
 
+def causal_conv1d(x, kernel):
+    """
+    x: (T,) input signal
+    kernel: (K,) convolution kernel
+    returns: (T,) causal convolution output
+    """
+    
+    K = len(kernel)
 
-def DAFx2026_fig3_plots(run_folders, lstn_pos, spk_pos):
+    # pad on the left so output length matches input
+    x_padded = np.pad(x, (K-1, 0), mode='constant')
+
+    y = np.zeros_like(x, dtype=float)
+
+    for t in range(len(x)):
+        y[t] = np.sum(x_padded[t:t+K] * kernel[::-1])
+
+    return y
+
+def smooth_third_octave(freq, mag_db):
+    smoothed = np.zeros_like(mag_db)
+
+    k = 2**(1/6)  # 1/3 octave half-width
+
+    for i, fc in enumerate(freq):
+        f_low = fc / k
+        f_high = fc * k
+
+        idx = np.where((freq >= f_low) & (freq <= f_high))[0]
+
+        smoothed[i] = np.mean(mag_db[idx])
+
+    return smoothed
+
+def sofa_find(source_angle, sofaile):
+    pos = sofaile.SourcePosition[:, :2]          # (N,2)
+
+    source = np.array([[source_angle, 0]])       # (1,2)
+
+    dists = np.linalg.norm(source - pos, axis=1)
+
+    return np.argmin(dists)
+
+
+def DAFx2026_fig4_plots(run_folders, lstn_pos, spk_pos):
+
+    sofaile = sf.read_sofa(r"data\impulses\SOFA\D1_48K_24bit_256tap_FIR_SOFA.sofa")
+    idx = sofa_find(0, sofaile)
+    ref_hrir = sofaile.Data_IR[idx]
+
+    fig_colors = [ "#33a02c", "#1f78b4", "#e31a1c"]
 
     arrow_width = 3
     arrow_head_width = 0.12
     arrow_head_len = 0.14
     arrow_len = 1.2
+    ref_mag_width = 5
+    est_mag_width = 3
     left_ir_width = 3
     right_ir_width = 2 
     fontsize = 14
@@ -185,19 +237,21 @@ def DAFx2026_fig3_plots(run_folders, lstn_pos, spk_pos):
         [(0,1,0), (0.8,0.4,0), (0.8,0,0)]  # green → yellow → red
     )
 
-    fig, axes = plt.subplots(3, 2, figsize=(6,9))  # 3 columns × 7 rows
-    axes = axes.flatten()  # easier indexing
-
     sm = cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
 
+
+    fig, axes = plt.subplots(3, 3, figsize=(9, 9))  # 3 columns × 7 rows
+    axes = axes.flatten()  # easier indexing
+
     for i, ax in enumerate(axes):
-        folder_name = run_folders[i//2]
+
+        folder_name = run_folders[i//3]
         json_file_path = os.path.join(folder_name, "results.json")
         json_data = json.load(open(json_file_path))
 
         #### IRs PLOT ####
-        if i % 2 == 0:
+        if i % 3 == 0:
             filters_path = os.path.join(folder_name, "artifacts", "est_filters.npy")
             filters = np.load(filters_path)
             filters = filters * 0.9 / np.max(np.abs(filters))
@@ -208,13 +262,42 @@ def DAFx2026_fig3_plots(run_folders, lstn_pos, spk_pos):
             ax.set_ylim(-0.5,1)
             ax.set_ylabel("Amplitude", fontsize = fontsize)
 
-            if i > 3:
+            if i > 5:
                 ax.set_xlabel("Coefficients", fontsize = fontsize)
 
+        #### COLOURATION PLOT ####
+        if i % 3 == 1:
+            stimulus_path = os.path.join(folder_name, "artifacts", "stimulus.npy")
+            stimulus = np.load(stimulus_path)
+        
+            prop = BinauralFreeFieldPropagation(torch.tensor(stimulus, dtype=torch.float32).view(1,1,-1), lstn_pos, spk_pos, r"data\impulses\SOFA\D1_48K_24bit_256tap_FIR_SOFA.sofa")
+            filters_torch = torch.tensor(filters, dtype=torch.float32).unsqueeze(0)
+            bin_stim = prop(filters_torch).numpy()
 
+            n_fft = 4096
+            freq = np.fft.rfftfreq(n=n_fft,d=1/48000)
+            bin_stim_fft = 20*np.log10(np.abs(np.fft.rfft(bin_stim, n=n_fft, axis = -1))).squeeze()
+
+            ref_stim = causal_conv1d(stimulus, ref_hrir[0])
+            ref_fft = 20*np.log10(np.abs(np.fft.rfft(ref_stim, n=n_fft)))
+
+            ref_fft_s = smooth_third_octave(freq, ref_fft)
+            bin_fft_s = np.zeros_like(bin_stim_fft[:,0,:])
+            for j in range(3):
+                bin_fft_s[j] = smooth_third_octave(freq, bin_stim_fft[j,0,:])
+
+            
+            for j in range(3):
+                ax.semilogx(freq[9:], bin_fft_s[j,9:], color=fig_colors[j], linewidth = est_mag_width)
+            ax.semilogx(freq[9:], ref_fft_s[9:], color="#000000", linewidth=ref_mag_width)
+            ax.set_ylim(-10,40)
+            ax.grid()
+            ax.set_ylabel("Magnitude [dB]", fontsize = fontsize)
+            if i > 5:
+                ax.set_xlabel("Frequency [Hz]", fontsize = fontsize)
         
         #### ARROWS PLOT #####
-        if i % 2 == 1:
+        if i % 3 == 2:
             loc = json_data['localisation']
             unc = json_data['uncertainty']
             col = json_data['colouration']
@@ -224,28 +307,39 @@ def DAFx2026_fig3_plots(run_folders, lstn_pos, spk_pos):
 
 
             for x, y, ang, leng, col_val in zip(lstn_pos[:,0], lstn_pos[:,1], loc, unc, col):  
-
+                
                 angles = [0,10,20]
                 x_lin = np.linspace(-1,3,200)
-                y_lin = x_lin * np.tan(np.deg2rad(angles[i//2])) - y
+                y_lin = x_lin * np.tan(np.deg2rad(0)) - y
 
-                ax.plot(x_lin,y_lin, color = "black", linestyle = "dashed", lw = 1, zorder = 2)
+                ax.plot(x_lin,y_lin, color = "#000000", linestyle = "dashed", lw = 1, zorder = 2)
+
                 dx = (1-leng)*arrow_len * np.cos(np.deg2rad(ang))
                 dy = (1-leng)*arrow_len * np.sin(np.deg2rad(ang))
 
                 color = cmap(norm(max(col_val, 1e-3)))  # avoid zero for log scale
 
                 ax.arrow(float(x), float(y), float(dx), float(dy),
-                        head_width=arrow_head_width, head_length=arrow_head_len, fc=color, ec=color, linewidth = arrow_width, zorder = 3)  
+                        head_width=arrow_head_width, head_length=arrow_head_len, fc=color, ec=color, linewidth = arrow_width, zorder = 3)    
+
+                # Add colorbar
+            sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+            sm.set_array([])
+
+
+            legend_elements = [
+                Line2D([0], [0], color='orange', lw=2, label='Model prediction'),
+            ]
 
             ax.set_ylim(-1.25,1.25)
             ax.set_xlim(-0.5,2.0)
             ax.grid(zorder = 1)
             ax.set_ylabel('Y position [m]', fontsize = fontsize)
-            if i > 3:
+            if i > 5:
                 ax.set_xlabel('X position [m]', fontsize = fontsize)
 
         ax.tick_params(axis='both', labelsize=fontsize)  
+
 
     plt.tight_layout(rect=[0, 0.05, 1, 1])
 
@@ -260,7 +354,7 @@ def DAFx2026_fig3_plots(run_folders, lstn_pos, spk_pos):
 
 
 if __name__ == "__main__":
-    run_dir_00, _, _ = run_experiment(
+    run_dir_loc, _, _ = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "localisation": ListenerBasedLoss(model=loc_model, weight=1.0, device=device, dtype=dtype),
         },
@@ -268,27 +362,27 @@ if __name__ == "__main__":
         target_angle=0.0
     )
 
-    run_dir_10, _, _ = run_experiment(
+    run_dir_unc, _, _ = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1.0, device=device, dtype=dtype),
+            "uncertainty": ListenerBasedLoss(model=unc_model, weight=1.0, device=device, dtype=dtype),
         },
         run_label="localisation_only_10",
-        target_angle=10.0
+        target_angle=00.0
     )
 
-    run_dir_20, lstn_pos, spk_pos = run_experiment(
+    run_dir_col, lstn_pos, spk_pos = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1.0, device=device, dtype=dtype),
+            "colouration": ListenerBasedLoss(model=col_model, weight=1.0, device=device, dtype=dtype),
         },
         run_label="localisation_only_20",
-        target_angle=20.0
+        target_angle=00.0
     )
 
-    folders = [run_dir_00,
-               run_dir_10,
-               run_dir_20]
+    folders = [run_dir_loc,
+               run_dir_unc,
+               run_dir_col]
     
-    DAFx2026_fig3_plots(folders, np.array(lstn_pos), np.array(spk_pos))
+    DAFx2026_fig4_plots(folders, np.array(lstn_pos), np.array(spk_pos))
 
 
 
