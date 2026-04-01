@@ -37,19 +37,19 @@ from scripts.saving.save_results import saver
 
 def run_experiment(loss_dict_builder, run_label, target_angle):
     repo_root = Path(__file__).resolve().parent
-    d = 10
+    d = 100
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
-        epochs=3000,
+        epochs=5200,
         num_lstn_pos=1,
         listener_batch_size=None,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=True,
-        n_samples=128,
+        n_samples=256,
         target_pos=[d, float(np.tan(np.deg2rad(target_angle)) * d)],
         selected_stim="impulse",
-        sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"),
+        sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
-        lr=0.005,
-        seed=46,
+        lr=0.0005,
+        seed=48,
         log=1,
         fs=48000,
     )
@@ -61,7 +61,8 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
     print(f"Using device: {env.device}")
 
     # Loudspkeaker and listener positions
-    env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)] 
+    # env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)] 
+    env.lstn_pos = [[0.0, 0.0]] # Only the centre listener position is used for this experiment
     base_angle_rad = np.deg2rad(30.0)
     env.speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
     env.spk_pos = [
@@ -166,15 +167,15 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
 
     plt.close('all')
 
-    return(saver_obj.run_dir, env.lstn_pos, env.spk_pos)
+    return(saver_obj.run_dir, env.lstn_pos, env.spk_pos, trainer, col_model)
 
 
 
 # ---------------------------
 # Inversion
 # ---------------------------
-def compute_xtc_filters(H, N, reg=1e-3):
-    # N = H.shape[-1]
+def compute_xtc_filters(H, reg=0):
+    N = H.shape[-1]
     G = np.zeros_like(H, dtype=np.complex64)
     
     for k in range(N):
@@ -185,18 +186,19 @@ def compute_xtc_filters(H, N, reg=1e-3):
 
 
 def sofa_find(source_angle, sofaile):
-    pos = np.array(sofaile.SourcePosition[:, :2])
+    pos = np.mod(np.array(sofaile.SourcePosition[:, :2]),360)
        
-    source_angle = np.array([[source_angle, 0]])
+    source_angle = np.array([[source_angle%360, 0]])
     diff = source_angle[:, None, :] - pos[None, :, :]
     dists = np.linalg.vector_norm(diff, axis=2)
+    # dists = np.minimum(dists, 360-dists)  # account for circularity
     return np.argmin(dists, axis=1)
 
 def Compute_CTC_filters(target_angle):
 
-    N = 128
+    N = 256
 
-    sofaile = sf.read_sofa("data\impulses\SOFA\D1_48K_24bit_256tap_FIR_SOFA.sofa")
+    sofaile = sf.read_sofa("data\impulses\SOFA\SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
     left_spk_hrirs = sofaile.Data_IR[760] # 30 deg
     right_spk_hrirs = sofaile.Data_IR[8064] # 330 deg
     ref_idx = sofa_find(target_angle, sofaile)
@@ -206,7 +208,7 @@ def Compute_CTC_filters(target_angle):
     IRs = np.concatenate((left_spk_hrirs[:,None,:], right_spk_hrirs[:,None,:]), axis = 1)
     H = np.fft.fft(IRs, n=N, axis = -1)
     # H, IRs = build_transfer_matrix()
-    G = compute_xtc_filters(H, N)
+    G = compute_xtc_filters(H)
 
     L_f = G[0,0] * ref_hrtf[0] + G[0,1] * ref_hrtf[1]
     R_f = G[1,0] * ref_hrtf[0] + G[1,1] * ref_hrtf[1]
@@ -248,22 +250,39 @@ def smooth_third_octave(freq, mag_db):
 
 
 
-def DAFx2026_fig7_plots(run_folder, CTC_filts):
+def DAFx2026_fig7_plots(run_folder, CTC_filts, trainer, col_model):
 
     folder_name = run_folder[0]
     filt_path = os.path.join(folder_name, "artifacts", "est_filters.npy")
     filts = np.load(filt_path)
-    N = 4096 #filts.shape[-1]
+    N_filts =  filts.shape[-1]
 
-    ctc_rms = np.sqrt(np.mean(CTC_filts**2))
-    filts_rms = np.sqrt(np.mean(filts**2))
+    ctc_normed = CTC_filts / np.sqrt(np.mean(CTC_filts**2))
+    filts_normed = filts / np.sqrt(np.mean(filts**2))
 
-    CTC_fft = np.fft.rfft(CTC_filts/ctc_rms, n = N, axis=-1)
-    filts_fft = np.fft.rfft(filts/filts_rms, n = N, axis=-1)
+    ctc_filts_torch = torch.tensor(ctc_normed, device=trainer.device, dtype=trainer.dtype).unsqueeze(0)
+    filts_torch = torch.tensor(filts_normed, device=trainer.device, dtype=trainer.dtype).unsqueeze(0)
+    
+    bin_stim_ctc = trainer.prop(ctc_filts_torch).cpu().numpy()[0].squeeze()
+    bin_stim_filts = trainer.prop(filts_torch).cpu().numpy()[0].squeeze()
+    
+    ref = col_model.reference_stim.cpu().numpy()
+    N_ref =  ref.shape[-1]
 
-    # Magnitude (already yours)
+    bin_stim_ctc_normed = bin_stim_ctc / np.sqrt(np.mean(bin_stim_ctc**2))
+    bin_stim_filts_normed = bin_stim_filts / np.sqrt(np.mean(bin_stim_filts**2))
+    ref_normed = ref / np.sqrt(np.mean(ref**2))
+
+    CTC_fft = np.fft.rfft(ctc_normed, n = N_filts, axis=-1)
+    filts_fft = np.fft.rfft(filts_normed, n = N_filts, axis=-1)
+
+    # Magnitude
     CTC_f = 20*np.log10(np.abs(CTC_fft))
     filts_f = 20*np.log10(np.abs(filts_fft))
+
+    lsd_freq = np.sqrt(np.mean((CTC_f - filts_f) ** 2, axis=-1))
+    lsd = lsd_freq.mean(axis=-1)
+    print(f"Log Spectral Distance between CTC and proposed method filters: {lsd:.2f} dB")
 
     # Phase
     CTC_phase = np.angle(CTC_fft)
@@ -272,35 +291,80 @@ def DAFx2026_fig7_plots(run_folder, CTC_filts):
     CTC_phase_unwrapped = np.unwrap(CTC_phase, axis=-1)
     filts_phase_unwrapped = np.unwrap(filts_phase, axis=-1)
 
-    freqs = np.fft.rfftfreq(N, d = 1/48000)
+    freqs_filt = np.fft.rfftfreq(N_filts, d = 1/48000)
 
-    CTC_f_smooth_left = smooth_third_octave(freqs, CTC_f[0])
-    CTC_f_smooth_right = smooth_third_octave(freqs, CTC_f[1])
-    filts_f_smooth_left = smooth_third_octave(freqs, filts_f[0])
-    filts_f_smoot_right = smooth_third_octave(freqs, filts_f[1])
+    CTC_f_smooth_left = smooth_third_octave(freqs_filt, CTC_f[0])
+    CTC_f_smooth_right = smooth_third_octave(freqs_filt, CTC_f[1])
+    filts_f_smooth_left = smooth_third_octave(freqs_filt, filts_f[0])
+    filts_f_smooth_right = smooth_third_octave(freqs_filt, filts_f[1])
+
+
+    ref_fft = np.fft.rfft(ref_normed, n = N_ref, axis=-1)
+    bin_stim_filts_fft = np.fft.rfft(bin_stim_filts_normed, n = N_ref, axis=-1)
+    bin_stim_ctc_fft = np.fft.rfft(bin_stim_ctc_normed, n = N_ref, axis=-1)
+    
+    ref_f = 20*np.log10(np.abs(ref_fft))
+    bin_stim_filts_f = 20*np.log10(np.abs(bin_stim_filts_fft))
+    bin_stim_ctc_f = 20*np.log10(np.abs(bin_stim_ctc_fft))
+
+    freqs_ref = np.fft.rfftfreq(N_ref, d = 1/48000)
+
+    ref_f_smooth_left = smooth_third_octave(freqs_ref, ref_f[0,0])
+    ref_f_smooth_right = smooth_third_octave(freqs_ref, ref_f[0,1])
+    bin_stim_ctc_f_smooth_left = smooth_third_octave(freqs_ref, bin_stim_ctc_f[0])
+    bin_stim_ctc_f_smooth_right = smooth_third_octave(freqs_ref, bin_stim_ctc_f[1])
+    bin_stim_filts_f_smooth_left = smooth_third_octave(freqs_ref, bin_stim_filts_f[0])
+    bin_stim_filts_f_smooth_right = smooth_third_octave(freqs_ref, bin_stim_filts_f[1])
+
 
     fontsize = 20
-    plt.figure(figsize=(8,6))
-    plt.subplot(2,1,1)
-    plt.semilogx(freqs, filts_f_smooth_left, label = "Proposed Method", linewidth = 3)
-    plt.semilogx(freqs, CTC_f_smooth_left, label="CTC", linewidth = 3)
-    plt.grid()
-    plt.ylabel("Magnitude [dB]", fontsize = fontsize)
-    plt.title("Left Loudspeaker Filter", fontsize = fontsize)
-    plt.ylim([-25,20])
-    plt.legend(fontsize = fontsize)
-    plt.subplot(2,1,2)
-    plt.title("Right Loudspeaker Filter", fontsize = fontsize)
-    plt.semilogx(freqs, filts_f_smoot_right, label = "Proposed Method", linewidth = 3)
-    plt.semilogx(freqs, CTC_f_smooth_right, label = "CTC", linewidth = 3)
-    plt.grid()
-    plt.legend(fontsize = fontsize)
-    plt.xlabel("Frequency [Hz]", fontsize = fontsize)
-    plt.ylabel("Magnitude [dB]", fontsize = fontsize)
-    plt.ylim([-25,20])
+    fig = plt.figure(figsize=(8,6))
 
-    plt.tight_layout()
-    plt.savefig("DAFx2026_fig7.pdf", format = "pdf")
+    ax1 = plt.subplot(2,2,1)
+    l1, = ax1.semilogx(freqs_filt, filts_f_smooth_left, label="Proposed Method", linewidth=3)
+    l2, = ax1.semilogx(freqs_filt, CTC_f_smooth_left, label="CTC", linewidth=3)
+    ax1.grid()
+    ax1.set_ylabel("Magnitude [dB]", fontsize=fontsize)
+    ax1.set_title("Left Loudspeaker Filter", fontsize=fontsize)
+    ax1.set_ylim([0,35])
+
+    ax2 = plt.subplot(2,2,2)
+    ax2.set_title("Right Loudspeaker Filter", fontsize=fontsize)
+    ax2.semilogx(freqs_filt, filts_f_smooth_right, linewidth=3)
+    ax2.semilogx(freqs_filt, CTC_f_smooth_right, linewidth=3)
+    ax2.grid()
+    ax2.set_ylim([0,35])
+
+    ax3 = plt.subplot(2,2,3)
+    l3, = ax3.semilogx(freqs_ref, bin_stim_filts_f_smooth_left, linewidth=3)
+    l4, = ax3.semilogx(freqs_ref, bin_stim_ctc_f_smooth_left, linewidth=3)
+    l5, = ax3.semilogx(freqs_ref, ref_f_smooth_left, label="Reference", linewidth=4, color="black", linestyle="--")
+    ax3.grid()
+    ax3.set_ylim([0,35])
+    ax3.set_title("Left Ear Signal", fontsize=fontsize)
+    ax3.set_xlabel("Frequency [Hz]", fontsize=fontsize)
+    ax3.set_ylabel("Magnitude [dB]", fontsize=fontsize)
+
+    ax4 = plt.subplot(2,2,4)
+    ax4.semilogx(freqs_ref, bin_stim_filts_f_smooth_right, linewidth=3)
+    ax4.semilogx(freqs_ref, bin_stim_ctc_f_smooth_right, linewidth=3)
+    ax4.semilogx(freqs_ref, ref_f_smooth_right, linewidth=4, color="black", linestyle="--")
+    ax4.grid()
+    ax4.set_ylim([0,35])
+    ax4.set_title("Right Ear Signal", fontsize=fontsize)
+    ax4.set_xlabel("Frequency [Hz]", fontsize=fontsize)
+
+    # ONE common legend
+    fig.legend(
+        [l1, l2, l5],
+        ["Proposed Method", "CTC", "Reference"],
+        loc="upper center",
+        ncol=3,
+        fontsize=fontsize
+    )
+
+    plt.tight_layout(rect=[0, 0, 1, 0.92])  # leave space for legend
+    plt.savefig("DAFx2026_fig7.pdf", format="pdf")
     plt.show()
 
 
@@ -310,9 +374,9 @@ def DAFx2026_fig7_plots(run_folder, CTC_filts):
 
 if __name__ == "__main__":
 
-    target_angle = 0.0
+    target_angle = 45.0
 
-    run_dir_col_0, _, _ = run_experiment(
+    run_dir_col_0, _, _, trainer, col_model = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "colouration": ListenerBasedLoss(model=col_model, weight=1e-2, device=device, dtype=dtype)
         },
@@ -325,7 +389,7 @@ if __name__ == "__main__":
     
     folder = [run_dir_col_0]
     
-    DAFx2026_fig7_plots(folder, CTC_filts=CTC_filts)
+    DAFx2026_fig7_plots(folder, CTC_filts=CTC_filts, trainer=trainer, col_model=col_model)
 
 
 
