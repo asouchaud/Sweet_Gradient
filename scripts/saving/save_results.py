@@ -414,27 +414,31 @@ class saver():
             color_l = plots_or_time_plot.get("color_l_plot")
             color_r = plots_or_time_plot.get("color_r_plot")
             directivity_plot = plots_or_time_plot.get("directivity_plot")
+            directivity_arrow_plot = plots_or_time_plot.get("arrows_and_directivity")
         else:
             time_plot = plots_or_time_plot
             stimulus_plot = None
             directivity_plot = None
+            directivity_arrow_plot = None
 
         plot_folder = self.run_dir / "plots"
         plot_folder.mkdir(parents=True)
 
         if time_plot is not None:
-            time_plot.savefig(plot_folder / "time_filters.png")
+            time_plot.savefig(plot_folder / "time_filters.pdf")
         if freq_plot is not None:
-            freq_plot.savefig(plot_folder / "freq_filters.png")
+            freq_plot.savefig(plot_folder / "freq_filters.pdf")
         if stimulus_plot is not None:
-            stimulus_plot.savefig(plot_folder / "stimulus.png")
+            stimulus_plot.savefig(plot_folder / "stimulus.pdf")
 
         if arrows_plot is not None:
-            arrows_plot.savefig(plot_folder / "arrow_plot.png")
+            arrows_plot.savefig(plot_folder / "arrow_plot.pdf")
 
         if color_l is not None and color_r is not None:
-            color_l.savefig(plot_folder / "color_left.png")
-            color_r.savefig(plot_folder / "color_right.png")
+            color_l.savefig(plot_folder / "color_left.pdf")
+            color_r.savefig(plot_folder / "color_right.pdf")
 
         if directivity_plot is not None:
-            directivity_plot.savefig(plot_folder / "directivity_plot.png")
+            directivity_plot.savefig(plot_folder / "directivity_plot.pdf")
+        if directivity_arrow_plot is not None:
+            directivity_arrow_plot.savefig(plot_folder / "arrows_and_directivity.pdf")

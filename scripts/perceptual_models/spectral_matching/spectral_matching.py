@@ -13,9 +13,9 @@ from scripts.setup.helpers import true_conv1d
 
 
 class spectral_matching(nn.Module):
-    supports_listener_indices = True
+    supports_listener_indices = False  ################# TRUE IS BROKEN ################
 
-    def __init__(self, loss, target, stim, hrirs, target_pos, fs, lstn_pos_conf = None, n_fft=4096, sofa_path = os.path.join('data', 'impulses', 'SOFA', 'D1_48K_24bit_256tap_FIR_SOFA.sofa')):
+    def __init__(self, loss, target, stim, hrirs, target_pos, fs, lstn_pos_conf = None, n_fft=4096, sofa_path = os.path.join('data', 'impulses', 'SOFA', 'SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa')):
         super(spectral_matching, self).__init__()
         
         if stim is None or hrirs is None or fs is None:
@@ -64,7 +64,7 @@ class spectral_matching(nn.Module):
 
     def sofa_find(self, spk_angle):
         # Take out distance coordinate from SOFA source position and add elv = 0 to speaker angles
-        spk_angle = torch.as_tensor(spk_angle, device=self.device, dtype = self.dtype).view(-1,1)
+        spk_angle = torch.as_tensor(spk_angle%360, device=self.device, dtype = self.dtype).view(-1,1)
         pos = torch.tensor(self.sofaile.SourcePosition[:,:2],device=self.device, dtype = self.dtype)
         spk_angle = torch.concat((spk_angle, torch.zeros_like(spk_angle)), dim=1).to(self.device).to(self.dtype)
 
@@ -112,7 +112,7 @@ class spectral_matching(nn.Module):
         reference_stim_base = self.reference_stim
         if reference_stim_base.ndim == 2:
             reference_stim_base = reference_stim_base.unsqueeze(0)
-        elif listener_indices is not None:
+        elif listener_indices is not None:  ################# BROKEN ###################
             reference_stim_base = reference_stim_base[listener_indices]
 
         if reference_stim_base.shape[0] == 1:

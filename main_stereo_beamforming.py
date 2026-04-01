@@ -14,7 +14,7 @@ import torch.nn.functional as F
 
 # Import project modules
 from scripts.optimisation.custom_modules import MultiSourceFIR
-from scripts.plotting.results_plot import plot_pair_directivity_polar, plot_results
+from scripts.plotting.results_plot import plot_pair_directivity_polar, plot_results, plot_arrows_with_directivity
 from scripts.setup.setup import load_gtfb, load_hrirs, load_stim, set_seed
 from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagation
 from scripts.perceptual_models.llado2025.llado2025 import llado2025
@@ -30,13 +30,13 @@ if __name__ == "__main__":
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
         epochs=100,
         n_samples=41,
-        num_lstn_pos=101,
+        num_lstn_pos=50,
         listener_batch_size=10,  # 5 mirrored pairs plus the centre listener
-        symmetric_listener_sampling=True,
+        symmetric_listener_sampling=False,
         selected_stim="impulse",
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
-        lr=0.1,
+        lr=0.01,
         seed=46,
         log=1,
         fs=48000,
@@ -46,7 +46,7 @@ if __name__ == "__main__":
         speakers_per_array=2,
         speaker_distance=2.5,  # Distance from each array centre to the reference-system center (0, 0)
         array_centre_angles_deg=[30.0, -30.0],
-        speaker_spacing_m=0.02,  # Adjacent spacing within each array (global y-axis)
+        speaker_spacing_m=0.01,  # Adjacent spacing within each array (global y-axis)
         target_pos=[float(2.5 * np.cos(np.deg2rad(30.0))), 0.0],
         apply_distance_attenuation=True,
     )
@@ -201,6 +201,7 @@ if __name__ == "__main__":
     rodenas2004_fig12_1000Hz = [[-((angle_deg + 180) % 360.0), level_db] for angle_deg, level_db in rodenas2004_fig12_1000Hz]
     
     right_array_indices = tuple(range(env.speakers_per_array, 2 * env.speakers_per_array))
+    left_array_indices = tuple(range(env.speakers_per_array))
     plots["directivity_plot"] = plot_pair_directivity_polar(
         est_filters=est_filters,
         spk_pos=env.spk_pos,
@@ -212,6 +213,29 @@ if __name__ == "__main__":
         overlay_labels=["rodenas2004 (optimum)", "rodenas2004 (1000 Hz)"],
         db_floor=env.directivity_db_floor,
         show=False,
+    )
+
+    plots["arrows_and_directivity"] = plot_arrows_with_directivity(
+        est_filters = est_filters,
+        spk_pos = torch.tensor(env.spk_pos),
+        lstn_pos = torch.tensor(env.lstn_pos),
+        loc = torch.tensor(estimation_dict["localisation"]),
+        fs = env.fs,
+        group_idx = [left_array_indices, right_array_indices],
+        unc=None,
+        col=None,
+        target_pos=None,
+        vbap_values=None,
+        show=False,
+        n_angles=360,
+        freqs_eval_hz=(250, 500, 1000, 2000, 4000),
+        c=343.0,
+        directivity_mode="avg",   # "avg" or "single"
+        directivity_freq_idx=2,   # used if mode="single"
+        directivity_scale=0.3,
+        directivity_floor_db=-20,
+        overlay_curves=[rodenas2004_fig12_opt, rodenas2004_fig12_1000Hz],
+        overlay_labels=["rodenas2004 (optimum)", "rodenas2004 (1000 Hz)"],
     )
     saver_obj.save_plots(plots)
 
