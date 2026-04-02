@@ -11,7 +11,7 @@ class interaural_phase_difference(nn.Module):
     Returns an IPD mismatch score per propagated binaural signal.
 
     Expected input:
-        bin_stim: (batch, n_listeners, 2, T) or (batch, 2, T) or (2, T)
+        bin_stim: (batch, n_listeners, 2, T)
 
     Output:
         (batch * n_listeners,)  IPD error (mean absolute wrapped phase error).
@@ -38,47 +38,27 @@ class interaural_phase_difference(nn.Module):
 
         self.target = target
         self.loss = loss
-        self.loss_norm = 1.0
-
-    def _reshape_bin(self, bin_stim):
-        if len(bin_stim.shape) == 4:
-            batch_size = bin_stim.shape[0]
-            n_lstn_pos = bin_stim.shape[1]
-            t = bin_stim.shape[-1]
-            return bin_stim.view(batch_size * n_lstn_pos, 2, t), batch_size, n_lstn_pos
-        if len(bin_stim.shape) == 3:
-            batch_size = bin_stim.shape[0]
-            t = bin_stim.shape[-1]
-            return bin_stim.view(batch_size, 2, t), batch_size, 1
-        if len(bin_stim.shape) == 2:
-            t = bin_stim.shape[-1]
-            return bin_stim.view(1, 2, t), 1, 1
-        raise ValueError("Expected bin_stim with 2 to 4 dimensions.")
-
-    def _expand_reference(self, reference_stim_base, batch_size, n_lstn_pos, t):
-        # Accept reference_stim shaped (2, T) or (n_listeners, 2, T).
-        if reference_stim_base.ndim == 2:
-            ref = reference_stim_base.unsqueeze(0)  # (1, 2, T)
-            ref = ref.expand(batch_size * n_lstn_pos, 2, t)
-            return ref
-
-        if reference_stim_base.ndim == 3:
-            if reference_stim_base.shape[0] == 1:
-                ref = reference_stim_base.expand(batch_size * n_lstn_pos, 2, t)
-                return ref
-            if reference_stim_base.shape[0] != n_lstn_pos:
-                raise ValueError("reference_stim and bin_stim disagree on the number of listener positions.")
-            # Repeat listeners for each batch element.
-            ref = reference_stim_base.repeat(batch_size, 1, 1)  # (batch*n_listeners, 2, T)
-            return ref
-
-        raise ValueError("reference_stim must have shape (2, T) or (n_listeners, 2, T).")
+        pi_ = torch.as_tensor(torch.pi, device=self.reference_stim.device, dtype=self.reference_stim.dtype)
+        self.loss_norm = self.loss(pi_, torch.zeros_like(pi_)) # The maximum possible loss for normalization is pi for L1 loss and pi^2 for MSE loss
 
     def forward(self, bin_stim):
-        bin_reshaped, batch_size, n_lstn_pos = self._reshape_bin(bin_stim)
-        t = bin_reshaped.shape[-1]
+        if len(bin_stim.shape) != 4:
+            raise ValueError("Expected bin_stim with shape (batch, n_listeners, 2, T).")
+        if bin_stim.shape[2] != 2:
+            raise ValueError("Expected bin_stim.shape[2] == 2 (left/right).")
 
-        ref = self._expand_reference(self.reference_stim, batch_size, n_lstn_pos, t)
+        batch_size, n_lstn_pos, _two, t = bin_stim.shape
+        bin_reshaped = bin_stim.view(batch_size * n_lstn_pos, 2, t)
+
+        if self.reference_stim.ndim == 2:
+            ref = self.reference_stim.unsqueeze(0).expand(batch_size * n_lstn_pos, 2, t)
+        elif self.reference_stim.ndim == 3:
+            if self.reference_stim.shape[0] == n_lstn_pos:
+                ref = self.reference_stim.repeat(batch_size, 1, 1)
+            else:
+                raise ValueError("reference_stim and bin_stim disagree on the number of listener positions.")
+        else:
+            raise ValueError("reference_stim must have shape (2, T) or (n_listeners, 2, T).")
 
         bin_f = torch.fft.rfft(bin_reshaped, n=self.n_fft, dim=-1)
         ref_f = torch.fft.rfft(ref, n=self.n_fft, dim=-1)
