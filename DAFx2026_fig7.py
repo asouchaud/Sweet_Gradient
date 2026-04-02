@@ -224,24 +224,25 @@ def DAFx2026_fig7_plots(run_dir, CTC_filts, trainer, col_model):
 
 
 if __name__ == "__main__":
-    target_angle = 15.0
-
+    
     repo_root = Path(__file__).resolve().parent
-    target_distance = 100
+    
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
-        epochs=1000,
+        target_angle = 45.0,
+        target_distance = 100,
+        epochs=2000,
         listener_batch_size=None,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=True,
         n_samples=256,
-        target_pos=[target_distance, float(np.tan(np.deg2rad(target_angle)) * target_distance)],
         selected_stim="impulse",
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
-        lr=0.01,
+        lr=0.005,
         seed=48,
         log=1,
         fs=48000,
     )
+    env.target_pos=[env.target_distance, float(np.tan(np.deg2rad(env.target_angle)) * env.target_distance)],
     env.dtype = torch.float32
     env.device_str = "cuda" if torch.cuda.is_available() else "cpu"
     env.device = torch.device(env.device_str)
@@ -280,7 +281,7 @@ if __name__ == "__main__":
     regularisation = second_moment_regularisation(n_samples=env.n_samples, device=env.device, dtype=env.dtype)
     
     env.col_weight = 1.0e0
-    env.ipd_weight = 1.0e0
+    env.ipd_weight = 1.0e-1
 
     loss_dict = {
         # "localisation": ListenerBasedLoss(model=loc_model, weight=env.loc_weight, device=env.device, dtype=env.dtype),
@@ -373,7 +374,7 @@ if __name__ == "__main__":
 
     plt.close('all')
 
-    CTC_filts = Compute_CTC_filters(target_angle=target_angle)
+    CTC_filts = Compute_CTC_filters(target_angle=env.target_angle)
     
     fig7_plot = DAFx2026_fig7_plots(saver_obj.run_dir, CTC_filts=CTC_filts, trainer=trainer, col_model=col_model)
     plot_folder = saver_obj.get_plot_folder()
