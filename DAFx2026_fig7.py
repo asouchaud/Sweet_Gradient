@@ -198,7 +198,7 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
     bin_stim_filts_col_only_f_smooth_right = smooth_third_octave(freqs_ref, bin_stim_filts_col_only_f[1])
 
 
-    fontsize = 20
+    fontsize = 12
     fig = plt.figure(figsize=(8,6))
 
     ax1 = plt.subplot(2,2,1)
@@ -208,6 +208,7 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
     ax1.grid()
     ax1.set_ylabel("Magnitude [dB]", fontsize=fontsize)
     ax1.set_title("Left Loudspeaker Filter", fontsize=fontsize)
+    ax1.set_xlim([80,20000])
     ax1.set_ylim([0,35])
 
     ax2 = plt.subplot(2,2,2)
@@ -216,6 +217,7 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
     ax2.semilogx(freqs_filt, filts_col_only_f_smooth_right, linewidth=3)
     ax2.semilogx(freqs_filt, CTC_f_smooth_right, linewidth=3)
     ax2.grid()
+    ax2.set_xlim([80,20000])
     ax2.set_ylim([0,35])
 
     ax3 = plt.subplot(2,2,3)
@@ -224,6 +226,7 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
     l4, = ax3.semilogx(freqs_ref, bin_stim_ctc_f_smooth_left, linewidth=3)
     l5, = ax3.semilogx(freqs_ref, ref_f_smooth_left, label="Reference", linewidth=4, color="black", linestyle="--")
     ax3.grid()
+    ax3.set_xlim([80,20000])
     ax3.set_ylim([0,35])
     ax3.set_title("Left Ear Signal", fontsize=fontsize)
     ax3.set_xlabel("Frequency [Hz]", fontsize=fontsize)
@@ -235,6 +238,7 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
     ax4.semilogx(freqs_ref, bin_stim_ctc_f_smooth_right, linewidth=3)
     ax4.semilogx(freqs_ref, ref_f_smooth_right, linewidth=4, color="black", linestyle="--")
     ax4.grid()
+    ax4.set_xlim([80,20000])
     ax4.set_ylim([0,35])
     ax4.set_title("Right Ear Signal", fontsize=fontsize)
     ax4.set_xlabel("Frequency [Hz]", fontsize=fontsize)
@@ -244,7 +248,8 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
         [l1, l1b, l2, l5],
         ["Proposed Method (Col. + IPD)", "Proposed Method (Col. only)", "CTC", "Reference"],
         loc="upper center",
-        ncol=4,
+        bbox_to_anchor=(0.5, 1.02),
+        ncol=2,
         fontsize=fontsize
     )
 
