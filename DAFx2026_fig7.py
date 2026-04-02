@@ -113,42 +113,54 @@ def smooth_third_octave(freq, mag_db):
 
 
 
-def DAFx2026_fig7_plots(run_dir, CTC_filts, trainer, col_model):
+def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model):
 
     folder_name = run_dir
     filt_path = os.path.join(folder_name, "artifacts", "est_filters.npy")
     filts = np.load(filt_path)
     N_filts =  filts.shape[-1]
 
-    def _highpass_50hz_time_domain(x, fs=48000, cutoff_hz=50.0, numtaps=33):
-        h = scipy.signal.firwin(numtaps, cutoff=cutoff_hz, fs=fs, pass_zero=False)
+    folder_name_col_only = run_dir_col_only
+    filt_path_col_only = os.path.join(folder_name_col_only, "artifacts", "est_filters.npy")
+    filts_col_only = np.load(filt_path_col_only)
+
+    def _bandpass_time_domain(x, fs=48000, highpass_hz=50.0, lowpass_hz=20000.0, numtaps=33):
+        lowpass_hz = min(lowpass_hz, (fs / 2) * 0.999)
+        h = scipy.signal.firwin(numtaps, cutoff=[highpass_hz, lowpass_hz], fs=fs, pass_zero=False)
         return np.apply_along_axis(lambda v: scipy.signal.convolve(v, h, mode="same", method="fft"), axis=-1, arr=x)
 
-    CTC_filts = _highpass_50hz_time_domain(CTC_filts)
-    filts = _highpass_50hz_time_domain(filts)
+    CTC_filts = _bandpass_time_domain(CTC_filts)
+    filts = _bandpass_time_domain(filts)
+    filts_col_only = _bandpass_time_domain(filts_col_only)
 
     ctc_normed = CTC_filts / np.sqrt(np.mean(CTC_filts**2))
     filts_normed = filts / np.sqrt(np.mean(filts**2))
+    filts_col_only_normed = filts_col_only / np.sqrt(np.mean(filts_col_only**2))
 
     ctc_filts_torch = torch.tensor(ctc_normed, device=trainer.device, dtype=trainer.dtype).unsqueeze(0)
     filts_torch = torch.tensor(filts_normed, device=trainer.device, dtype=trainer.dtype).unsqueeze(0)
+    filts_col_only_torch = torch.tensor(filts_col_only_normed, device=trainer.device, dtype=trainer.dtype).unsqueeze(0)
     
     bin_stim_ctc = trainer.prop(ctc_filts_torch).cpu().numpy()[0].squeeze()
     bin_stim_filts = trainer.prop(filts_torch).cpu().numpy()[0].squeeze()
+    bin_stim_filts_col_only = trainer.prop(filts_col_only_torch).cpu().numpy()[0].squeeze()
     
     ref = col_model.reference_stim.cpu().numpy()
     N_ref =  ref.shape[-1]
 
     bin_stim_ctc_normed = bin_stim_ctc / np.sqrt(np.mean(bin_stim_ctc**2))
     bin_stim_filts_normed = bin_stim_filts / np.sqrt(np.mean(bin_stim_filts**2))
+    bin_stim_filts_col_only_normed = bin_stim_filts_col_only / np.sqrt(np.mean(bin_stim_filts_col_only**2))
     ref_normed = ref / np.sqrt(np.mean(ref**2))
 
     CTC_fft = np.fft.rfft(ctc_normed, n = N_filts, axis=-1)
     filts_fft = np.fft.rfft(filts_normed, n = N_filts, axis=-1)
+    filts_col_only_fft = np.fft.rfft(filts_col_only_normed, n = N_filts, axis=-1)
 
     # Magnitude
     CTC_f = 20*np.log10(np.abs(CTC_fft))
     filts_f = 20*np.log10(np.abs(filts_fft))
+    filts_col_only_f = 20*np.log10(np.abs(filts_col_only_fft))
 
     lsd_freq = np.sqrt(np.mean((CTC_f - filts_f) ** 2, axis=-1))
     lsd = lsd_freq.mean(axis=-1)
@@ -160,14 +172,18 @@ def DAFx2026_fig7_plots(run_dir, CTC_filts, trainer, col_model):
     CTC_f_smooth_right = smooth_third_octave(freqs_filt, CTC_f[1])
     filts_f_smooth_left = smooth_third_octave(freqs_filt, filts_f[0])
     filts_f_smooth_right = smooth_third_octave(freqs_filt, filts_f[1])
+    filts_col_only_f_smooth_left = smooth_third_octave(freqs_filt, filts_col_only_f[0])
+    filts_col_only_f_smooth_right = smooth_third_octave(freqs_filt, filts_col_only_f[1])
 
 
     ref_fft = np.fft.rfft(ref_normed, n = N_ref, axis=-1)
     bin_stim_filts_fft = np.fft.rfft(bin_stim_filts_normed, n = N_ref, axis=-1)
+    bin_stim_filts_col_only_fft = np.fft.rfft(bin_stim_filts_col_only_normed, n = N_ref, axis=-1)
     bin_stim_ctc_fft = np.fft.rfft(bin_stim_ctc_normed, n = N_ref, axis=-1)
     
     ref_f = 20*np.log10(np.abs(ref_fft))
     bin_stim_filts_f = 20*np.log10(np.abs(bin_stim_filts_fft))
+    bin_stim_filts_col_only_f = 20*np.log10(np.abs(bin_stim_filts_col_only_fft))
     bin_stim_ctc_f = 20*np.log10(np.abs(bin_stim_ctc_fft))
 
     freqs_ref = np.fft.rfftfreq(N_ref, d = 1/48000)
@@ -178,6 +194,8 @@ def DAFx2026_fig7_plots(run_dir, CTC_filts, trainer, col_model):
     bin_stim_ctc_f_smooth_right = smooth_third_octave(freqs_ref, bin_stim_ctc_f[1])
     bin_stim_filts_f_smooth_left = smooth_third_octave(freqs_ref, bin_stim_filts_f[0])
     bin_stim_filts_f_smooth_right = smooth_third_octave(freqs_ref, bin_stim_filts_f[1])
+    bin_stim_filts_col_only_f_smooth_left = smooth_third_octave(freqs_ref, bin_stim_filts_col_only_f[0])
+    bin_stim_filts_col_only_f_smooth_right = smooth_third_octave(freqs_ref, bin_stim_filts_col_only_f[1])
 
 
     fontsize = 20
@@ -185,6 +203,7 @@ def DAFx2026_fig7_plots(run_dir, CTC_filts, trainer, col_model):
 
     ax1 = plt.subplot(2,2,1)
     l1, = ax1.semilogx(freqs_filt, filts_f_smooth_left, label="Proposed Method", linewidth=3)
+    l1b, = ax1.semilogx(freqs_filt, filts_col_only_f_smooth_left, label="Proposed Method (Col. only)", linewidth=3)
     l2, = ax1.semilogx(freqs_filt, CTC_f_smooth_left, label="CTC", linewidth=3)
     ax1.grid()
     ax1.set_ylabel("Magnitude [dB]", fontsize=fontsize)
@@ -194,12 +213,14 @@ def DAFx2026_fig7_plots(run_dir, CTC_filts, trainer, col_model):
     ax2 = plt.subplot(2,2,2)
     ax2.set_title("Right Loudspeaker Filter", fontsize=fontsize)
     ax2.semilogx(freqs_filt, filts_f_smooth_right, linewidth=3)
+    ax2.semilogx(freqs_filt, filts_col_only_f_smooth_right, linewidth=3)
     ax2.semilogx(freqs_filt, CTC_f_smooth_right, linewidth=3)
     ax2.grid()
     ax2.set_ylim([0,35])
 
     ax3 = plt.subplot(2,2,3)
     l3, = ax3.semilogx(freqs_ref, bin_stim_filts_f_smooth_left, linewidth=3)
+    l3b, = ax3.semilogx(freqs_ref, bin_stim_filts_col_only_f_smooth_left, linewidth=3)
     l4, = ax3.semilogx(freqs_ref, bin_stim_ctc_f_smooth_left, linewidth=3)
     l5, = ax3.semilogx(freqs_ref, ref_f_smooth_left, label="Reference", linewidth=4, color="black", linestyle="--")
     ax3.grid()
@@ -210,6 +231,7 @@ def DAFx2026_fig7_plots(run_dir, CTC_filts, trainer, col_model):
 
     ax4 = plt.subplot(2,2,4)
     ax4.semilogx(freqs_ref, bin_stim_filts_f_smooth_right, linewidth=3)
+    ax4.semilogx(freqs_ref, bin_stim_filts_col_only_f_smooth_right, linewidth=3)
     ax4.semilogx(freqs_ref, bin_stim_ctc_f_smooth_right, linewidth=3)
     ax4.semilogx(freqs_ref, ref_f_smooth_right, linewidth=4, color="black", linestyle="--")
     ax4.grid()
@@ -219,10 +241,10 @@ def DAFx2026_fig7_plots(run_dir, CTC_filts, trainer, col_model):
 
     # ONE common legend
     fig.legend(
-        [l1, l2, l5],
-        ["Proposed Method", "CTC", "Reference"],
+        [l1, l1b, l2, l5],
+        ["Proposed Method (Col. + IPD)", "Proposed Method (Col. only)", "CTC", "Reference"],
         loc="upper center",
-        ncol=3,
+        ncol=4,
         fontsize=fontsize
     )
 
@@ -382,9 +404,57 @@ if __name__ == "__main__":
 
     plt.close('all')
 
+    # ---------------------------
+    # Colouration-only optimisation (for comparison curves)
+    # ---------------------------
+    set_seed(seed=env.seed)
+    nn_model_col_only = MultiSourceFIR(
+        n_samples=env.n_samples,
+        n_sources=env.n_sources,
+    ).to(device=env.device, dtype=env.dtype)
+    with torch.no_grad():
+        for i, branch in enumerate(nn_model_col_only.branches):
+            branch.weight.fill_(0.0)
+            branch.weight[0, 0] = 1.0
+
+    nn_optimiser_col_only = torch.optim.Adam(nn_model_col_only.parameters(), lr=env.lr)
+
+    loss_dict_col_only = {
+        "colouration": ListenerBasedLoss(model=col_model, weight=env.col_weight, device=env.device, dtype=env.dtype),
+    }
+
+    saver_obj_col_only = saver(loss_dict_col_only, env.lstn_pos)
+    logger_col_only = saver_obj_col_only if env.log else None
+
+    trainer_col_only = Train(n_epoch=env.epochs,
+                    nn=nn_model_col_only,
+                    prop=stereo_prop,
+                    loss_dict=loss_dict_col_only,
+                    optimiser=nn_optimiser_col_only,
+                    loggers = [logger_col_only, None], 
+                    listener_batch_size=env.listener_batch_size,
+                    symmetric_listener_sampling=env.symmetric_listener_sampling)
+    time_train_start = time.time()
+    trainer_col_only.train()
+    env.time_train_seconds_col_only = time.time() - time_train_start
+    print(f"Time for colouration-only optimisation:{env.time_train_seconds_col_only:.2f}")
+
+    est_filters_col_only, estimation_dict_col_only, bin_stim_col_only = trainer_col_only.evaluate(loss_dict=eval_perceptual_dict)
+    est_filters_col_only /= np.max(np.abs(est_filters_col_only)) / 0.9
+
+    saver_obj_col_only.save_results(
+        estimation_dict=estimation_dict_col_only,
+        est_filters=est_filters_col_only,
+        fs=env.fs,
+        lstn_pos=env.lstn_pos,
+        spk_pos=env.spk_pos,
+        trainer=trainer_col_only,
+        env=env,
+    )
+
     CTC_filts = Compute_CTC_filters(target_angle=env.target_angle)
     
-    fig7_plot = DAFx2026_fig7_plots(saver_obj.run_dir, CTC_filts=CTC_filts, trainer=trainer, col_model=col_model)
+    fig7_plot = DAFx2026_fig7_plots(saver_obj.run_dir, saver_obj_col_only.run_dir, CTC_filts=CTC_filts, trainer=trainer, col_model=col_model)
     plot_folder = saver_obj.get_plot_folder()
     fig7_plot.savefig(plot_folder / "DAFx2026_fig7.pdf", format="pdf")
 
