@@ -13,7 +13,7 @@ from scripts.setup.helpers import true_conv1d
 
 
 class spectral_matching(nn.Module):
-    supports_listener_indices = False  ################# TRUE IS BROKEN ################
+    supports_listener_indices = True
 
     def __init__(self, loss, target, stim, hrirs, target_pos, fs, lstn_pos_conf = None, n_fft=4096, sofa_path = os.path.join('data', 'impulses', 'SOFA', 'SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa')):
         super(spectral_matching, self).__init__()
@@ -84,7 +84,7 @@ class spectral_matching(nn.Module):
 
     def forward(self, bin_stim, listener_indices=None):
         # Expects bin_stim as (batch, n_listeners, 2, T), where 2 is the left and right ear and T is the number of time samples of each ear signal;
-        # returns flattened coloration scores with shape (batch * n_listeners,).
+        # returns coloration scores with shape (batch, n_listeners) for ListenerBasedLoss (target subset + expand_as).
 
         if len(bin_stim.shape) != 4:
             raise ValueError(
@@ -100,8 +100,9 @@ class spectral_matching(nn.Module):
         reference_stim_base = self.reference_stim
         if reference_stim_base.ndim == 2:
             reference_stim_base = reference_stim_base.unsqueeze(0)
-        elif listener_indices is not None:  ################# BROKEN ###################
-            reference_stim_base = reference_stim_base[listener_indices]
+        if listener_indices is not None and reference_stim_base.shape[0] != 1:
+            idx = torch.as_tensor(listener_indices, device=reference_stim_base.device, dtype=torch.long)
+            reference_stim_base = reference_stim_base[idx]
 
         if reference_stim_base.shape[0] == 1:
             reference_stim = reference_stim_base.expand_as(bin_stim_reshaped)
@@ -112,4 +113,4 @@ class spectral_matching(nn.Module):
         
         coloration = log_spectral_distortion(bin_stim_reshaped, reference_stim)
 
-        return coloration.view(-1)
+        return coloration.view(batch_size, N_lstn_pos)
