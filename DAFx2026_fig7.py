@@ -153,9 +153,12 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
     bin_stim_filts_col_only_normed = bin_stim_filts_col_only / np.sqrt(np.mean(bin_stim_filts_col_only**2))
     ref_normed = ref / np.sqrt(np.mean(ref**2))
 
-    CTC_fft = np.fft.rfft(ctc_normed, n = N_filts, axis=-1)
-    filts_fft = np.fft.rfft(filts_normed, n = N_filts, axis=-1)
-    filts_col_only_fft = np.fft.rfft(filts_col_only_normed, n = N_filts, axis=-1)
+    def _rfft_norm(x, n):
+        return np.fft.rfft(x, n=n, axis=-1, norm="ortho")
+
+    CTC_fft = _rfft_norm(ctc_normed, n=N_filts)
+    filts_fft = _rfft_norm(filts_normed, n=N_filts)
+    filts_col_only_fft = _rfft_norm(filts_col_only_normed, n=N_filts)
 
     # Magnitude
     CTC_f = 20*np.log10(np.abs(CTC_fft))
@@ -176,10 +179,10 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
     filts_col_only_f_smooth_right = smooth_third_octave(freqs_filt, filts_col_only_f[1])
 
 
-    ref_fft = np.fft.rfft(ref_normed, n = N_ref, axis=-1)
-    bin_stim_filts_fft = np.fft.rfft(bin_stim_filts_normed, n = N_ref, axis=-1)
-    bin_stim_filts_col_only_fft = np.fft.rfft(bin_stim_filts_col_only_normed, n = N_ref, axis=-1)
-    bin_stim_ctc_fft = np.fft.rfft(bin_stim_ctc_normed, n = N_ref, axis=-1)
+    ref_fft = _rfft_norm(ref_normed, n=N_ref)
+    bin_stim_filts_fft = _rfft_norm(bin_stim_filts_normed, n=N_ref)
+    bin_stim_filts_col_only_fft = _rfft_norm(bin_stim_filts_col_only_normed, n=N_ref)
+    bin_stim_ctc_fft = _rfft_norm(bin_stim_ctc_normed, n=N_ref)
     
     ref_f = 20*np.log10(np.abs(ref_fft))
     bin_stim_filts_f = 20*np.log10(np.abs(bin_stim_filts_fft))
@@ -198,7 +201,7 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
     bin_stim_filts_col_only_f_smooth_right = smooth_third_octave(freqs_ref, bin_stim_filts_col_only_f[1])
 
 
-    fontsize = 12
+    fontsize = 18
     fig = plt.figure(figsize=(8,6))
 
     ax1 = plt.subplot(2,2,1)
@@ -209,7 +212,7 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
     ax1.set_ylabel("Magnitude [dB]", fontsize=fontsize)
     ax1.set_title("Left Loudspeaker Filter", fontsize=fontsize)
     ax1.set_xlim([80,20000])
-    ax1.set_ylim([0,35])
+    ax1.set_ylim([-30,10])
 
     ax2 = plt.subplot(2,2,2)
     ax2.set_title("Right Loudspeaker Filter", fontsize=fontsize)
@@ -218,7 +221,7 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
     ax2.semilogx(freqs_filt, CTC_f_smooth_right, linewidth=3)
     ax2.grid()
     ax2.set_xlim([80,20000])
-    ax2.set_ylim([0,35])
+    ax2.set_ylim([-30,10])
 
     ax3 = plt.subplot(2,2,3)
     l3, = ax3.semilogx(freqs_ref, bin_stim_filts_f_smooth_left, linewidth=3)
@@ -227,7 +230,7 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
     l5, = ax3.semilogx(freqs_ref, ref_f_smooth_left, label="Reference", linewidth=4, color="black", linestyle="--")
     ax3.grid()
     ax3.set_xlim([80,20000])
-    ax3.set_ylim([0,35])
+    ax3.set_ylim([-30,10])
     ax3.set_title("Left Ear Signal", fontsize=fontsize)
     ax3.set_xlabel("Frequency [Hz]", fontsize=fontsize)
     ax3.set_ylabel("Magnitude [dB]", fontsize=fontsize)
@@ -239,7 +242,7 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
     ax4.semilogx(freqs_ref, ref_f_smooth_right, linewidth=4, color="black", linestyle="--")
     ax4.grid()
     ax4.set_xlim([80,20000])
-    ax4.set_ylim([0,35])
+    ax4.set_ylim([-30,10])
     ax4.set_title("Right Ear Signal", fontsize=fontsize)
     ax4.set_xlabel("Frequency [Hz]", fontsize=fontsize)
 
@@ -248,12 +251,13 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
         [l1, l1b, l2, l5],
         ["Proposed Method (Col. + IPD)", "Proposed Method (Col. only)", "CTC", "Reference"],
         loc="upper center",
-        bbox_to_anchor=(0.5, 1.02),
+        bbox_to_anchor=(0.5, 1.00),
         ncol=2,
-        fontsize=fontsize
+        fontsize=fontsize,
+        frameon=False
     )
 
-    plt.tight_layout(rect=[0, 0, 1, 0.92])  # leave space for legend
+    plt.tight_layout(rect=[0, 0, 1, 0.84])  # leave space for legend
     return fig
 
 
