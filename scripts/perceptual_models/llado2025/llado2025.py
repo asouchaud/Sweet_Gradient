@@ -35,7 +35,8 @@ class llado2025(nn.Module):
             print("Wrong data type, defaulting to global target position angle")
             self.target = torch.rad2deg(torch.atan2(self.target_pos[1], self.target_pos[0]))
         self.loss = loss
-        self.loss_norm = self.loss(torch.tensor([30.0], device=self.device, dtype=self.dtype), torch.tensor([-30.0], device=self.device, dtype=self.dtype)) # Maximum possible loss for normalization THIS IS FOR A STEREO WITH SPANNING ANGLE OF 60 DEGREE
+        # TODO: the value below is hardcoded for spanning angle of 60 degrees. Please fix this. 
+        self.loss_norm = self.loss(torch.tensor([30.0], device=self.device, dtype=self.dtype), torch.tensor([-30.0], device=self.device, dtype=self.dtype)) # Maximum possible loss for normalization
 
     def forward(self, bin_stim):
         # Expects bin_stim as (batch, n_listeners, 2, T), where 2 is the left and right ear and T is the number of time samples of each ear signal;
