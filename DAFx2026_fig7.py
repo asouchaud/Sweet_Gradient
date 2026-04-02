@@ -37,18 +37,17 @@ from scripts.saving.save_results import saver
 
 def run_experiment(loss_dict_builder, run_label, target_angle):
     repo_root = Path(__file__).resolve().parent
-    d = 100
+    target_distance = 100
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
-        epochs=5200,
-        num_lstn_pos=1,
+        epochs=1000,
         listener_batch_size=None,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=True,
         n_samples=256,
-        target_pos=[d, float(np.tan(np.deg2rad(target_angle)) * d)],
+        target_pos=[target_distance, float(np.tan(np.deg2rad(target_angle)) * target_distance)],
         selected_stim="impulse",
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
-        lr=0.0005,
+        lr=0.001,
         seed=48,
         log=1,
         fs=48000,
@@ -198,7 +197,14 @@ def Compute_CTC_filters(target_angle):
 
     N = 256
 
-    sofaile = sf.read_sofa("data\impulses\SOFA\SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
+    _sofa_symmetric = (
+        Path(__file__).resolve().parent
+        / "data"
+        / "impulses"
+        / "SOFA"
+        / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"
+    )
+    sofaile = sf.read_sofa(str(_sofa_symmetric))
     left_spk_hrirs = sofaile.Data_IR[760] # 30 deg
     right_spk_hrirs = sofaile.Data_IR[8064] # 330 deg
     ref_idx = sofa_find(target_angle, sofaile)
@@ -217,19 +223,7 @@ def Compute_CTC_filters(target_angle):
     R = np.real(np.fft.ifft(R_f, axis = -1)).reshape(1,-1)
 
     filts = np.concatenate((L,R), axis = 0)
-
-    # ref_ear_L = causal_conv1d(stim,ref_hrirs[0])
-    # ref_ear_R = causal_conv1d(stim,ref_hrirs[1])
-
-    # spk_L, spk_R = apply_xtc(G, ref_hrirs[0], ref_hrirs[1])
-
-    # ear_L = causal_conv1d(spk_L, left_spk_hrirs[0]) + causal_conv1d(spk_R, right_spk_hrirs[0])
-    # ear_R = causal_conv1d(spk_L, left_spk_hrirs[1]) + causal_conv1d(spk_R, right_spk_hrirs[1])
-
-    # tmp_L = causal_conv1d(impulse, filts[0])
-    # tmp_R = causal_conv1d(impulse, filts[1])
-    # test_L = causal_conv1d(tmp_L, left_spk_hrirs[0]) + causal_conv1d(tmp_R, right_spk_hrirs[0])
-    # test_R = causal_conv1d(tmp_L, left_spk_hrirs[1]) + causal_conv1d(tmp_R, right_spk_hrirs[1])
+    filts = np.fft.fftshift(filts, axes=-1)
 
     return(filts)
 
@@ -283,13 +277,6 @@ def DAFx2026_fig7_plots(run_folder, CTC_filts, trainer, col_model):
     lsd_freq = np.sqrt(np.mean((CTC_f - filts_f) ** 2, axis=-1))
     lsd = lsd_freq.mean(axis=-1)
     print(f"Log Spectral Distance between CTC and proposed method filters: {lsd:.2f} dB")
-
-    # Phase
-    CTC_phase = np.angle(CTC_fft)
-    filts_phase = np.angle(filts_fft)
-
-    CTC_phase_unwrapped = np.unwrap(CTC_phase, axis=-1)
-    filts_phase_unwrapped = np.unwrap(filts_phase, axis=-1)
 
     freqs_filt = np.fft.rfftfreq(N_filts, d = 1/48000)
 
