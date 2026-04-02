@@ -260,6 +260,16 @@ def plot_pair_directivity_polar(
     return fig
 
 
+def _db_at_nearest_angle_deg(sample_angles_deg, levels_db, target_angle_deg):
+    sample_angles_deg = np.asarray(sample_angles_deg, dtype=np.float64).ravel()
+    levels_db = np.asarray(levels_db, dtype=np.float64).ravel()
+    target_wrapped = float(np.mod(target_angle_deg, 360.0))
+    samples_wrapped = np.mod(sample_angles_deg, 360.0)
+    separation_deg = np.abs((samples_wrapped - target_wrapped + 180.0) % 360.0 - 180.0)
+    nearest_idx = int(np.argmin(separation_deg))
+    return float(levels_db[nearest_idx])
+
+
 def plot_arrows_with_directivity(
     est_filters,
     spk_pos,
@@ -277,7 +287,7 @@ def plot_arrows_with_directivity(
     c=343.0,
     directivity_mode="avg",
     directivity_freq_idx=2,
-    directivity_scale=0.5,
+    directivity_scale=1.0,
     directivity_floor_db=-20,
     overlay_curve=None,
     overlay_curves=None,
@@ -308,16 +318,6 @@ def plot_arrows_with_directivity(
 
     if overlay_labels is not None and len(overlay_labels) != len(overlay_curve_list):
         raise ValueError("overlay_labels must contain one label per overlay curve.")
-
-    # -----------------------------
-    # Global mean reference (for alignment)
-    # -----------------------------
-    all_means = []
-    for curve in overlay_curve_list:
-        curve = np.asarray(curve, dtype=float)
-        all_means.append(np.mean(curve[:, 1]))
-
-    target_mean_db = np.mean(all_means) if len(all_means) > 0 else 0.0
 
     # -----------------------------
     # Create plot
@@ -390,15 +390,6 @@ def plot_arrows_with_directivity(
             dir_use = dir_db[directivity_freq_idx]
 
         # -----------------------------
-        # Align directivity mean
-        # -----------------------------
-        dir_mean = np.mean(dir_use)
-        dir_aligned = dir_use - dir_mean + target_mean_db
-        dir_clipped = np.maximum(dir_aligned, directivity_floor_db)
-
-        r = directivity_scale * (dir_clipped - directivity_floor_db) / (0 - directivity_floor_db)
-
-        # -----------------------------
         # Angle mask
         # -----------------------------
         if len(overlay_curve_list) > 0:
@@ -427,6 +418,19 @@ def plot_arrows_with_directivity(
         else:
             mask = (theta_wrapped >= start_rad) | (theta_wrapped <= end_rad)
 
+        if start_rad <= end_rad:
+            mid_rad = 0.5 * (start_rad + end_rad)
+        else:
+            mid_rad = np.mod(0.5 * (start_rad + end_rad + 2 * np.pi), 2 * np.pi)
+
+        delta_theta = np.abs((theta - mid_rad + np.pi) % (2 * np.pi) - np.pi)
+        k_mid = int(np.argmin(delta_theta))
+        dir_at_mid = float(dir_use[k_mid])
+
+        dir_aligned = dir_use - dir_at_mid
+        dir_clipped = np.maximum(dir_aligned, directivity_floor_db)
+        r = directivity_scale * (dir_clipped - directivity_floor_db) / (0 - directivity_floor_db)
+
         theta_sel = theta[mask]
         r_sel = r[mask]
         # -----------------------------
@@ -439,8 +443,69 @@ def plot_arrows_with_directivity(
 
         ax.plot(x_dir, y_dir, color='red', linewidth=2,
                 label='Directivity (Proposed Method)' if i == 0 else None, zorder = 50)
-        ax.scatter(cx, cy, c='red', s=60,
-                   label='Array center' if i == 0 else None, zorder = 50)
+
+        line_extent = 0.0
+        for db_ref in (-10.0, 0.0, 10.0):
+            line_extent = max(
+                line_extent,
+                directivity_scale * (db_ref - directivity_floor_db) / (0.0 - directivity_floor_db),
+            )
+        if cy > 0.0:
+            theta_wedge0 = np.pi
+            theta_wedge1 = np.pi + np.pi / 3.0
+        elif cy < 0.0:
+            theta_wedge0 = np.pi - np.pi / 3.0
+            theta_wedge1 = np.pi
+        else:
+            theta_wedge0 = np.pi
+            theta_wedge1 = np.pi + np.pi / 3.0
+        th_oblique_ray = theta_wedge1 if cy >= 0.0 else theta_wedge0
+        n_arc = 72
+        th_arc = np.linspace(theta_wedge0, theta_wedge1, n_arc)
+        theta_label = 0.5 * (theta_wedge0 + theta_wedge1)
+        cos_tl, sin_tl = np.cos(theta_label), np.sin(theta_label)
+        label_radial_nudge = 0.04 * line_extent
+
+        ref_line_kw = dict(color="0.45", linewidth=0.9, linestyle="-", zorder=35, alpha=0.75)
+        ref_arc_kw = dict(color="0.45", linewidth=0.8, linestyle="--", zorder=34, alpha=0.75)
+
+        ax.plot(
+            [cx, cx + line_extent * np.cos(np.pi)],
+            [cy, cy + line_extent * np.sin(np.pi)],
+            **ref_line_kw,
+        )
+        ax.plot(
+            [cx, cx + line_extent * np.cos(th_oblique_ray)],
+            [cy, cy + line_extent * np.sin(th_oblique_ray)],
+            **ref_line_kw,
+        )
+        for db_ref in (-10.0, 0.0, 10.0):
+            circle_r = directivity_scale * (db_ref - directivity_floor_db) / (0.0 - directivity_floor_db)
+            if circle_r > 0.0:
+                ax.plot(
+                    cx + circle_r * np.cos(th_arc),
+                    cy + circle_r * np.sin(th_arc),
+                    **ref_arc_kw,
+                )
+                if db_ref > 0.0:
+                    db_lbl = f"+{int(round(db_ref))} dB"
+                elif db_ref < 0.0:
+                    db_lbl = f"{int(round(db_ref))} dB"
+                else:
+                    db_lbl = "0 dB"
+                r_lbl = circle_r + label_radial_nudge
+                ax.text(
+                    cx + r_lbl * cos_tl,
+                    cy + r_lbl * sin_tl,
+                    db_lbl,
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color="0.35",
+                    zorder=36,
+                )
+
+        mid_angle_deg = float(np.rad2deg(mid_rad) % 360.0)
 
         # -----------------------------
         # Overlay curves
@@ -453,14 +518,15 @@ def plot_arrows_with_directivity(
             # Apply offset logic
             if i == 0:
                 theta_overlay = np.deg2rad(np.mod(curve[:, 0] + off_set, 360.0))
+                angles_deg_plot = np.mod(curve[:, 0] + off_set, 360.0)
                 db_sel = np.flip(curve[:, 1])
             else:
                 theta_overlay = np.deg2rad(np.mod(curve[:, 0], 360.0))
+                angles_deg_plot = np.mod(curve[:, 0], 360.0)
                 db_sel = curve[:, 1]
 
-            # Mean alignment
-            db_mean = np.mean(db_sel)
-            db_aligned = db_sel - db_mean + target_mean_db
+            db_at_mid = _db_at_nearest_angle_deg(angles_deg_plot, db_sel, mid_angle_deg)
+            db_aligned = db_sel - db_at_mid
             db_clipped = np.maximum(db_aligned, directivity_floor_db)
 
             r_overlay = directivity_scale * (db_clipped - directivity_floor_db) / (0 - directivity_floor_db)
