@@ -35,139 +35,6 @@ from scripts.train.train import ListenerBasedLoss, SourceBasedLoss, Train
 from scripts.saving.save_results import saver
 
 
-def run_experiment(loss_dict_builder, run_label, target_angle):
-    repo_root = Path(__file__).resolve().parent
-    target_distance = 100
-    env = SimpleNamespace( # Include here all variables that you want stored into config.json
-        epochs=1000,
-        listener_batch_size=None,  # 5 mirrored pairs plus the centre listener
-        symmetric_listener_sampling=True,
-        n_samples=256,
-        target_pos=[target_distance, float(np.tan(np.deg2rad(target_angle)) * target_distance)],
-        selected_stim="impulse",
-        sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
-        sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
-        lr=0.001,
-        seed=48,
-        log=1,
-        fs=48000,
-    )
-    env.dtype = torch.float32
-    env.device_str = "cuda" if torch.cuda.is_available() else "cpu"
-    env.device = torch.device(env.device_str)
-
-## Initial setup
-    print(f"Using device: {env.device}")
-
-    # Loudspkeaker and listener positions
-    # env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)] 
-    env.lstn_pos = [[0.0, 0.0]] # Only the centre listener position is used for this experiment
-    base_angle_rad = np.deg2rad(30.0)
-    env.speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
-    env.spk_pos = [
-        [env.speaker_distance * np.cos(base_angle_rad), env.speaker_distance * np.sin(base_angle_rad)],
-        [env.speaker_distance * np.cos(base_angle_rad), -env.speaker_distance * np.sin(base_angle_rad)],
-    ]
-    env.n_sources = len(env.spk_pos)
-
-    # Reset the seed so each run starts from the same point.
-    set_seed(seed=env.seed)
-
-## Load data
-    gtfb = load_gtfb(fs=env.fs, device=env.device, dtype=env.dtype)  # Load Gamma Tone Filter Bank
-    stim = load_stim(fs=env.fs, device=env.device, dtype=env.dtype, selected_stim=env.selected_stim)  # Load stimulus
-    hrirs = load_hrirs(dtype=env.dtype, device=env.device, sofa_path=env.sofa_path, idx_path=env.sofa_idx_path) # Load HRIRs using specific location from SOFA file
-
-## Initialize model
-    # Initialize sound propagation module
-    stereo_prop = BinauralFreeFieldPropagation(stim=stim, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, fs=env.fs, sofa_file_path=env.sofa_path) # Load stereo anechoic propagation module
-
-    # Initiate perceptual models
-    loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, hrirs=hrirs, fs=env.fs, gtfb=gtfb).to(device=env.device, dtype=env.dtype) # Llado et al. 2025 model
-    col_model = spectral_matching(loss = F.l1_loss, target = 0, stim=stim, hrirs=hrirs, target_pos=env.target_pos, fs=env.fs).to(device=env.device, dtype=env.dtype) # Spectral Matching model
-    unc_model = desena2020(loss = F.l1_loss, target = 0, hrirs=hrirs, fs=env.fs, gtfb=gtfb).to(device=env.device, dtype=env.dtype) # De Sena et al. 2020 model
-    regularisation = second_moment_regularisation(n_samples=env.n_samples, device=env.device, dtype=env.dtype)
-    loss_dict = loss_dict_builder(loc_model, col_model, unc_model, regularisation, env.device, env.dtype)
-
-    # Initialise neural network
-    nn_model = MultiSourceFIR(
-        n_samples=env.n_samples,
-        n_sources=env.n_sources,
-    ).to(device=env.device, dtype=env.dtype)
-    # Initialise FIR filter weights
-    with torch.no_grad():
-        for i, branch in enumerate(nn_model.branches):
-            branch.weight.fill_(0.0)
-            branch.weight[0, 0] = 1.0
-
-    nn_optimiser = torch.optim.Adam(nn_model.parameters(), lr=env.lr)
-
-## Initliase saving folder and logger
-    saver_obj = saver(loss_dict, env.lstn_pos)
-    logger = saver_obj if env.log else None
-
-## Training loop
-    # Train the neural network
-    trainer = Train(n_epoch=env.epochs,
-                    nn=nn_model,
-                    prop=stereo_prop,
-                    loss_dict=loss_dict,
-                    optimiser=nn_optimiser,
-                    loggers = [logger, None], 
-                    listener_batch_size=env.listener_batch_size,
-                    symmetric_listener_sampling=env.symmetric_listener_sampling) # Initialize training class
-    time_train_start = time.time()
-    trainer.train()
-    env.time_train_seconds = time.time() - time_train_start
-    print(f"Time for full optimisation:{env.time_train_seconds:.2f}")
-
-## Print and Plot results
-    # Evaluate final neural network FIRs
-    eval_perceptual_dict = {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1.0, device=env.device, dtype=env.dtype),
-            "uncertainty": ListenerBasedLoss(model=unc_model, weight=1, device=env.device, dtype=env.dtype),
-            "colouration": ListenerBasedLoss(model=col_model, weight=1, device=env.device, dtype=env.dtype)
-        }
-    est_filters, estimation_dict, bin_stim = trainer.evaluate(loss_dict=eval_perceptual_dict)
-    # Normalise filters to prevent clipping 
-    est_filters /= np.max(np.abs(est_filters)) / 0.9 # TODO: move this to a more appropriate place at the end of the training loop
-
-    # Print estimated perceptual metrics
-    for key, value in estimation_dict.items():
-        print(f"Estimated {key}: {value}")
-
-    saver_obj.save_results(
-        estimation_dict=estimation_dict,
-        est_filters=est_filters,
-        fs=env.fs,
-        lstn_pos=env.lstn_pos,
-        spk_pos=env.spk_pos,
-        trainer=trainer,
-        env=env,
-    )
-    plots = plot_results(
-        estimation_dict=estimation_dict,
-        est_filters=est_filters,
-        bin_stim=bin_stim,
-        prop_model=stereo_prop,
-        loss_dict=loss_dict,
-        target_pos=env.target_pos,
-        stim=stim,
-        fs=env.fs,
-        device=env.device,
-        dtype=env.dtype,
-        show=False,
-    )
-    saver_obj.save_plots(plots)
-
-    # Save per-epoch source FIR evolution as videos (one per source)
-    # saver_obj.save_filter_video(trainer.h_history, source_index=0, fs=env.fs)
-    # saver_obj.save_filter_video(trainer.h_history, source_index=1, fs=env.fs)
-
-    plt.close('all')
-
-    return(saver_obj.run_dir, env.lstn_pos, env.spk_pos, trainer, col_model, saver_obj)
-
 
 
 # ---------------------------
@@ -244,9 +111,9 @@ def smooth_third_octave(freq, mag_db):
 
 
 
-def DAFx2026_fig7_plots(run_folder, CTC_filts, trainer, col_model):
+def DAFx2026_fig7_plots(run_dir, CTC_filts, trainer, col_model):
 
-    folder_name = run_folder[0]
+    folder_name = run_dir
     filt_path = os.path.join(folder_name, "artifacts", "est_filters.npy")
     filts = np.load(filt_path)
     N_filts =  filts.shape[-1]
@@ -355,31 +222,159 @@ def DAFx2026_fig7_plots(run_folder, CTC_filts, trainer, col_model):
 
 
 
-
-    
-
 if __name__ == "__main__":
-
     target_angle = 45.0
 
-    run_dir_col_0, _, _, trainer, col_model, saver_obj = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "colouration": ListenerBasedLoss(model=col_model, weight=1e-2, device=device, dtype=dtype)
-        },
-        run_label="col_0",
-        target_angle=target_angle
+    repo_root = Path(__file__).resolve().parent
+    target_distance = 100
+    env = SimpleNamespace( # Include here all variables that you want stored into config.json
+        epochs=1000,
+        listener_batch_size=None,  # 5 mirrored pairs plus the centre listener
+        symmetric_listener_sampling=True,
+        n_samples=256,
+        target_pos=[target_distance, float(np.tan(np.deg2rad(target_angle)) * target_distance)],
+        selected_stim="impulse",
+        sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
+        sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
+        lr=0.001,
+        seed=48,
+        log=1,
+        fs=48000,
     )
+    env.dtype = torch.float32
+    env.device_str = "cuda" if torch.cuda.is_available() else "cpu"
+    env.device = torch.device(env.device_str)
+
+## Initial setup
+    print(f"Using device: {env.device}")
+
+    # Loudspkeaker and listener positions
+    # env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)] 
+    env.lstn_pos = [[0.0, 0.0]] # Only the centre listener position is used for this experiment
+    base_angle_rad = np.deg2rad(30.0)
+    env.speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
+    env.spk_pos = [
+        [env.speaker_distance * np.cos(base_angle_rad), env.speaker_distance * np.sin(base_angle_rad)],
+        [env.speaker_distance * np.cos(base_angle_rad), -env.speaker_distance * np.sin(base_angle_rad)],
+    ]
+    env.n_sources = len(env.spk_pos)
+
+    # Reset the seed so each run starts from the same point.
+    set_seed(seed=env.seed)
+
+## Load data
+    gtfb = load_gtfb(fs=env.fs, device=env.device, dtype=env.dtype)  # Load Gamma Tone Filter Bank
+    stim = load_stim(fs=env.fs, device=env.device, dtype=env.dtype, selected_stim=env.selected_stim)  # Load stimulus
+    hrirs = load_hrirs(dtype=env.dtype, device=env.device, sofa_path=env.sofa_path, idx_path=env.sofa_idx_path) # Load HRIRs using specific location from SOFA file
+
+## Initialize model
+    # Initialize sound propagation module
+    stereo_prop = BinauralFreeFieldPropagation(stim=stim, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, fs=env.fs, sofa_file_path=env.sofa_path) # Load stereo anechoic propagation module
+
+    # Initiate perceptual models
+    loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, hrirs=hrirs, fs=env.fs, gtfb=gtfb).to(device=env.device, dtype=env.dtype) # Llado et al. 2025 model
+    col_model = spectral_matching(loss = F.l1_loss, target = 0, stim=stim, hrirs=hrirs, target_pos=env.target_pos, fs=env.fs).to(device=env.device, dtype=env.dtype) # Spectral Matching model
+    unc_model = desena2020(loss = F.l1_loss, target = 0, hrirs=hrirs, fs=env.fs, gtfb=gtfb).to(device=env.device, dtype=env.dtype) # De Sena et al. 2020 model
+    regularisation = second_moment_regularisation(n_samples=env.n_samples, device=env.device, dtype=env.dtype)
+    
+    env.loc_weight = 1.0
+    env.unc_weight = 1.0e1
+    env.col_weight = 1.0e-2
+    env.reg_weight = 1.0e-2
+
+    loss_dict = {
+        # "localisation": ListenerBasedLoss(model=loc_model, weight=env.loc_weight, device=env.device, dtype=env.dtype),
+        # "uncertainty": ListenerBasedLoss(model=unc_model, weight=env.unc_weight, device=env.device, dtype=env.dtype),
+        "colouration": ListenerBasedLoss(model=col_model, weight=env.col_weight, device=env.device, dtype=env.dtype),
+        # "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=env.reg_weight),
+        # "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=env.reg_weight),
+        # "regularisation_source_2": SourceBasedLoss(regulariser=regularisation, source_idx=2, weight=env.reg_weight),
+        # "regularisation_source_3": SourceBasedLoss(regulariser=regularisation, source_idx=3, weight=env.reg_weight),
+    }
+
+
+
+    # Initialise neural network
+    nn_model = MultiSourceFIR(
+        n_samples=env.n_samples,
+        n_sources=env.n_sources,
+    ).to(device=env.device, dtype=env.dtype)
+    # Initialise FIR filter weights
+    with torch.no_grad():
+        for i, branch in enumerate(nn_model.branches):
+            branch.weight.fill_(0.0)
+            branch.weight[0, 0] = 1.0
+
+    nn_optimiser = torch.optim.Adam(nn_model.parameters(), lr=env.lr)
+
+## Initliase saving folder and logger
+    saver_obj = saver(loss_dict, env.lstn_pos)
+    logger = saver_obj if env.log else None
+
+## Training loop
+    # Train the neural network
+    trainer = Train(n_epoch=env.epochs,
+                    nn=nn_model,
+                    prop=stereo_prop,
+                    loss_dict=loss_dict,
+                    optimiser=nn_optimiser,
+                    loggers = [logger, None], 
+                    listener_batch_size=env.listener_batch_size,
+                    symmetric_listener_sampling=env.symmetric_listener_sampling) # Initialize training class
+    time_train_start = time.time()
+    trainer.train()
+    env.time_train_seconds = time.time() - time_train_start
+    print(f"Time for full optimisation:{env.time_train_seconds:.2f}")
+
+## Print and Plot results
+    # Evaluate final neural network FIRs
+    eval_perceptual_dict = {
+            "localisation": ListenerBasedLoss(model=loc_model, weight=1.0, device=env.device, dtype=env.dtype),
+            "uncertainty": ListenerBasedLoss(model=unc_model, weight=1, device=env.device, dtype=env.dtype),
+            "colouration": ListenerBasedLoss(model=col_model, weight=1, device=env.device, dtype=env.dtype)
+        }
+    est_filters, estimation_dict, bin_stim = trainer.evaluate(loss_dict=eval_perceptual_dict)
+    # Normalise filters to prevent clipping 
+    est_filters /= np.max(np.abs(est_filters)) / 0.9 # TODO: move this to a more appropriate place at the end of the training loop
+
+    # Print estimated perceptual metrics
+    for key, value in estimation_dict.items():
+        print(f"Estimated {key}: {value}")
+
+    saver_obj.save_results(
+        estimation_dict=estimation_dict,
+        est_filters=est_filters,
+        fs=env.fs,
+        lstn_pos=env.lstn_pos,
+        spk_pos=env.spk_pos,
+        trainer=trainer,
+        env=env,
+    )
+    plots = plot_results(
+        estimation_dict=estimation_dict,
+        est_filters=est_filters,
+        bin_stim=bin_stim,
+        prop_model=stereo_prop,
+        loss_dict=loss_dict,
+        target_pos=env.target_pos,
+        stim=stim,
+        fs=env.fs,
+        device=env.device,
+        dtype=env.dtype,
+        show=False,
+    )
+    saver_obj.save_plots(plots)
+
+    # Save per-epoch source FIR evolution as videos (one per source)
+    # saver_obj.save_filter_video(trainer.h_history, source_index=0, fs=env.fs)
+    # saver_obj.save_filter_video(trainer.h_history, source_index=1, fs=env.fs)
+
+    plt.close('all')
 
     CTC_filts = Compute_CTC_filters(target_angle=target_angle)
-
     
-    folder = [run_dir_col_0]
-    
-    fig7_plot = DAFx2026_fig7_plots(folder, CTC_filts=CTC_filts, trainer=trainer, col_model=col_model)
+    fig7_plot = DAFx2026_fig7_plots(saver_obj.run_dir, CTC_filts=CTC_filts, trainer=trainer, col_model=col_model)
     plot_folder = saver_obj.get_plot_folder()
     fig7_plot.savefig(plot_folder / "DAFx2026_fig7.pdf", format="pdf")
 
 
-
-
-    
