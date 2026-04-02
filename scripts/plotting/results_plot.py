@@ -485,8 +485,7 @@ def plot_arrows_with_directivity(
     # -----------------------------
     ax.set_aspect('equal')
     ax.grid(True)
-    ax.set_xticks(fontsize = 20)
-    ax.set_yticks(fontsize = 20)
+    ax.tick_params(axis='both', labelsize=20)
     ax.set_xlabel("X (m)", fontsize = 20)
     ax.set_ylabel("Y (m)", fontsize = 20)
 
