@@ -166,7 +166,7 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
 
     plt.close('all')
 
-    return(saver_obj.run_dir, env.lstn_pos, env.spk_pos, trainer, col_model)
+    return(saver_obj.run_dir, env.lstn_pos, env.spk_pos, trainer, col_model, saver_obj)
 
 
 
@@ -351,8 +351,7 @@ def DAFx2026_fig7_plots(run_folder, CTC_filts, trainer, col_model):
     )
 
     plt.tight_layout(rect=[0, 0, 1, 0.92])  # leave space for legend
-    plt.savefig("DAFx2026_fig7.pdf", format="pdf")
-    plt.show()
+    return fig
 
 
 
@@ -363,7 +362,7 @@ if __name__ == "__main__":
 
     target_angle = 45.0
 
-    run_dir_col_0, _, _, trainer, col_model = run_experiment(
+    run_dir_col_0, _, _, trainer, col_model, saver_obj = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "colouration": ListenerBasedLoss(model=col_model, weight=1e-2, device=device, dtype=dtype)
         },
@@ -376,7 +375,9 @@ if __name__ == "__main__":
     
     folder = [run_dir_col_0]
     
-    DAFx2026_fig7_plots(folder, CTC_filts=CTC_filts, trainer=trainer, col_model=col_model)
+    fig7_plot = DAFx2026_fig7_plots(folder, CTC_filts=CTC_filts, trainer=trainer, col_model=col_model)
+    plot_folder = saver_obj.get_plot_folder()
+    fig7_plot.savefig(plot_folder / "DAFx2026_fig7.pdf", format="pdf")
 
 
 

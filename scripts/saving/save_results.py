@@ -95,6 +95,11 @@ class saver():
         self.now = now
         self.run_dir.mkdir(parents=True, exist_ok=True)
 
+    def get_plot_folder(self):
+        plot_folder = self.run_dir / "plots"
+        plot_folder.mkdir(parents=True, exist_ok=True)
+        return plot_folder
+
     def save_filter_video(
         self,
         h_history,
