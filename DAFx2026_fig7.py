@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 # Import computational libraries
 import numpy as np
+import scipy.signal
 import torch
 import torch.nn.functional as F
 from sklearn.metrics import r2_score
@@ -118,6 +119,13 @@ def DAFx2026_fig7_plots(run_dir, CTC_filts, trainer, col_model):
     filt_path = os.path.join(folder_name, "artifacts", "est_filters.npy")
     filts = np.load(filt_path)
     N_filts =  filts.shape[-1]
+
+    def _highpass_50hz_time_domain(x, fs=48000, cutoff_hz=50.0, numtaps=33):
+        h = scipy.signal.firwin(numtaps, cutoff=cutoff_hz, fs=fs, pass_zero=False)
+        return np.apply_along_axis(lambda v: scipy.signal.convolve(v, h, mode="same", method="fft"), axis=-1, arr=x)
+
+    CTC_filts = _highpass_50hz_time_domain(CTC_filts)
+    filts = _highpass_50hz_time_domain(filts)
 
     ctc_normed = CTC_filts / np.sqrt(np.mean(CTC_filts**2))
     filts_normed = filts / np.sqrt(np.mean(filts**2))
