@@ -30,6 +30,7 @@ from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagat
 from scripts.perceptual_models.llado2025.llado2025 import llado2025
 from scripts.perceptual_models.desena2020.desena2020 import desena2020
 from scripts.perceptual_models.spectral_matching.spectral_matching import spectral_matching
+from scripts.perceptual_models.ipd.ipd import interaural_phase_difference
 from scripts.optimisation.regularisation import second_moment_regularisation
 from scripts.train.train import ListenerBasedLoss, SourceBasedLoss, Train
 from scripts.saving.save_results import saver
@@ -223,7 +224,7 @@ def DAFx2026_fig7_plots(run_dir, CTC_filts, trainer, col_model):
 
 
 if __name__ == "__main__":
-    target_angle = 45.0
+    target_angle = 15.0
 
     repo_root = Path(__file__).resolve().parent
     target_distance = 100
@@ -236,7 +237,7 @@ if __name__ == "__main__":
         selected_stim="impulse",
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
-        lr=0.001,
+        lr=0.01,
         seed=48,
         log=1,
         fs=48000,
@@ -274,18 +275,18 @@ if __name__ == "__main__":
     # Initiate perceptual models
     loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, hrirs=hrirs, fs=env.fs, gtfb=gtfb).to(device=env.device, dtype=env.dtype) # Llado et al. 2025 model
     col_model = spectral_matching(loss = F.l1_loss, target = 0, stim=stim, hrirs=hrirs, target_pos=env.target_pos, fs=env.fs).to(device=env.device, dtype=env.dtype) # Spectral Matching model
+    ipd_model = interaural_phase_difference(loss = F.l1_loss, target = 0, reference_stim=col_model.reference_stim, fs=env.fs).to(device=env.device, dtype=env.dtype) # Inter-aural Phase Difference model
     unc_model = desena2020(loss = F.l1_loss, target = 0, hrirs=hrirs, fs=env.fs, gtfb=gtfb).to(device=env.device, dtype=env.dtype) # De Sena et al. 2020 model
     regularisation = second_moment_regularisation(n_samples=env.n_samples, device=env.device, dtype=env.dtype)
     
-    env.loc_weight = 1.0
-    env.unc_weight = 1.0e1
-    env.col_weight = 1.0e-2
-    env.reg_weight = 1.0e-2
+    env.col_weight = 1.0e0
+    env.ipd_weight = 1.0e0
 
     loss_dict = {
         # "localisation": ListenerBasedLoss(model=loc_model, weight=env.loc_weight, device=env.device, dtype=env.dtype),
         # "uncertainty": ListenerBasedLoss(model=unc_model, weight=env.unc_weight, device=env.device, dtype=env.dtype),
         "colouration": ListenerBasedLoss(model=col_model, weight=env.col_weight, device=env.device, dtype=env.dtype),
+        "ipd": ListenerBasedLoss(model=ipd_model, weight=env.ipd_weight, device=env.device, dtype=env.dtype),
         # "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=env.reg_weight),
         # "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=env.reg_weight),
         # "regularisation_source_2": SourceBasedLoss(regulariser=regularisation, source_idx=2, weight=env.reg_weight),
@@ -331,7 +332,8 @@ if __name__ == "__main__":
     eval_perceptual_dict = {
             "localisation": ListenerBasedLoss(model=loc_model, weight=1.0, device=env.device, dtype=env.dtype),
             "uncertainty": ListenerBasedLoss(model=unc_model, weight=1, device=env.device, dtype=env.dtype),
-            "colouration": ListenerBasedLoss(model=col_model, weight=1, device=env.device, dtype=env.dtype)
+            "colouration": ListenerBasedLoss(model=col_model, weight=1, device=env.device, dtype=env.dtype),
+            "ipd": ListenerBasedLoss(model=ipd_model, weight=1, device=env.device, dtype=env.dtype),
         }
     est_filters, estimation_dict, bin_stim = trainer.evaluate(loss_dict=eval_perceptual_dict)
     # Normalise filters to prevent clipping 
