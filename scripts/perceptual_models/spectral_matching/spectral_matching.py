@@ -35,7 +35,6 @@ class spectral_matching(nn.Module):
             raise ValueError("target_pos must contain exactly two coordinates.")
 
         if isinstance(lstn_pos_conf, type(None)):
-            
             self.target_angle = torch.rad2deg(torch.atan2(self.target_pos[1], self.target_pos[0]))
             self.reference_hrir = self.get_IR(self.sofa_find(self.target_angle)).view(2,1,-1).to(dtype=self.dtype, device=self.device)
             self.reference_stim = true_conv1d(self.stim, self.reference_hrir)
@@ -43,7 +42,6 @@ class spectral_matching(nn.Module):
             low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
 
         elif isinstance(lstn_pos_conf, list):
-
             self.target_angle = near_field_comp_angles(self.target_pos, lstn_pos_conf)
 
             self.reference_hrir = self.get_IR(self.sofa_find(self.target_angle)).view(2*len(lstn_pos_conf),1,-1).to(dtype=self.dtype, device=self.device)
@@ -52,11 +50,10 @@ class spectral_matching(nn.Module):
             low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
         else:
             print("Wrong data type, defaulting to global target position angle")
-            self.target_angle = torch.rad2deg(torch.atan2(self.target_pos[1], self.target_pos[0]))
+            self.target_angle = torch.rad2deg(torch.atan2(self.target_pos[1], self.target_pos[0])) # TODO: this repeats the code of  isinstance(lstn_pos_conf, type(None)). Please fix. 
             self.reference_hrir = self.get_IR(self.sofa_find(self.target_angle)).view(2,1,-1).to(dtype=self.dtype, device=self.device)
             self.reference_stim = true_conv1d(self.stim, self.reference_hrir)
             low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
-
 
         self.target = target
         self.loss = loss
@@ -89,21 +86,12 @@ class spectral_matching(nn.Module):
         # Expects bin_stim as (batch, n_listeners, 2, T), where 2 is the left and right ear and T is the number of time samples of each ear signal;
         # returns flattened coloration scores with shape (batch * n_listeners,).
 
-        if len(bin_stim.shape) == 4:
-            batch_size = bin_stim.shape[0]
-            N_lstn_pos = bin_stim.shape[1]
-
-        elif len(bin_stim.shape) == 3:
-            batch_size = bin_stim.shape[0]
-            N_lstn_pos = 1
-        
-        elif len(bin_stim.shape) == 2:
-            batch_size = 1
-            N_lstn_pos = 1
-
-        else:
-            print('Expected input of dimensions greater than 1 and lower than 5')
-            return(0)
+        if len(bin_stim.shape) != 4:
+            raise ValueError(
+                f"bin_stim must have shape (batch, n_listeners, 2, T); got ndim={len(bin_stim.shape)}, shape={tuple(bin_stim.shape)}."
+            )
+        batch_size = bin_stim.shape[0]
+        N_lstn_pos = bin_stim.shape[1]
     
         N_signals = batch_size*N_lstn_pos
         L_signal = bin_stim.shape[-1]
