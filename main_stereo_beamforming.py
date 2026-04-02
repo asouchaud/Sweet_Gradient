@@ -195,10 +195,10 @@ if __name__ == "__main__":
         show=False,
     )
 
-    rodenas2004_fig12_opt = np.loadtxt(repo_root / "data" / "miscellaneous" / "rodenas2004_fig12_opt.csv", delimiter=",", skiprows=1)
-    rodenas2004_fig12_opt = [[-((angle_deg + 180) % 360.0), level_db] for angle_deg, level_db in rodenas2004_fig12_opt]
-    rodenas2004_fig12_1000Hz = np.loadtxt(repo_root / "data" / "miscellaneous" / "rodenas2004_fig12_1000Hz.csv", delimiter=",", skiprows=1)
-    rodenas2004_fig12_1000Hz = [[-((angle_deg + 180) % 360.0), level_db] for angle_deg, level_db in rodenas2004_fig12_1000Hz]
+    rodenas2003_fig12_opt = np.loadtxt(repo_root / "data" / "miscellaneous" / "rodenas2003_fig12_opt.csv", delimiter=",", skiprows=1)
+    rodenas2003_fig12_opt = [[-((angle_deg + 180) % 360.0), level_db] for angle_deg, level_db in rodenas2003_fig12_opt]
+    rodenas2003_fig12_1000Hz = np.loadtxt(repo_root / "data" / "miscellaneous" / "rodenas2003_fig12_1000Hz.csv", delimiter=",", skiprows=1)
+    rodenas2003_fig12_1000Hz = [[-((angle_deg + 180) % 360.0), level_db] for angle_deg, level_db in rodenas2003_fig12_1000Hz]
     
     right_array_indices = tuple(range(env.speakers_per_array, 2 * env.speakers_per_array))
     left_array_indices = tuple(range(env.speakers_per_array))
@@ -209,8 +209,8 @@ if __name__ == "__main__":
         group_indices=right_array_indices,
         radius=env.directivity_radius_m,
         freqs_eval_hz=env.directivity_freqs_hz,
-        overlay_curves=[rodenas2004_fig12_opt, rodenas2004_fig12_1000Hz],
-        overlay_labels=["rodenas2004 (optimum)", "rodenas2004 (1000 Hz)"],
+        overlay_curves=[rodenas2003_fig12_opt, rodenas2003_fig12_1000Hz],
+        overlay_labels=["rodenas2003 (optimum)", "rodenas2003 (1000 Hz)"],
         db_floor=env.directivity_db_floor,
         show=False,
     )
@@ -234,8 +234,8 @@ if __name__ == "__main__":
         directivity_freq_idx=2,   # used if mode="single"
         directivity_scale=0.6,
         directivity_floor_db=-20,
-        overlay_curves=[rodenas2004_fig12_opt, rodenas2004_fig12_1000Hz],
-        overlay_labels=["rodenas2004 (optimum)", "rodenas2004 (1000 Hz)"],
+        overlay_curves=[rodenas2003_fig12_opt, rodenas2003_fig12_1000Hz],
+        overlay_labels=["rodenas2003 (optimum)", "rodenas2003 (1000 Hz)"],
     )
     saver_obj.save_plots(plots)
 
@@ -251,7 +251,7 @@ if __name__ == "__main__":
         group_indices=right_array_indices,
         radius=env.directivity_radius_m,
         freqs_eval_hz=env.directivity_freqs_hz,
-        overlay_curves=[rodenas2004_fig12_opt, rodenas2004_fig12_1000Hz],
-        overlay_labels=["rodenas2004 (optimum)", "rodenas2004 (1000 Hz)"],
+        overlay_curves=[rodenas2003_fig12_opt, rodenas2003_fig12_1000Hz],
+        overlay_labels=["rodenas2003 (optimum)", "rodenas2003 (1000 Hz)"],
         db_floor=env.directivity_db_floor,
     )
