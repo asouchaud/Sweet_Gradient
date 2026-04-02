@@ -265,19 +265,20 @@ if __name__ == "__main__":
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
         target_angle = 45.0,
         target_distance = 100,
-        epochs=2000,
+        epochs=500,
         listener_batch_size=None,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=True,
         n_samples=256,
         selected_stim="impulse",
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
-        lr=0.005,
+        lr=0.01,
         seed=48,
         log=1,
         fs=48000,
     )
     env.target_pos=[env.target_distance, float(np.tan(np.deg2rad(env.target_angle)) * env.target_distance)],
+    
     env.dtype = torch.float32
     env.device_str = "cuda" if torch.cuda.is_available() else "cpu"
     env.device = torch.device(env.device_str)
