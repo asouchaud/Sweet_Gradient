@@ -169,6 +169,15 @@ def test_reference_100_epoch_matches_known_output() -> None:
     # Normalise filters to prevent clipping
     est_filters /= np.max(np.abs(est_filters)) / 0.9  # TODO: move this to a more appropriate place at the end of the training loop
 
+    saver_obj.save_results(
+        estimation_dict=estimation_dict,
+        est_filters=est_filters,
+        fs=fs,
+        lstn_pos=lstn_pos,
+        spk_pos=spk_pos,
+        trainer=trainer,
+    )
+
     # Expected from the legacy 15 degree reference case, now expressed as target_pos.
     expected_path = Path(__file__).resolve().parent / "reference_outputs" / "test_reference_100_epoch_matches_known_output.json"
     with open(expected_path) as f:
@@ -180,7 +189,8 @@ def test_reference_100_epoch_matches_known_output() -> None:
     expected_uncertainty = expected["uncertainty"]
 
     filters_np = np.asarray(est_filters, dtype=np.float32)
-    np.testing.assert_allclose(filters_np, expected_filters, rtol=1e-2, atol=1e-2) # Errors on Github workflows can be fairly large
-    np.testing.assert_allclose(np.asarray(estimation_dict["localisation"]), expected_localisation, rtol=1e-2, atol=1e-0) # Errors on Githun workflows can be fairly large, and this is measured in degrees
-    np.testing.assert_allclose(np.asarray(estimation_dict["colouration"]), expected_colouration, rtol=1e-2, atol=1e-0)
-    np.testing.assert_allclose(np.asarray(estimation_dict["uncertainty"]), expected_uncertainty, rtol=1e-2, atol=1e-2)
+    _ci = os.environ.get("GITHUB_ACTIONS") == "true"
+    np.testing.assert_allclose(filters_np, expected_filters, rtol=1e-2 if _ci else 1e-5, atol=1e-2 if _ci else 1e-5)
+    np.testing.assert_allclose(np.asarray(estimation_dict["localisation"]), expected_localisation, rtol=1e-2 if _ci else 1e-4, atol=1e-0 if _ci else 1e-2)
+    np.testing.assert_allclose(np.asarray(estimation_dict["colouration"]), expected_colouration, rtol=1e-2 if _ci else 1e-4, atol=1e-0 if _ci else 1e-2)
+    np.testing.assert_allclose(np.asarray(estimation_dict["uncertainty"]), expected_uncertainty, rtol=1e-2 if _ci else 1e-5, atol=1e-2 if _ci else 1e-5)
