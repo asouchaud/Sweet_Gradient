@@ -30,7 +30,7 @@ if __name__ == "__main__":
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
         epochs=100,
         n_samples=41,
-        num_lstn_pos=50,
+        num_lstn_pos=101,
         listener_batch_size=10,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=False,
         selected_stim="impulse",
@@ -46,7 +46,7 @@ if __name__ == "__main__":
         speakers_per_array=2,
         speaker_distance=2.5,  # Distance from each array centre to the reference-system center (0, 0)
         array_centre_angles_deg=[30.0, -30.0],
-        speaker_spacing_m=0.01,  # Adjacent spacing within each array (global y-axis)
+        speaker_spacing_m=0.10,  # Adjacent spacing within each array (global y-axis)
         target_pos=[float(2.5 * np.cos(np.deg2rad(30.0))), 0.0],
         apply_distance_attenuation=True,
     )
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     set_seed(seed=env.seed)
 
     # Loudspkeaker and listener positions
-    env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)]  # 10 listener positions
+    env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-1.25, 1.25, env.num_lstn_pos)]  # 10 listener positions
 
     relative_offsets = (np.arange(env.speakers_per_array, dtype=float) - (env.speakers_per_array - 1) / 2.0) * env.speaker_spacing_m
     upper_angle_deg, lower_angle_deg = env.array_centre_angles_deg
@@ -110,7 +110,7 @@ if __name__ == "__main__":
 
     env.loc_weight = 1.0
     env.unc_weight = 1.0e1
-    env.col_weight = 1.0e-2
+    env.col_weight = 1e-01
     env.reg_weight = 1.0e-2
 
     loss_dict = {
@@ -232,7 +232,7 @@ if __name__ == "__main__":
         c=343.0,
         directivity_mode="avg",   # "avg" or "single"
         directivity_freq_idx=2,   # used if mode="single"
-        directivity_scale=0.3,
+        directivity_scale=0.6,
         directivity_floor_db=-20,
         overlay_curves=[rodenas2004_fig12_opt, rodenas2004_fig12_1000Hz],
         overlay_labels=["rodenas2004 (optimum)", "rodenas2004 (1000 Hz)"],
