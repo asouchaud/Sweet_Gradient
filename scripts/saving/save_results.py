@@ -446,4 +446,8 @@ class saver():
         if directivity_plot is not None:
             directivity_plot.savefig(plot_folder / "directivity_plot.pdf")
         if directivity_arrow_plot is not None:
-            directivity_arrow_plot.savefig(plot_folder / "arrows_and_directivity.pdf")
+            directivity_arrow_plot.savefig(
+                plot_folder / "arrows_and_directivity.pdf",
+                bbox_inches="tight",
+                pad_inches=0.06,
+            )
