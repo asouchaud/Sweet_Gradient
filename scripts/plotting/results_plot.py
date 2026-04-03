@@ -280,6 +280,7 @@ def plot_arrows_with_directivity(
     unc=None,
     col=None,
     target_pos=None,
+    show_listener_target_lines=False,
     vbap_values=None,
     show=True,
     n_angles=360,
@@ -290,6 +291,7 @@ def plot_arrows_with_directivity(
     directivity_freq_idx=2,
     directivity_scale=1.0,
     directivity_floor_db=-20,
+    directivity_label="Proposed Method",
     overlay_curve=None,
     overlay_curves=None,
     overlay_labels=None,
@@ -326,8 +328,35 @@ def plot_arrows_with_directivity(
     # -----------------------------
     fig, ax = plt.subplots(figsize=(6, 6))
 
-    ax.scatter(spk_pos[:, 0], spk_pos[:, 1], c='black', marker='x')
+    ax.scatter(spk_pos[:, 0], spk_pos[:, 1], c='black', marker='x', label='Loudspeakers')
     ax.scatter(lstn_pos[:, 0], lstn_pos[:, 1], c='blue', label='Virtual Listeners')
+
+    target_pos_np = None
+    if target_pos is not None:
+        target_pos_np = np.asarray(target_pos, dtype=float).reshape(-1)
+        if target_pos_np.size != 2:
+            raise ValueError("target_pos must be a 2D position.")
+        ax.scatter(
+            target_pos_np[0],
+            target_pos_np[1],
+            marker="^",
+            c="red",
+            s=60,
+            label="Target",
+            zorder=6,
+        )
+
+    if show_listener_target_lines and target_pos_np is not None:
+        for x, y in zip(lstn_pos[:, 0], lstn_pos[:, 1]):
+            ax.plot(
+                [x, target_pos_np[0]],
+                [y, target_pos_np[1]],
+                linestyle="--",
+                linewidth=0.8,
+                color="0.65",
+                alpha=0.6,
+                zorder=1,
+            )
 
     # -----------------------------
     # Arrows
@@ -438,7 +467,7 @@ def plot_arrows_with_directivity(
         y_dir = cy + r_sel*np.sin(theta_sel)
 
         ax.plot(x_dir, y_dir, color="tab:blue", linewidth=2,
-                label='Proposed Method' if i == 0 else None, zorder = 50)
+                label=directivity_label if i == 0 else None, zorder = 50)
 
         line_extent = 0.0
         for db_ref in (-10.0, 0.0, 10.0):
@@ -540,12 +569,13 @@ def plot_arrows_with_directivity(
 
     handles, labels = ax.get_legend_handles_labels()
     unique = dict(zip(labels, handles))
+    legend_ncol = 1 if len(unique) <= 2 else 2
     ax.legend(
         unique.values(),
         unique.keys(),
         loc="lower center",
         bbox_to_anchor=(0.5, 1.02),
-        ncol=2,
+        ncol=legend_ncol,
         frameon=False,
         fontsize=9,
     )
