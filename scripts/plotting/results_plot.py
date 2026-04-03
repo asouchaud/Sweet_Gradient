@@ -295,6 +295,7 @@ def plot_arrows_with_directivity(
     overlay_curve=None,
     overlay_curves=None,
     overlay_labels=None,
+    legend_ncol=None,
 ):
     # -----------------------------
     # Prepare inputs
@@ -569,7 +570,8 @@ def plot_arrows_with_directivity(
 
     handles, labels = ax.get_legend_handles_labels()
     unique = dict(zip(labels, handles))
-    legend_ncol = 1 if len(unique) <= 2 else 2
+    if legend_ncol is None:
+        legend_ncol = 1 if len(unique) <= 2 else 2
     ax.legend(
         unique.values(),
         unique.keys(),
