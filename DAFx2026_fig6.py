@@ -33,6 +33,7 @@ from scripts.perceptual_models.spectral_matching.spectral_matching import spectr
 from scripts.optimisation.regularisation import second_moment_regularisation
 from scripts.train.train import ListenerBasedLoss, SourceBasedLoss, Train
 from scripts.saving.save_results import saver
+from scripts.helpers.filters import bandpass_fir
 
 
 def run_experiment(loss_dict_builder, run_label, target_angle):
@@ -215,6 +216,7 @@ def VBAP_loc(vbap_icld):
 def DAFx2026_fig6_plots(run_folders):
 
     repo_root = Path(__file__).resolve().parent
+    fs = 48000
     vbap_icld = np.loadtxt(repo_root / "data" / "miscellaneous" / "VBAP_panning_curve.csv")
 
     tmp = np.load(run_folders[0] / "artifacts" / "est_filters.npy")
@@ -223,7 +225,8 @@ def DAFx2026_fig6_plots(run_folders):
     for i in range(len(run_folders)):
         filt[i] = np.load(run_folders[i] / "artifacts" / "est_filters.npy")
 
-    E_ratio = 10*np.log10(np.abs(np.sum(filt[:,0,:]**2, axis = -1))/np.abs(np.sum(filt[:,1,:]**2, axis = -1)))
+    filt_bp = bandpass_fir(filt, fs=fs)
+    E_ratio = 10*np.log10(np.abs(np.sum(filt_bp[:,0,:]**2, axis = -1))/np.abs(np.sum(filt_bp[:,1,:]**2, axis = -1)))
     angles = np.arange(-30,35,5)
 
     r2 = r2_score(vbap_icld[1:-1], E_ratio[1:-1])
