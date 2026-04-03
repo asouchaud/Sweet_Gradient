@@ -309,149 +309,22 @@ def DAFx2026_fig6_plots(run_folders):
     
 
 if __name__ == "__main__":
-    run_dir_loc_30, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-0),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-0),
-        },
-        run_label="loc_30",
-        target_angle=30.0
-    )
-
-    run_dir_loc_25, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-0),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-0),
-        },
-        run_label="loc_25",
-        target_angle=25.0
-    )
-
-    run_dir_loc_20, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-0),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-0),
-        },
-        run_label="loc_20",
-        target_angle=20.0
-    )
-
-    run_dir_loc_15, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-0),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-0),
-        },
-        run_label="loc_15",
-        target_angle=15.0
-    )
-
-    run_dir_loc_10, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-0),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-0),
-        },
-        run_label="loc_10",
-        target_angle=10.0
-    )
-
-    run_dir_loc_5, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-0),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-0),
-        },
-        run_label="loc_5",
-        target_angle=5.0
-    )
-
-    run_dir_loc_0, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-0),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-0),
-        },
-        run_label="loc_0",
-        target_angle=0.0
-    )
-
-    run_dir_loc_355, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-0),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-0),
-        },
-        run_label="loc_355",
-        target_angle=355.0
-    )
-
-    run_dir_loc_350, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-0),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-0),
-        },
-        run_label="loc_350",
-        target_angle=350.0
-    )
-
-    run_dir_loc_345, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-0),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-0),
-        },
-        run_label="loc_345",
-        target_angle=345.0
-    )
-
-    run_dir_loc_340, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-0),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-0),
-        },
-        run_label="loc_340",
-        target_angle=340.0
-    )
-
-    run_dir_loc_335, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-0),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-0),
-        },
-        run_label="loc_335",
-        target_angle=335.0
-    )
-
-    run_dir_loc_330, lstn_pos, spk_pos = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e-0, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-0),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-0),
-        },
-        run_label="loc_330",
-        target_angle=330.0
-    )
-
-    folders = [run_dir_loc_30,
-               run_dir_loc_25,
-               run_dir_loc_20,
-               run_dir_loc_15,
-               run_dir_loc_10,
-               run_dir_loc_5,
-               run_dir_loc_0,
-               run_dir_loc_355,
-               run_dir_loc_350,
-               run_dir_loc_345,
-               run_dir_loc_340,
-               run_dir_loc_335,
-               run_dir_loc_330]
+    angles = [30.0, 25.0, 20.0, 15.0, 10.0, 5.0, 0.0, 355.0, 350.0, 345.0, 340.0, 335.0, 330.0]
+    folders = []
+    lstn_pos, spk_pos = None, None
+    for angle in angles:
+        run_dir, run_lstn_pos, run_spk_pos = run_experiment(
+            loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype, angle=angle: {
+                "localisation": ListenerBasedLoss(model=loc_model, weight=1e-0 if angle == 330.0 else 1e1, device=device, dtype=dtype),
+                "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-0),
+                "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-0),
+            },
+            run_label=f"loc_{int(angle)}",
+            target_angle=angle
+        )
+        folders.append(run_dir)
+        if angle == 330.0:
+            lstn_pos, spk_pos = run_lstn_pos, run_spk_pos
     
     DAFx2026_fig6_plots(folders)
 
