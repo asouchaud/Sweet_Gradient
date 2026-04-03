@@ -35,6 +35,7 @@ from scripts.perceptual_models.ipd.ipd import interaural_phase_difference
 from scripts.optimisation.regularisation import second_moment_regularisation
 from scripts.train.train import ListenerBasedLoss, SourceBasedLoss, Train
 from scripts.saving.save_results import saver
+from scripts.helpers.filters import bandpass_fir
 
 
 
@@ -124,14 +125,9 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
     filt_path_col_only = os.path.join(folder_name_col_only, "artifacts", "est_filters.npy")
     filts_col_only = np.load(filt_path_col_only)
 
-    def _bandpass_time_domain(x, fs=48000, highpass_hz=50.0, lowpass_hz=20000.0, numtaps=33):
-        lowpass_hz = min(lowpass_hz, (fs / 2) * 0.999)
-        h = scipy.signal.firwin(numtaps, cutoff=[highpass_hz, lowpass_hz], fs=fs, pass_zero=False)
-        return np.apply_along_axis(lambda v: scipy.signal.convolve(v, h, mode="same", method="fft"), axis=-1, arr=x)
-
-    CTC_filts = _bandpass_time_domain(CTC_filts)
-    filts = _bandpass_time_domain(filts)
-    filts_col_only = _bandpass_time_domain(filts_col_only)
+    CTC_filts = bandpass_fir(CTC_filts, fs=env.fs)
+    filts = bandpass_fir(filts, fs=env.fs)
+    filts_col_only = bandpass_fir(filts_col_only, fs=env.fs)
 
     ctc_normed = CTC_filts / np.sqrt(np.mean(CTC_filts**2))
     filts_normed = filts / np.sqrt(np.mean(filts**2))
