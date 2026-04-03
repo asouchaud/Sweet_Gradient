@@ -421,12 +421,29 @@ class saver():
             directivity_plot = plots_or_time_plot.get("directivity_plot")
             directivity_arrow_plot = plots_or_time_plot.get("arrows_and_directivity")
             directivity_arrow_centre_plot = plots_or_time_plot.get("arrows_and_directivity_centre")
+            extra_plots = {
+                key: value
+                for key, value in plots_or_time_plot.items()
+                if key
+                not in {
+                    "time_plot",
+                    "freq_plot",
+                    "stimulus_plot",
+                    "arrow_plot",
+                    "color_l_plot",
+                    "color_r_plot",
+                    "directivity_plot",
+                    "arrows_and_directivity",
+                    "arrows_and_directivity_centre",
+                }
+            }
         else:
             time_plot = plots_or_time_plot
             stimulus_plot = None
             directivity_plot = None
             directivity_arrow_plot = None
             directivity_arrow_centre_plot = None
+            extra_plots = {}
 
         plot_folder = self.run_dir / "plots"
         plot_folder.mkdir(parents=True)
@@ -459,3 +476,9 @@ class saver():
                 bbox_inches="tight",
                 pad_inches=0.06,
             )
+
+        for key, fig in extra_plots.items():
+            if fig is None:
+                continue
+            if hasattr(fig, "savefig") and callable(getattr(fig, "savefig")):
+                fig.savefig(plot_folder / f"{key}.pdf")
