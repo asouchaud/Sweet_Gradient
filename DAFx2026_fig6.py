@@ -214,7 +214,8 @@ def VBAP_loc(vbap_icld):
 
 def DAFx2026_fig6_plots(run_folders):
 
-    vbap_icld = np.loadtxt(r"data\miscellaneous\VBAP_panning_curve.csv")
+    repo_root = Path(__file__).resolve().parent
+    vbap_icld = np.loadtxt(repo_root / "data" / "miscellaneous" / "VBAP_panning_curve.csv")
 
     tmp = np.load(run_folders[0] / "artifacts" / "est_filters.npy")
     filt = np.zeros((13,2,tmp.shape[-1]))
