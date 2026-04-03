@@ -46,12 +46,12 @@ if __name__ == "__main__":
         epochs=200,
         n_samples=41,
         num_lstn_pos=51,
-        listener_batch_size=5,  # 5 mirrored pairs plus the centre listener
+        listener_batch_size=None, 
         symmetric_listener_sampling=True,
         selected_stim="impulse",
-        sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"),
+        sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
-        lr=0.01,
+        lr=0.05,
         seed=46,
         log=1,
         fs=48000,
@@ -63,10 +63,10 @@ if __name__ == "__main__":
         array_centre_angles_deg=[30.0, -30.0],
         speaker_spacing_m=0.10,  # Adjacent spacing within each array (global y-axis)
         apply_distance_attenuation=True,
-        listener_weight_y_pos_lo=0.25,
+        listener_weight_y_pos_lo=0.20,
         listener_weight_y_pos_hi=1.25,
         listener_weight_y_neg_lo=-1.25,
-        listener_weight_y_neg_hi=-0.25,
+        listener_weight_y_neg_hi=-0.20,
         listener_weight_w_high=1.0,
         listener_weight_w_low=0.0,
     )
