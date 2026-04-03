@@ -347,18 +347,6 @@ def plot_arrows_with_directivity(
             zorder=6,
         )
 
-    if show_listener_target_lines and target_pos_np is not None:
-        for x, y in zip(lstn_pos[:, 0], lstn_pos[:, 1]):
-            ax.plot(
-                [x, target_pos_np[0]],
-                [y, target_pos_np[1]],
-                linestyle="--",
-                linewidth=0.8,
-                color="0.65",
-                alpha=0.6,
-                zorder=1,
-            )
-
     # -----------------------------
     # Arrows
     # -----------------------------
@@ -558,6 +546,33 @@ def plot_arrows_with_directivity(
                 label=overlay_labels[curve_idx] if (overlay_labels and i == 0) else None,
                 zorder=5,
             )
+
+    if show_listener_target_lines and target_pos_np is not None:
+        xlim_before = ax.get_xlim()
+        ylim_before = ax.get_ylim()
+        tx, ty = float(target_pos_np[0]), float(target_pos_np[1])
+        for x, y in zip(lstn_pos[:, 0], lstn_pos[:, 1]):
+            p_lstn = np.array([float(x), float(y)], dtype=float)
+            p_tgt = np.array([tx, ty], dtype=float)
+            d = p_tgt - p_lstn
+            dist = float(np.linalg.norm(d))
+            if dist < 1e-12:
+                continue
+            u = d / dist
+            extend = 0.2 * dist
+            p0 = p_lstn - extend * u
+            p1 = p_tgt + extend * u
+            ax.plot(
+                [p0[0], p1[0]],
+                [p0[1], p1[1]],
+                linestyle="--",
+                linewidth=0.8,
+                color="0.65",
+                alpha=0.6,
+                zorder=1,
+            )
+        ax.set_xlim(xlim_before)
+        ax.set_ylim(ylim_before)
 
     # -----------------------------
     # Formatting

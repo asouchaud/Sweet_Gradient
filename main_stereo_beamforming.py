@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
 
 # Import project modules
 from scripts.optimisation.custom_modules import MultiSourceFIR
@@ -25,18 +26,32 @@ from scripts.train.train import ListenerBasedLoss, SourceBasedLoss, Train
 from scripts.saving.save_results import saver
 
 
+def build_listener_position_weights(lstn_pos, y_pos_lo, y_pos_hi, y_neg_lo, y_neg_hi, w_high, w_low):
+    """
+    Weight each listener by its global y coordinate only: high in [y_pos_lo, y_pos_hi] and
+    [y_neg_lo, y_neg_hi], low elsewhere (e.g. centre strip and far lateral positions).
+    """
+    listener_weights = []
+    for listener_pos in lstn_pos:
+        y = float(listener_pos[1])
+        in_pos_band = y_pos_lo <= y <= y_pos_hi
+        in_neg_band = y_neg_lo <= y <= y_neg_hi
+        listener_weights.append(w_high if (in_pos_band or in_neg_band) else w_low)
+    return np.asarray(listener_weights, dtype=np.float32)
+
+
 if __name__ == "__main__":
     repo_root = Path(__file__).resolve().parent
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
         epochs=200,
         n_samples=41,
         num_lstn_pos=51,
-        listener_batch_size=5,  # 5 mirrored pairs plus the centre listener
+        listener_batch_size=None, 
         symmetric_listener_sampling=True,
         selected_stim="impulse",
-        sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"),
+        sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
-        lr=0.01,
+        lr=0.05,
         seed=46,
         log=1,
         fs=48000,
@@ -48,13 +63,19 @@ if __name__ == "__main__":
         array_centre_angles_deg=[30.0, -30.0],
         speaker_spacing_m=0.10,  # Adjacent spacing within each array (global y-axis)
         apply_distance_attenuation=True,
+        listener_weight_y_pos_lo=0.20,
+        listener_weight_y_pos_hi=1.25,
+        listener_weight_y_neg_lo=-1.25,
+        listener_weight_y_neg_hi=-0.20,
+        listener_weight_w_high=1.0,
+        listener_weight_w_low=0.0,
     )
     env.dtype = torch.float32
     env.device_str = "cuda" if torch.cuda.is_available() else "cpu"
     env.device = torch.device(env.device_str)
 
-    # env.target_pos=[float(env.speaker_distance * np.cos(np.deg2rad(env.array_centre_angles_deg[0]))), 0.0]
-    env.target_pos=[1.5, 0.0]
+    env.target_pos=[float(env.speaker_distance * np.cos(np.deg2rad(env.array_centre_angles_deg[0]))), 0.0]
+    # env.target_pos=[10.5, 0.0]
     print(env.target_pos)
 
 ## Initial setup
@@ -90,6 +111,19 @@ if __name__ == "__main__":
     env.spk_pos = upper_array + lower_array
     env.n_sources = len(env.spk_pos)
 
+    listener_weights = build_listener_position_weights(
+        lstn_pos=env.lstn_pos,
+        y_pos_lo=env.listener_weight_y_pos_lo,
+        y_pos_hi=env.listener_weight_y_pos_hi,
+        y_neg_lo=env.listener_weight_y_neg_lo,
+        y_neg_hi=env.listener_weight_y_neg_hi,
+        w_high=env.listener_weight_w_high,
+        w_low=env.listener_weight_w_low,
+    )
+    if float(np.sum(listener_weights)) <= 0.0:
+        listener_weights = np.ones(len(env.lstn_pos), dtype=np.float32)
+    env.listener_weights = listener_weights.tolist()
+
 ## Load data
     gtfb = load_gtfb(fs=env.fs, device=env.device, dtype=env.dtype)  # Load Gamma Tone Filter Bank
     stim = load_stim(fs=env.fs, device=env.device, dtype=env.dtype, selected_stim=env.selected_stim)  # Load stimulus
@@ -116,10 +150,12 @@ if __name__ == "__main__":
     env.col_weight = 1e-01
     env.reg_weight = 1.0e-2
 
+    listener_loss_kwargs = dict(device=env.device, dtype=env.dtype, listener_weights=listener_weights)
+
     loss_dict = {
-        "localisation": ListenerBasedLoss(model=loc_model, weight=env.loc_weight, device=env.device, dtype=env.dtype),
-        # "uncertainty": ListenerBasedLoss(model=unc_model, weight=env.unc_weight, device=env.device, dtype=env.dtype),
-        # "colouration": ListenerBasedLoss(model=col_model, weight=env.col_weight, device=env.device, dtype=env.dtype),
+        "localisation": ListenerBasedLoss(model=loc_model, weight=env.loc_weight, **listener_loss_kwargs),
+        # "uncertainty": ListenerBasedLoss(model=unc_model, weight=env.unc_weight, **listener_loss_kwargs),
+        # "colouration": ListenerBasedLoss(model=col_model, weight=env.col_weight, **listener_loss_kwargs),
         # "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=env.reg_weight),
         # "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=env.reg_weight),
         # "regularisation_source_2": SourceBasedLoss(regulariser=regularisation, source_idx=2, weight=env.reg_weight),
@@ -198,6 +234,15 @@ if __name__ == "__main__":
         show=False,
     )
 
+    fig_listener_weights, ax_listener_weights = plt.subplots(figsize=(6, 3))
+    lstn_y = np.asarray([pos[1] for pos in env.lstn_pos], dtype=float)
+    ax_listener_weights.plot(lstn_y, listener_weights, linewidth=2)
+    ax_listener_weights.set_xlabel("Listener position y (m)")
+    ax_listener_weights.set_ylabel("Listener weight")
+    ax_listener_weights.set_title("Listener-position weights")
+    ax_listener_weights.grid(True, alpha=0.25)
+    plots["listener_weights"] = fig_listener_weights
+
     rodenas2003_fig12_opt = np.loadtxt(repo_root / "data" / "miscellaneous" / "rodenas2003_fig12_opt.csv", delimiter=",", skiprows=1)
     rodenas2003_fig12_opt = [[-((angle_deg + 180) % 360.0), level_db] for angle_deg, level_db in rodenas2003_fig12_opt]
     rodenas2003_fig12_1000Hz = np.loadtxt(repo_root / "data" / "miscellaneous" / "rodenas2003_fig12_1000Hz.csv", delimiter=",", skiprows=1)
@@ -228,7 +273,7 @@ if __name__ == "__main__":
         unc=None,
         col=None,
         target_pos=env.target_pos,
-        show_listener_target_lines=False,
+        show_listener_target_lines=True,
         vbap_values=None,
         show=False,
         n_angles=360,

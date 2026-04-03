@@ -6,11 +6,84 @@ from scripts.plotting.tensorboard_updates import TensorboardLogger
 # Listener-based losses operate on the propagated binaural scene and a perceptual model
 # (e.g., localisation, uncertainty, colouration). 
 class ListenerBasedLoss:
-    def __init__(self, model, weight, device, dtype):
+    def __init__(self, model, weight, device, dtype, listener_weights=None):
         self.model = model
         self.weight = weight
         self.device = device
         self.dtype = dtype
+
+        self.listener_weights = None
+        if listener_weights is not None:
+            listener_weights = torch.as_tensor(listener_weights, device=device, dtype=dtype).view(-1)
+            if listener_weights.numel() == 0:
+                raise ValueError("listener_weights must not be empty.")
+            if torch.any(listener_weights < 0):
+                raise ValueError("listener_weights must be non-negative.")
+            if listener_weights.sum().item() <= 0:
+                raise ValueError("listener_weights must sum to a positive value.")
+            self.listener_weights = listener_weights
+
+    def _select_listener_weights(self, listener_indices, n_selected_listeners):
+        if self.listener_weights is None:
+            return None
+
+        if listener_indices is None:
+            if self.listener_weights.numel() != n_selected_listeners:
+                raise ValueError(
+                    "listener_weights and bin_stim disagree on the number of listeners."
+                )
+            return self.listener_weights
+
+        index = torch.as_tensor(listener_indices, device=self.device, dtype=torch.long)
+        return self.listener_weights.index_select(0, index)
+
+    def _compute_weighted_loss(self, model_estimation, target, listener_weights):
+        try:
+            unreduced_loss = self.model.loss(model_estimation, target, reduction="none")
+        except TypeError as exc:
+            raise TypeError(
+                "listener_weights require a loss function that accepts reduction='none'."
+            ) from exc
+
+        if unreduced_loss.ndim == 0:
+            raise ValueError("listener_weights require a listener dimension in the loss tensor.")
+
+        listener_dim = 1 if unreduced_loss.ndim > 1 else 0
+        if unreduced_loss.shape[listener_dim] != listener_weights.numel():
+            raise ValueError(
+                "listener_weights and model_estimation disagree on the listener dimension."
+            )
+
+        listener_weights = listener_weights.to(device=unreduced_loss.device, dtype=unreduced_loss.dtype)
+        weight_sum = listener_weights.sum()
+
+        if weight_sum.item() <= 0:
+            return unreduced_loss.sum() * 0.0
+
+        weight_shape = [1] * unreduced_loss.ndim
+        weight_shape[listener_dim] = listener_weights.numel()
+        weights = listener_weights.view(*weight_shape)
+
+        elements_per_listener = unreduced_loss.numel() / float(unreduced_loss.shape[listener_dim])
+
+        return torch.sum(unreduced_loss * weights) / (weight_sum * elements_per_listener)
+
+    def batch_scale(self, listener_indices, n_listeners):
+        if listener_indices is None:
+            return 1.0
+
+        if self.listener_weights is None:
+            return len(listener_indices) / float(n_listeners)
+
+        if self.listener_weights.numel() != int(n_listeners):
+            raise ValueError(
+                "listener_weights and the propagation model disagree on the number of listeners."
+            )
+
+        index = torch.as_tensor(listener_indices, device=self.device, dtype=torch.long)
+        selected_listener_weights = self.listener_weights.index_select(0, index)
+
+        return float((selected_listener_weights.sum() / self.listener_weights.sum()).item())
 
     def compute_loss(self, bin_stim, h_full, listener_indices=None):  # noqa: ARG002 - kept for uniform interface
         """
@@ -42,7 +115,16 @@ class ListenerBasedLoss:
             target = target[listener_indices]
         target = target.expand_as(model_estimation)
 
-        loss = self.model.loss(model_estimation, target) / self.model.loss_norm
+        selected_listener_weights = self._select_listener_weights(
+            listener_indices,
+            int(bin_stim.shape[1]),
+        )
+
+        if selected_listener_weights is None:
+            loss = self.model.loss(model_estimation, target) / self.model.loss_norm
+        else:
+            loss = self._compute_weighted_loss(model_estimation, target, selected_listener_weights) / self.model.loss_norm
+
         return loss, model_estimation
 
 
@@ -55,6 +137,11 @@ class SourceBasedLoss:
         self.regulariser = regulariser
         self.source_idx = source_idx
         self.weight = weight
+
+    def batch_scale(self, listener_indices, n_listeners):
+        if listener_indices is None:
+            return 1.0
+        return len(listener_indices) / float(n_listeners)
 
     def compute_loss(self, bin_stim, h_full, listener_indices=None):  # noqa: ARG002 - kept for uniform interface
         """
@@ -242,13 +329,24 @@ class Train:
                 else:
                     bin_stim = self.prop(h_full, listener_indices=listener_indices)
 
-                batch_scale = 1.0 if listener_indices is None else len(listener_indices) / float(self.prop.n_listeners)
+                n_listeners_total = getattr(self.prop, "n_listeners", None)
+                if n_listeners_total is None and hasattr(self.prop, "lstn_pos"):
+                    n_listeners_total = int(self.prop.lstn_pos.shape[0])
+                if n_listeners_total is None and bin_stim is not None:
+                    n_listeners_total = int(bin_stim.shape[1])
+                if n_listeners_total is None:
+                    raise ValueError("Propagation model must expose n_listeners or lstn_pos, or return bin_stim with a listener dimension.")
+
+                default_batch_scale = 1.0 if listener_indices is None else len(listener_indices) / float(n_listeners_total)
 
                 # Get perceptual estimations and compute losses
                 est_dict = {}
                 batch_full_loss = torch.tensor(0.0, device=self.device, dtype=self.dtype)
                 for key, loss_cfg in self.loss_dict.items():
                     loss, estimation = loss_cfg.compute_loss(bin_stim=bin_stim, h_full=h_full, listener_indices=listener_indices)
+                    batch_scale = default_batch_scale
+                    if hasattr(loss_cfg, "batch_scale"):
+                        batch_scale = loss_cfg.batch_scale(listener_indices=listener_indices, n_listeners=int(n_listeners_total))
                     weighted_loss = loss * self.loss_weights[key] * batch_scale
                     if key in weighted_loss_dict:
                         weighted_loss_dict[key] = weighted_loss_dict[key] + weighted_loss.detach()

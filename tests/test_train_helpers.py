@@ -98,6 +98,45 @@ def test_listener_based_loss_subsets_target_and_passes_listener_indices() -> Non
     assert loss.item() == pytest.approx(0.0, abs=1e-6)
 
 
+def test_listener_based_loss_applies_listener_weights_after_subsetting() -> None:
+    # When listener weights are provided, ListenerBasedLoss should compute the weighted mean over the
+    # selected listener subset rather than treating every listener equally.
+    model = FixedEstimationModel()
+    loss_cfg = ListenerBasedLoss(
+        model=model,
+        weight=1.0,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+        listener_weights=torch.tensor([1.0, 0.0, 3.0], dtype=torch.float32),
+    )
+
+    loss, estimation = loss_cfg.compute_loss(
+        bin_stim=torch.zeros(1, 2, 2, 4, dtype=torch.float32),
+        h_full=torch.zeros(1, 1, 4, dtype=torch.float32),
+        listener_indices=[0, 2],
+    )
+
+    assert model.seen_listener_indices == [0, 2]
+    assert torch.equal(estimation, torch.tensor([[20.0, 30.0]], dtype=torch.float32))
+    assert loss.item() == pytest.approx(1.25, abs=1e-6)
+
+
+def test_listener_based_loss_batch_scale_uses_listener_weight_mass() -> None:
+    # Weighted listener mini-batches should be scaled by their share of the total listener-weight
+    # mass, not merely by the number of listeners they contain.
+    model = FixedEstimationModel()
+    loss_cfg = ListenerBasedLoss(
+        model=model,
+        weight=1.0,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+        listener_weights=torch.tensor([1.0, 0.0, 3.0], dtype=torch.float32),
+    )
+
+    assert float(loss_cfg.batch_scale(listener_indices=[0, 1], n_listeners=3)) == pytest.approx(0.25)
+    assert float(loss_cfg.batch_scale(listener_indices=[2], n_listeners=3)) == pytest.approx(0.75)
+
+
 def test_source_based_loss_uses_selected_source_filter_only() -> None:
     # SourceBasedLoss should slice out exactly one source filter from h_full and hand only that
     # slice to the regulariser.
