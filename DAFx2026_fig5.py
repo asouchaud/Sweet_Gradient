@@ -36,31 +36,41 @@ from scripts.saving.save_results import saver
 
 def run_experiment(loss_dict_builder, run_label):
     repo_root = Path(__file__).resolve().parent
-    d = 10
+    d = 100
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
-        epochs=1000,
-        num_lstn_pos=3,
-        listener_batch_size=None,  # 5 mirrored pairs plus the centre listener
-        symmetric_listener_sampling=True,
-        n_samples=128,
+        epochs=300,
+        num_lstn_pos=101,
+        listener_batch_size=11,  # 5 mirrored pairs plus the centre listener
+        symmetric_listener_sampling=False,
+        n_samples=96,
         target_pos=[d, float(np.tan(np.deg2rad(0.0)) * d)],
-        selected_stim="random",
+        selected_stim="impulse",
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
-        lr=0.001,
+        lr=0.1,
         seed=46,
         log=1,
         fs=48000,
     )
     env.dtype = torch.float32
-    env.device_str = "cuda" if torch.cuda.is_available() else "cpu"
+    # env.device_str = "cuda" if torch.cuda.is_available() else "cpu"
+    env.device_str = "cpu"
     env.device = torch.device(env.device_str)
 
 ## Initial setup
     print(f"Using device: {env.device}")
 
     # Loudspkeaker and listener positions
-    env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)] 
+    n_per_segment = env.num_lstn_pos // 4
+    segments = [
+        np.linspace(-0.5, -0.325, n_per_segment),
+        np.linspace(-0.225, -0.05, n_per_segment),
+        np.linspace(0.05, 0.225, n_per_segment),
+        np.linspace(0.325, 0.5, n_per_segment),
+    ]
+    y_positions = np.concatenate(segments)
+    env.lstn_pos = [[0.0, float(y)] for y in y_positions]
+    # env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)] 
     base_angle_rad = np.deg2rad(30.0)
     env.speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
     env.spk_pos = [
@@ -127,6 +137,9 @@ def run_experiment(loss_dict_builder, run_label):
             "uncertainty": ListenerBasedLoss(model=unc_model, weight=1, device=env.device, dtype=env.dtype),
             "colouration": ListenerBasedLoss(model=col_model, weight=1, device=env.device, dtype=env.dtype)
         }
+    eval_lstn_pos = [[0.0 , 0.0], [0.0, 0.275], [0.0, -0.275]]
+    stereo_prop_eval = BinauralFreeFieldPropagation(stim=stim, lstn_pos=eval_lstn_pos, spk_pos=env.spk_pos, fs=env.fs, sofa_file_path=env.sofa_path, apply_distance_attenuation=True)
+    trainer.prop = stereo_prop_eval
     est_filters, estimation_dict, bin_stim = trainer.evaluate(loss_dict=eval_perceptual_dict)
     # Normalise filters to prevent clipping 
     est_filters /= np.max(np.abs(est_filters)) / 0.9 # TODO: move this to a more appropriate place at the end of the training loop
@@ -139,7 +152,7 @@ def run_experiment(loss_dict_builder, run_label):
         estimation_dict=estimation_dict,
         est_filters=est_filters,
         fs=env.fs,
-        lstn_pos=env.lstn_pos,
+        lstn_pos=eval_lstn_pos,
         spk_pos=env.spk_pos,
         trainer=trainer,
         env=env,
@@ -148,7 +161,7 @@ def run_experiment(loss_dict_builder, run_label):
         estimation_dict=estimation_dict,
         est_filters=est_filters,
         bin_stim=bin_stim,
-        prop_model=stereo_prop,
+        prop_model=stereo_prop_eval,
         loss_dict=loss_dict,
         target_pos=env.target_pos,
         stim=stim,
@@ -165,7 +178,7 @@ def run_experiment(loss_dict_builder, run_label):
 
     plt.close('all')
 
-    return(saver_obj.run_dir, env.lstn_pos, env.spk_pos)
+    return(saver_obj.run_dir, eval_lstn_pos, env.spk_pos)
 
 def causal_conv1d(x, kernel):
     """
@@ -211,7 +224,7 @@ def sofa_find(source_angle, sofaile):
     return np.argmin(dists)
 
 
-def DAFx2026_fig4_plots(run_folders, lstn_pos, spk_pos):
+def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos):
 
     sofaile = sf.read_sofa(r"data\impulses\SOFA\D1_48K_24bit_256tap_FIR_SOFA.sofa")
     idx = sofa_find(0, sofaile)
@@ -264,6 +277,8 @@ def DAFx2026_fig4_plots(run_folders, lstn_pos, spk_pos):
 
             if i > 17:
                 ax.set_xlabel("Coefficients", fontsize = fontsize)
+            if i <= 17:
+                ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
 
         #### COLOURATION PLOT ####
         if i % 3 == 1:
@@ -290,9 +305,10 @@ def DAFx2026_fig4_plots(run_folders, lstn_pos, spk_pos):
             for j in range(3):
                 ax.semilogx(freq[9:], bin_fft_s[j,9:], color=fig_colors[j], linewidth = est_mag_width)
             ax.semilogx(freq[9:], ref_fft_s[9:], color="#000000", linewidth=ref_mag_width)
-            ax.set_ylim(-10,40)
             ax.grid()
             ax.set_ylabel("Magnitude [dB]", fontsize = fontsize)
+            if i <= 17:
+                ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
             if i > 17:
                 ax.set_xlabel("Frequency [Hz]", fontsize = fontsize)
         
@@ -317,7 +333,7 @@ def DAFx2026_fig4_plots(run_folders, lstn_pos, spk_pos):
                 dx = (1-leng)*arrow_len * np.cos(np.deg2rad(ang))
                 dy = (1-leng)*arrow_len * np.sin(np.deg2rad(ang))
 
-                color = cmap(norm(max(col_val, 1e-3)))  # avoid zero for log scale
+                color = cmap(norm(max(col_val, 1e-2)))  # avoid zero for log scale
 
                 ax.arrow(float(x), float(y), float(dx), float(dy),
                         head_width=arrow_head_width, head_length=arrow_head_len, fc=color, ec=color, linewidth = arrow_width, zorder = 3)    
@@ -326,6 +342,8 @@ def DAFx2026_fig4_plots(run_folders, lstn_pos, spk_pos):
             ax.set_xlim(-0.5,2.0)
             ax.grid(zorder = 1)
             ax.set_ylabel('Y position [m]', fontsize = fontsize)
+            if i <= 17:
+                ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
             if i > 17:
                 ax.set_xlabel('X position [m]', fontsize = fontsize)
 
@@ -346,8 +364,8 @@ if __name__ == "__main__":
     run_dir_loc_init_2_r_2, _, _ = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
         },
         run_label="loc_init_2_r_2"
     )
@@ -355,17 +373,17 @@ if __name__ == "__main__":
     run_dir_unc_init_2_r_2, _, _ = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "uncertainty": ListenerBasedLoss(model=unc_model, weight=1e-2, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
         },
         run_label="unc_init_2_r_2"
     )
 
     run_dir_col_init_2_r_2, _, _ = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "colouration": ListenerBasedLoss(model=col_model, weight=1e-2, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
+            "colouration": ListenerBasedLoss(model=col_model, weight=1e-0, device=device, dtype=dtype),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
         },
         run_label="init_0col_init_2_r_2_r_2"
     )
@@ -374,8 +392,8 @@ if __name__ == "__main__":
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
             "uncertainty": ListenerBasedLoss(model=unc_model, weight=1e-2, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
         },
         run_label="initloc_unc_init_2_r_2_0_r_2"
     )
@@ -383,9 +401,9 @@ if __name__ == "__main__":
     run_dir_loc_col_init_2_r_2, _, _ = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "colouration": ListenerBasedLoss(model=col_model, weight=1e-2, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
+            "colouration": ListenerBasedLoss(model=col_model, weight=1e-0, device=device, dtype=dtype),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
         },
         run_label="iniloc_col_init_2_r_2t_0_r_2"
     )
@@ -393,9 +411,9 @@ if __name__ == "__main__":
     run_dir_unc_col_init_2_r_2, _, _ = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "uncertainty": ListenerBasedLoss(model=unc_model, weight=1e-2, device=device, dtype=dtype),
-            "colouration": ListenerBasedLoss(model=col_model, weight=1e-2, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
+            "colouration": ListenerBasedLoss(model=col_model, weight=1e-0, device=device, dtype=dtype),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
         },
         run_label="init_unc_col_init_2_r_20_r_2"
     )
@@ -404,9 +422,9 @@ if __name__ == "__main__":
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
             "uncertainty": ListenerBasedLoss(model=unc_model, weight=1e-2, device=device, dtype=dtype),
-            "colouration": ListenerBasedLoss(model=col_model, weight=1e-2, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
+            "colouration": ListenerBasedLoss(model=col_model, weight=1e-0, device=device, dtype=dtype),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
         },
         run_label="loc_unc_col_init_2_r_2nit_0_r_2"
     )
@@ -419,7 +437,7 @@ if __name__ == "__main__":
                run_dir_unc_col_init_2_r_2,
                run_dir_loc_unc_col_init_2_r_2]
     
-    DAFx2026_fig4_plots(folders, np.array(lstn_pos), np.array(spk_pos))
+    DAFx2026_fig5_plots(folders, np.array(lstn_pos), np.array(spk_pos))
 
 
 
