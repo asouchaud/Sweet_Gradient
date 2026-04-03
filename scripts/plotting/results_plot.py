@@ -260,6 +260,16 @@ def plot_pair_directivity_polar(
     return fig
 
 
+def _db_at_nearest_angle_deg(sample_angles_deg, levels_db, target_angle_deg):
+    sample_angles_deg = np.asarray(sample_angles_deg, dtype=np.float64).ravel()
+    levels_db = np.asarray(levels_db, dtype=np.float64).ravel()
+    target_wrapped = float(np.mod(target_angle_deg, 360.0))
+    samples_wrapped = np.mod(sample_angles_deg, 360.0)
+    separation_deg = np.abs((samples_wrapped - target_wrapped + 180.0) % 360.0 - 180.0)
+    nearest_idx = int(np.argmin(separation_deg))
+    return float(levels_db[nearest_idx])
+
+
 def plot_arrows_with_directivity(
     est_filters,
     spk_pos,
@@ -270,22 +280,27 @@ def plot_arrows_with_directivity(
     unc=None,
     col=None,
     target_pos=None,
+    show_listener_target_lines=False,
     vbap_values=None,
     show=True,
     n_angles=360,
     freqs_eval_hz=(250, 500, 1000, 2000, 4000),
+    directivity_observation_radius_m=None,
     c=343.0,
     directivity_mode="avg",
     directivity_freq_idx=2,
-    directivity_scale=0.5,
+    directivity_scale=1.0,
     directivity_floor_db=-20,
+    directivity_label="Proposed Method",
     overlay_curve=None,
     overlay_curves=None,
     overlay_labels=None,
+    legend_ncol=None,
 ):
     # -----------------------------
     # Prepare inputs
     # -----------------------------
+    use_lsd_colorbar = col is not None
     if unc is None:
         unc = torch.zeros_like(loc)
     if col is None:
@@ -310,22 +325,39 @@ def plot_arrows_with_directivity(
         raise ValueError("overlay_labels must contain one label per overlay curve.")
 
     # -----------------------------
-    # Global mean reference (for alignment)
-    # -----------------------------
-    all_means = []
-    for curve in overlay_curve_list:
-        curve = np.asarray(curve, dtype=float)
-        all_means.append(np.mean(curve[:, 1]))
-
-    target_mean_db = np.mean(all_means) if len(all_means) > 0 else 0.0
-
-    # -----------------------------
     # Create plot
     # -----------------------------
     fig, ax = plt.subplots(figsize=(6, 6))
 
-    ax.scatter(spk_pos[:, 0], spk_pos[:, 1], c='black', marker='x')
-    ax.scatter(lstn_pos[:, 0], lstn_pos[:, 1], c='blue', label='Listeners')
+    ax.scatter(spk_pos[:, 0], spk_pos[:, 1], c='black', marker='x', label='Loudspeakers')
+    ax.scatter(lstn_pos[:, 0], lstn_pos[:, 1], c='blue', label='Virtual Listeners')
+
+    target_pos_np = None
+    if target_pos is not None:
+        target_pos_np = np.asarray(target_pos, dtype=float).reshape(-1)
+        if target_pos_np.size != 2:
+            raise ValueError("target_pos must be a 2D position.")
+        ax.scatter(
+            target_pos_np[0],
+            target_pos_np[1],
+            marker="^",
+            c="red",
+            s=60,
+            label="Target",
+            zorder=6,
+        )
+
+    if show_listener_target_lines and target_pos_np is not None:
+        for x, y in zip(lstn_pos[:, 0], lstn_pos[:, 1]):
+            ax.plot(
+                [x, target_pos_np[0]],
+                [y, target_pos_np[1]],
+                linestyle="--",
+                linewidth=0.8,
+                color="0.65",
+                alpha=0.6,
+                zorder=1,
+            )
 
     # -----------------------------
     # Arrows
@@ -333,18 +365,29 @@ def plot_arrows_with_directivity(
     arrow_len = 0.2
     cmap = cm.viridis
     norm = colors.Normalize(vmin=0, vmax=18.5)
+    arrow_mono_color = "#2E0854"
 
     for x, y, ang, leng, col_val in zip(lstn_pos[:, 0], lstn_pos[:, 1], loc, unc, col):
         dx = (1 - leng) * arrow_len * np.cos(np.deg2rad(ang))
         dy = (1 - leng) * arrow_len * np.sin(np.deg2rad(ang))
-        color = cmap(norm(max(col_val, 1e-3)))
+        if use_lsd_colorbar:
+            color = cmap(norm(max(col_val, 1e-3)))
+        else:
+            color = arrow_mono_color
 
         ax.arrow(x, y, dx, dy,
                  head_width=0.05, head_length=0.08,
                  fc=color, ec=color)
 
-    sm = cm.ScalarMappable(cmap=cmap, norm=norm)
-    fig.colorbar(sm, ax=ax, label="LSD")
+    if use_lsd_colorbar:
+        sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+        fig.colorbar(sm, ax=ax, label="LSD")
+
+    if len(overlay_curve_list) > 0:
+        curve_ref_global = np.asarray(overlay_curve_list[0])
+        overlay_angle_offset_deg = 180.0 - float(np.min(np.mod(curve_ref_global[:, 0], 360.0)))
+    else:
+        overlay_angle_offset_deg = 0.0
 
     # -----------------------------
     # Directivity loop
@@ -358,6 +401,16 @@ def plot_arrows_with_directivity(
         p_group = spk_pos[group_indices]
 
         group_mid = np.mean(p_group, axis=0)
+        cy = float(group_mid[1])
+        if cy > 0.0:
+            theta_wedge0 = np.pi
+            theta_wedge1 = np.pi + np.pi / 3.0
+        elif cy < 0.0:
+            theta_wedge0 = np.pi - np.pi / 3.0
+            theta_wedge1 = np.pi
+        else:
+            theta_wedge0 = np.pi
+            theta_wedge1 = np.pi + np.pi / 3.0
 
         theta = np.linspace(0, 2*np.pi, n_angles, endpoint=False)
 
@@ -371,7 +424,10 @@ def plot_arrows_with_directivity(
 
         mag2 = np.zeros((len(freqs_eval_hz), len(theta)))
 
-        radius = np.mean(np.linalg.norm(p_group - group_mid, axis=1))
+        if directivity_observation_radius_m is None:
+            radius = float(np.mean(np.linalg.norm(p_group - group_mid, axis=1)))
+        else:
+            radius = float(directivity_observation_radius_m)
 
         for k, ang in enumerate(theta):
             obs = group_mid + np.array([radius*np.cos(ang), radius*np.sin(ang)])
@@ -389,43 +445,17 @@ def plot_arrows_with_directivity(
         else:
             dir_use = dir_db[directivity_freq_idx]
 
-        # -----------------------------
-        # Align directivity mean
-        # -----------------------------
-        dir_mean = np.mean(dir_use)
-        dir_aligned = dir_use - dir_mean + target_mean_db
+        theta_wrapped = np.mod(theta, 2 * np.pi)
+        mask = (theta_wrapped >= theta_wedge0) & (theta_wrapped <= theta_wedge1)
+        mid_rad = 0.5 * (theta_wedge0 + theta_wedge1)
+
+        delta_theta = np.abs((theta - mid_rad + np.pi) % (2 * np.pi) - np.pi)
+        k_mid = int(np.argmin(delta_theta))
+        dir_at_mid = float(dir_use[k_mid])
+
+        dir_aligned = dir_use - dir_at_mid
         dir_clipped = np.maximum(dir_aligned, directivity_floor_db)
-
         r = directivity_scale * (dir_clipped - directivity_floor_db) / (0 - directivity_floor_db)
-
-        # -----------------------------
-        # Angle mask
-        # -----------------------------
-        if len(overlay_curve_list) > 0:
-            curve_ref = np.asarray(overlay_curve_list[0])
-            start_angle = np.min(np.mod(curve_ref[:, 0], 360.0))
-            end_angle = np.max(np.mod(curve_ref[:, 0], 360.0))
-        else:
-            start_angle, end_angle = 0, 360
-
-        if i == 0:
-            off_set = 180 - start_angle
-            start_angle += off_set
-            end_angle += off_set
-        else:
-            off_set = 0.0
-
-        start_rad = np.deg2rad(start_angle)
-        end_rad = np.deg2rad(end_angle)
-
-        theta_wrapped = np.mod(theta, 2*np.pi)
-        start_rad = np.mod(start_rad, 2*np.pi)
-        end_rad = np.mod(end_rad, 2*np.pi)
-
-        if start_rad <= end_rad:
-            mask = (theta_wrapped >= start_rad) & (theta_wrapped <= end_rad)
-        else:
-            mask = (theta_wrapped >= start_rad) | (theta_wrapped <= end_rad)
 
         theta_sel = theta[mask]
         r_sel = r[mask]
@@ -437,10 +467,62 @@ def plot_arrows_with_directivity(
         x_dir = cx + r_sel*np.cos(theta_sel)
         y_dir = cy + r_sel*np.sin(theta_sel)
 
-        ax.plot(x_dir, y_dir, color='red', linewidth=2,
-                label='Directivity (Proposed Method)' if i == 0 else None, zorder = 50)
-        ax.scatter(cx, cy, c='red', s=60,
-                   label='Array center' if i == 0 else None, zorder = 50)
+        ax.plot(x_dir, y_dir, color="tab:blue", linewidth=2,
+                label=directivity_label if i == 0 else None, zorder = 50)
+
+        line_extent = 0.0
+        for db_ref in (-10.0, 0.0, 10.0):
+            line_extent = max(
+                line_extent,
+                directivity_scale * (db_ref - directivity_floor_db) / (0.0 - directivity_floor_db),
+            )
+        th_oblique_ray = theta_wedge1 if cy >= 0.0 else theta_wedge0
+        n_arc = 72
+        th_arc = np.linspace(theta_wedge0, theta_wedge1, n_arc)
+        theta_label = 0.5 * (theta_wedge0 + theta_wedge1)
+        cos_tl, sin_tl = np.cos(theta_label), np.sin(theta_label)
+        label_radial_nudge = 0.04 * line_extent
+
+        ref_line_kw = dict(color="0.45", linewidth=0.9, linestyle="-", zorder=35, alpha=0.75)
+        ref_arc_kw = dict(color="0.45", linewidth=0.8, linestyle="--", zorder=34, alpha=0.75)
+
+        ax.plot(
+            [cx, cx + line_extent * np.cos(np.pi)],
+            [cy, cy + line_extent * np.sin(np.pi)],
+            **ref_line_kw,
+        )
+        ax.plot(
+            [cx, cx + line_extent * np.cos(th_oblique_ray)],
+            [cy, cy + line_extent * np.sin(th_oblique_ray)],
+            **ref_line_kw,
+        )
+        for db_ref in (-10.0, 0.0, 10.0):
+            circle_r = directivity_scale * (db_ref - directivity_floor_db) / (0.0 - directivity_floor_db)
+            if circle_r > 0.0:
+                ax.plot(
+                    cx + circle_r * np.cos(th_arc),
+                    cy + circle_r * np.sin(th_arc),
+                    **ref_arc_kw,
+                )
+                if db_ref > 0.0:
+                    db_lbl = f"+{int(round(db_ref))} dB"
+                elif db_ref < 0.0:
+                    db_lbl = f"{int(round(db_ref))} dB"
+                else:
+                    db_lbl = "0 dB"
+                r_lbl = circle_r + label_radial_nudge
+                ax.text(
+                    cx + r_lbl * cos_tl,
+                    cy + r_lbl * sin_tl,
+                    db_lbl,
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color="0.35",
+                    zorder=36,
+                )
+
+        mid_angle_deg = float(np.rad2deg(mid_rad) % 360.0)
 
         # -----------------------------
         # Overlay curves
@@ -450,17 +532,14 @@ def plot_arrows_with_directivity(
         for curve_idx, curve in enumerate(overlay_curve_list):
             curve = np.asarray(curve, dtype=float)
 
-            # Apply offset logic
-            if i == 0:
-                theta_overlay = np.deg2rad(np.mod(curve[:, 0] + off_set, 360.0))
-                db_sel = np.flip(curve[:, 1])
-            else:
-                theta_overlay = np.deg2rad(np.mod(curve[:, 0], 360.0))
-                db_sel = curve[:, 1]
+            angles_deg_plot = np.mod(curve[:, 0] + overlay_angle_offset_deg, 360.0)
+            db_sel = np.flip(curve[:, 1])
+            if cy < 0.0:
+                angles_deg_plot = np.mod(360.0 - angles_deg_plot, 360.0)
+            theta_overlay = np.deg2rad(angles_deg_plot)
 
-            # Mean alignment
-            db_mean = np.mean(db_sel)
-            db_aligned = db_sel - db_mean + target_mean_db
+            db_at_mid = _db_at_nearest_angle_deg(angles_deg_plot, db_sel, mid_angle_deg)
+            db_aligned = db_sel - db_at_mid
             db_clipped = np.maximum(db_aligned, directivity_floor_db)
 
             r_overlay = directivity_scale * (db_clipped - directivity_floor_db) / (0 - directivity_floor_db)
@@ -468,14 +547,14 @@ def plot_arrows_with_directivity(
             cx, cy = group_mid
             x_overlay = cx + r_overlay * np.cos(theta_overlay)
             y_overlay = cy + r_overlay * np.sin(theta_overlay)
-
+            order = np.argsort(angles_deg_plot)
+            oc = overlay_colors[curve_idx % len(overlay_colors)]
             ax.plot(
-                x_overlay,
-                y_overlay,
-                linestyle='none',
-                marker='o',
-                markersize=3,
-                color=overlay_colors[curve_idx % len(overlay_colors)],
+                x_overlay[order],
+                y_overlay[order],
+                linestyle="-",
+                linewidth=1.4,
+                color=oc,
                 label=overlay_labels[curve_idx] if (overlay_labels and i == 0) else None,
                 zorder=5,
             )
@@ -485,336 +564,27 @@ def plot_arrows_with_directivity(
     # -----------------------------
     ax.set_aspect('equal')
     ax.grid(True)
-    ax.set_xticks(fontsize = 20)
-    ax.set_yticks(fontsize = 20)
-    ax.set_xlabel("X (m)", fontsize = 20)
-    ax.set_ylabel("Y (m)", fontsize = 20)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_xlabel("X (m)", fontsize = 12)
+    ax.set_ylabel("Y (m)", fontsize = 12)
 
-    # Remove duplicate legend entries
     handles, labels = ax.get_legend_handles_labels()
     unique = dict(zip(labels, handles))
-    ax.legend(unique.values(), unique.keys())
+    if legend_ncol is None:
+        legend_ncol = 1 if len(unique) <= 2 else 2
+    ax.legend(
+        unique.values(),
+        unique.keys(),
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.02),
+        ncol=legend_ncol,
+        frameon=False,
+        fontsize=9,
+    )
 
-    fig.tight_layout()
+    fig.tight_layout(pad=0.35, rect=[0.02, 0.02, 0.98, 0.91])
 
     if show:
         plt.show()
 
     return fig
-
-# def plot_arrows_with_directivity(
-#     est_filters,
-#     spk_pos,
-#     lstn_pos,
-#     loc,
-#     fs,
-#     group_idx,
-#     unc=None,
-#     col=None,
-#     target_pos=None,
-#     vbap_values=None,
-#     show=True,
-#     n_angles=360,
-#     freqs_eval_hz=(250, 500, 1000, 2000, 4000),
-#     c=343.0,
-#     directivity_mode="avg",   # "avg" or "single"
-#     directivity_freq_idx=2,   # used if mode="single"
-#     directivity_scale=0.3,
-#     directivity_floor_db=-20,
-#     overlay_curve=None,
-#     overlay_curves=None,
-#     overlay_labels=None,
-# ):
-#     # -----------------------------
-#     # Prepare inputs
-#     # -----------------------------
-#     if unc is None:
-#         unc = torch.zeros_like(loc)
-#     if col is None:
-#         col = torch.zeros_like(loc)
-
-#     lstn_pos = lstn_pos.detach().cpu().numpy().squeeze().reshape(-1, 2)
-#     spk_pos = spk_pos.detach().cpu().numpy().squeeze()
-#     loc = loc.detach().cpu().numpy().squeeze().reshape(-1)
-#     unc = unc.detach().cpu().numpy().squeeze().reshape(-1)
-#     col = col.detach().cpu().numpy().squeeze().reshape(-1)
-
-#     global_avg_levels = []
-#     overlay_curve_list = []
-#     if overlay_curve is not None:
-#         overlay_curve_list.append(overlay_curve)
-#     if overlay_curves is not None:
-#         overlay_curve_list.extend(overlay_curves)
-
-#     if overlay_labels is not None and len(overlay_labels) != len(overlay_curve_list):
-#         raise ValueError("overlay_labels must contain one label per overlay curve.")
-
-
-#     # -----------------------------
-#     # Compute AVERAGED overlay curve
-#     # -----------------------------
-#     overlay_avg_theta = None
-#     overlay_avg_db = None
-
-#     if len(overlay_curve_list) > 0:
-#         interp_powers = []
-
-#         # Use theta grid from directivity for consistency
-#         theta_grid = theta  # already defined in your loop
-
-#         for curve in overlay_curve_list:
-#             curve = np.asarray(curve, dtype=float)
-
-#             angles = np.deg2rad(np.mod(curve[:, 0], 360.0))
-#             db_vals = curve[:, 1]
-
-#             # Sort (important for interpolation)
-#             sort_idx = np.argsort(angles)
-#             angles = angles[sort_idx]
-#             db_vals = db_vals[sort_idx]
-
-#             # Convert to linear power
-#             power = 10 ** (db_vals / 10.0)
-
-#             # Interpolate onto common grid
-#             power_interp = np.interp(theta_grid, angles, power, period=2*np.pi)
-
-#             interp_powers.append(power_interp)
-
-#         # Average in linear domain
-#         mean_power = np.mean(np.stack(interp_powers, axis=0), axis=0)
-
-#         # Back to dB
-#         overlay_avg_db = 10 * np.log10(mean_power + 1e-12)
-#         overlay_avg_theta = theta_grid
-
-
-#     # -----------------------------
-#     # Create main plot
-#     # -----------------------------
-#     fig, ax = plt.subplots(figsize=(6, 6))
-
-#     # Speakers & listeners
-#     ax.scatter(spk_pos[:, 0], spk_pos[:, 1], c='black', marker='x', label='Speakers')
-#     ax.scatter(lstn_pos[:, 0], lstn_pos[:, 1], c='blue', label='Listeners')
-
-#     # -----------------------------
-#     # Arrow plotting
-#     # -----------------------------
-#     arrow_len = 0.2
-#     cmap = cm.viridis
-#     norm = colors.Normalize(vmin=0, vmax=18.5)
-
-#     for x, y, ang, leng, col_val in zip(lstn_pos[:, 0], lstn_pos[:, 1], loc, unc, col):
-#         dx = (1 - leng) * arrow_len * np.cos(np.deg2rad(ang))
-#         dy = (1 - leng) * arrow_len * np.sin(np.deg2rad(ang))
-#         color = cmap(norm(max(col_val, 1e-3)))
-
-#         ax.arrow(x, y, dx, dy,
-#                  head_width=0.05, head_length=0.08,
-#                  fc=color, ec=color)
-
-#     # Colorbar
-#     sm = cm.ScalarMappable(cmap=cmap, norm=norm)
-#     fig.colorbar(sm, ax=ax, label="LSD")
-
-#     # -----------------------------
-#     # Compute DIRECTIVITY (same as your other function)
-#     # -----------------------------
-
-#     for i,g in enumerate(group_idx):
-        
-#         group_indices =  g
-
-#         filters = np.atleast_2d(np.asarray(est_filters, dtype=float))
-#         group_indices = np.asarray(group_indices, dtype=int).reshape(-1)
-
-#         h_group = filters[group_indices]
-#         p_group = spk_pos[group_indices]
-
-#         # -----------------------------
-#         # Compute group center
-#         # -----------------------------
-#         group_mid = np.mean(p_group, axis=0)
-
-
-#         n_taps = h_group.shape[1]
-#         theta = np.linspace(0, 2 * np.pi, n_angles, endpoint=False)
-
-#         n_fft = max(4096, int(2 ** np.ceil(np.log2(max(64, n_taps)))))
-#         freqs = np.fft.rfftfreq(n_fft, d=1.0 / fs)
-#         omega = 2 * np.pi * freqs
-#         H_group = np.fft.rfft(h_group, n=n_fft, axis=1)
-
-#         freq_bin_idx = [np.argmin(np.abs(freqs - f)) for f in freqs_eval_hz]
-
-#         mag2 = np.zeros((len(freqs_eval_hz), len(theta)))
-
-#         radius = np.mean(np.linalg.norm(p_group - group_mid, axis=1))
-
-#         for k, ang in enumerate(theta):
-#             obs = group_mid + np.array([radius * np.cos(ang), radius * np.sin(ang)])
-#             tau = np.linalg.norm(obs - p_group, axis=1) / c
-#             phase = np.exp(-1j * np.outer(tau, omega))
-#             H_sum = np.sum(H_group * phase, axis=0)
-
-#             for fi, bi in enumerate(freq_bin_idx):
-#                 mag2[fi, k] = np.abs(H_sum[bi]) ** 2
-
-#         dir_db = 10 * np.log10(mag2 + 1e-12)
-
-#         # -----------------------------
-#         # Select which directivity to plot
-#         # -----------------------------
-#         if directivity_mode == "avg":
-#             dir_use = 10 * np.log10(np.mean(mag2, axis=0) + 1e-12)
-#         elif directivity_mode == "single":
-#             dir_use = dir_db[directivity_freq_idx]
-#         else:
-#             raise ValueError("directivity_mode must be 'avg' or 'single'")
-
-#         # -----------------------------
-#         # Convert dB → radius (normalized)
-#         # -----------------------------
-#         dir_clipped = np.maximum(dir_use, directivity_floor_db)
-
-#         r = directivity_scale * (dir_clipped - directivity_floor_db) / (0 - directivity_floor_db)
-
-#         curve = np.asarray(overlay_curve_list[0], dtype=float) if overlay_curve_list else None
-
-#         start_angle = np.min(np.mod(curve[:,0], 360.0)) if i == 0 else np.min(np.mod(curve[:,0], 360.0))
-#         end_angle = np.max(np.mod(curve[:,0], 360.0)) if i == 0 else np.max(np.mod(curve[:,0], 360.0))
-
-#         if i == 0:
-#             off_set = 180-start_angle
-#             start_angle += off_set
-#             end_angle += off_set 
-            
-#         # Convert to radians
-#         start_rad = np.deg2rad(start_angle)
-#         end_rad = np.deg2rad(end_angle)
-
-#         # Wrap to [0, 2π]
-#         theta_wrapped = np.mod(theta, 2*np.pi)
-#         start_rad = np.mod(start_rad, 2*np.pi)
-#         end_rad = np.mod(end_rad, 2*np.pi)
-
-#         # Handle wrap-around (e.g. 300° → 60°)
-#         if start_rad <= end_rad:
-#             mask = (theta_wrapped >= start_rad) & (theta_wrapped <= end_rad)
-#         else:
-#             mask = (theta_wrapped >= start_rad) | (theta_wrapped <= end_rad)
-
-#         # Apply mask
-#         theta_sel = theta[mask]
-#         r_sel = r[mask]
-
-
-#         # -----------------------------
-#         # Plot directivity in Cartesian coords
-#         # -----------------------------
-#         cx, cy = group_mid
-
-#         x_dir = cx + r_sel * np.cos(theta_sel)
-#         y_dir = cy + r_sel * np.sin(theta_sel)
-
-#         ax.plot(x_dir, y_dir, color='black', linewidth=2, zorder=3, label='Directivity' if i == 0 else None)
-#         ax.fill(x_dir, y_dir, color='gray', alpha=0.2, zorder=2)
-
-#         # Mark center
-#         ax.scatter(cx, cy, c='red', s=60, label='Array center' if i == 0 else None, zorder=4)
-
-
-#                 # -----------------------------
-#         # Overlay curves (with angle mask)
-#         # -----------------------------
-#         overlay_curve_list = []
-#         if overlay_curve is not None:
-#             overlay_curve_list.append(overlay_curve)
-#         if overlay_curves is not None:
-#             overlay_curve_list.extend(overlay_curves)
-
-#         if overlay_labels is not None and len(overlay_labels) != len(overlay_curve_list):
-#             raise ValueError("overlay_labels must contain one label per overlay curve.")
-
-#         overlay_colors = ["k", "tab:purple", "tab:brown", "tab:gray", "tab:olive"]
-
-
-#         cx, cy = group_mid
-
-#         for curve_idx, curve in enumerate(overlay_curve_list):
-#             curve = np.asarray(curve, dtype=float)
-
-#             if curve.ndim != 2 or curve.shape[1] != 2:
-#                 raise ValueError("Each overlay curve must have shape (N, 2) as [angle_deg, level_db].")
-
-#             theta_sel = np.deg2rad(np.mod(curve[:, 0], 360.0)) if i == 1 else np.deg2rad(np.mod(curve[:, 0], 360.0) + off_set)
-#             db_sel = curve[:, 1] if i == 1 else np.flip(curve[:, 1])
-
-#             # --- dB → radius (same scaling) ---
-#             db_clipped = np.maximum(db_sel, directivity_floor_db)
-#             r_overlay = directivity_scale * (db_clipped - directivity_floor_db) / (0 - directivity_floor_db)
-
-#             # --- Cartesian ---
-#             x_overlay = cx + r_overlay * np.cos(theta_sel)
-#             y_overlay = cy + r_overlay * np.sin(theta_sel)
-
-#             # --- Plot ---
-#             ax.plot(
-#                 x_overlay,
-#                 y_overlay,
-#                 linestyle='none',
-#                 marker='o',
-#                 markersize=3,
-#                 color=overlay_colors[curve_idx % len(overlay_colors)],
-#                 label= (
-#                         overlay_labels[curve_idx]
-#                         if (overlay_labels is not None and i == 0)
-#                         else (f"Overlay {curve_idx+1}" if (overlay_labels is None and i == 0) else None)
-#                     ),
-#                 zorder=5,
-#             )
-
-#     # -----------------------------
-#     # VBAP arrows (optional)
-#     # -----------------------------
-#     if vbap_values is not None:
-#         loc_vbap, unc_vbap, _ = vbap_values
-
-#         loc_vbap = loc_vbap.detach().cpu().numpy().reshape(-1)
-#         unc_vbap = unc_vbap.detach().cpu().numpy().reshape(-1)
-
-#         for x, y, ang, leng in zip(lstn_pos[:, 0], lstn_pos[:, 1], loc_vbap, unc_vbap):
-#             dx = (1 - leng) * arrow_len * np.cos(np.deg2rad(ang))
-#             dy = (1 - leng) * arrow_len * np.sin(np.deg2rad(ang))
-
-#             ax.arrow(x, y, dx, dy,
-#                      head_width=0.05, head_length=0.08,
-#                      fc='purple', ec='purple')
-
-#     # -----------------------------
-#     # Target position
-#     # -----------------------------
-#     if target_pos is not None:
-#         target_pos = np.asarray(target_pos).reshape(-1)
-#         ax.scatter(target_pos[0], target_pos[1],
-#                    c='green', marker='x', s=80, label='Target')
-
-#     # -----------------------------
-#     # Formatting
-#     # -----------------------------
-#     ax.set_aspect('equal')
-#     ax.grid(True)
-#     ax.set_xlabel("X (m)")
-#     ax.set_ylabel("Y (m)")
-
-#     handles, labels = ax.get_legend_handles_labels()
-#     unique = dict(zip(labels, handles))
-#     ax.legend(unique.values(), unique.keys())
-
-#     fig.tight_layout()
-
-#     if show:
-#         plt.show()
-
-#     return fig

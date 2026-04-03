@@ -414,6 +414,10 @@ def plot_arrows(lstn_pos, spk_pos, loc, unc=None, col=None, target_pos=None, sho
 
 def plot_bin_cues(bin_stim, fs, gtfb, show = True):
 
+    if len(bin_stim.shape) == 2:
+        bin_stim = bin_stim.unsqueeze(0).unsqueeze(0)
+    elif len(bin_stim.shape) == 3:
+        bin_stim = bin_stim.unsqueeze(0)
     interaural_cues = llado2025_estimateinterauralcues(bin_stim=bin_stim, fs = fs, gtfb=gtfb)
     
     ild_np = interaural_cues['ild'].detach().cpu().numpy()

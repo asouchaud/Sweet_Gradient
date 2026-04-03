@@ -13,21 +13,13 @@ def llado2025_estimateinterauralcues(bin_stim,fs,gtfb, tau_IACC=0.01):
     # bin_stim.shape = (batch_size, n_listners, left/right ear, signal_len)
     # gtfb.shape = (n_banks, 1, n_filter_taps) (1 for F.conv1d)
 
-    if len(bin_stim.shape) == 4:
-        batch_size = bin_stim.shape[0]
-        N_lstn_pos = bin_stim.shape[1]
-
-    elif len(bin_stim.shape) == 3:
-        batch_size = bin_stim.shape[0]
-        N_lstn_pos = 1
+    if len(bin_stim.shape) != 4:
+        raise ValueError(f"Expected bin_stim.shape == (batch_size, n_listeners, 2, signal_len), got {tuple(bin_stim.shape)}")
+    if bin_stim.shape[2] != 2:
+        raise ValueError(f"Expected bin_stim.shape[2] == 2 (left/right ear), got {int(bin_stim.shape[2])}")
     
-    elif len(bin_stim.shape) == 2:
-        batch_size = 1
-        N_lstn_pos = 1
-
-    else:
-        print('Expected input of dimensions greater than 1 and lower than 5')
-        return(0)
+    batch_size = bin_stim.shape[0]
+    N_lstn_pos = bin_stim.shape[1]
     
     N_signals = batch_size*N_lstn_pos
     N_banks = gtfb.shape[0]
