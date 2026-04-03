@@ -27,30 +27,41 @@ from scripts.saving.save_results import saver
 
 def run_experiment(loss_dict_builder, run_label):
     repo_root = Path(__file__).resolve().parent
+    d =100
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
-        epochs=50,
-        num_lstn_pos=101,
-        listener_batch_size=11,  # 5 mirrored pairs plus the centre listener
+        epochs=1500,
+        num_lstn_pos=1,
+        listener_batch_size=None,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=True,
-        n_samples=10,
-        target_pos=[1.732, float(np.tan(np.deg2rad(15.0)) * 1.732)],
+        n_samples=128,
+        target_pos=[d, float(np.tan(np.deg2rad(0.0)) * d)],
         selected_stim="random",
-        sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"),
+        sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
-        lr=0.1,
+        lr=0.001,
         seed=46,
         log=1,
         fs=48000,
     )
-    env.dtype = torch.float32
-    env.device_str = "cuda" if torch.cuda.is_available() else "cpu"
+    env.dtype = torch.float64
+    env.device_str = "cpu"
     env.device = torch.device(env.device_str)
 
 ## Initial setup
     print(f"Using device: {env.device}")
 
     # Loudspkeaker and listener positions
-    env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)] 
+    # n_per_segment = env.num_lstn_pos // 4
+    # segments = [
+    #     np.linspace(-0.5, -0.325, n_per_segment),
+    #     np.linspace(-0.225, -0.05, n_per_segment),
+    #     np.linspace(0.05, 0.225, n_per_segment),
+    #     np.linspace(0.325, 0.5, n_per_segment),
+    # ]
+    # y_positions = np.concatenate(segments)
+    # env.lstn_pos = [[0.0, float(y)] for y in y_positions]
+    # env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)] 
+    env.lstn_pos = [[0.0, 0.0]] # Only the centre position for now, as the spectral matching model only supports one listener position.
     base_angle_rad = np.deg2rad(30.0)
     env.speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
     env.spk_pos = [
@@ -112,7 +123,15 @@ def run_experiment(loss_dict_builder, run_label):
 
 ## Print and Plot results
     # Evaluate final neural network FIRs
-    est_filters, estimation_dict, bin_stim = trainer.evaluate()
+    eval_perceptual_dict = {
+            "localisation": ListenerBasedLoss(model=loc_model, weight=1.0, device=env.device, dtype=env.dtype),
+            "uncertainty": ListenerBasedLoss(model=unc_model, weight=1, device=env.device, dtype=env.dtype),
+            "colouration": ListenerBasedLoss(model=col_model, weight=1, device=env.device, dtype=env.dtype)
+        }
+    eval_lstn_pos = [[0.0 , 0.0], [0.0, 0.5], [0.0, -0.5]]
+    stereo_prop_eval = BinauralFreeFieldPropagation(stim=stim, lstn_pos=eval_lstn_pos, spk_pos=env.spk_pos, fs=env.fs, sofa_file_path=env.sofa_path, apply_distance_attenuation=True)
+    trainer.prop = stereo_prop_eval
+    est_filters, estimation_dict, bin_stim = trainer.evaluate(loss_dict=eval_perceptual_dict)
     # Normalise filters to prevent clipping 
     est_filters /= np.max(np.abs(est_filters)) / 0.9 # TODO: move this to a more appropriate place at the end of the training loop
 
@@ -124,7 +143,7 @@ def run_experiment(loss_dict_builder, run_label):
         estimation_dict=estimation_dict,
         est_filters=est_filters,
         fs=env.fs,
-        lstn_pos=env.lstn_pos,
+        lstn_pos=eval_lstn_pos,
         spk_pos=env.spk_pos,
         trainer=trainer,
         env=env,
@@ -133,8 +152,8 @@ def run_experiment(loss_dict_builder, run_label):
         estimation_dict=estimation_dict,
         est_filters=est_filters,
         bin_stim=bin_stim,
-        prop_model=stereo_prop,
-        loss_dict=loss_dict,
+        prop_model=stereo_prop_eval,
+        loss_dict=eval_perceptual_dict,
         target_pos=env.target_pos,
         stim=stim,
         fs=env.fs,
@@ -152,7 +171,7 @@ def run_experiment(loss_dict_builder, run_label):
 if __name__ == "__main__":
     run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "uncertainty": ListenerBasedLoss(model=unc_model, weight=1.0e1, device=device, dtype=dtype),
+            "colouration": ListenerBasedLoss(model=col_model, weight=1.0e0, device=device, dtype=dtype),
         },
-        run_label="uncertainty_only",
+        run_label="colouration_only",
     )

@@ -35,16 +35,16 @@ from scripts.saving.save_results import saver
 
 def run_experiment(loss_dict_builder, run_label, target_angle):
     repo_root = Path(__file__).resolve().parent
-    d = 10
+    d = 60
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
-        epochs=1000,
-        num_lstn_pos=3,
-        listener_batch_size=None,  # 5 mirrored pairs plus the centre listener
-        symmetric_listener_sampling=True,
+        epochs=500,
+        num_lstn_pos=50,
+        listener_batch_size=10,  # 5 mirrored pairs plus the centre listener
+        symmetric_listener_sampling=False,
         n_samples=128,
         target_pos=[d, float(np.tan(np.deg2rad(target_angle)) * d)],
-        selected_stim="random",
-        sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"),
+        selected_stim="impulse",
+        sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
         lr=0.001,
         seed=46,
@@ -59,7 +59,16 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
     print(f"Using device: {env.device}")
 
     # Loudspkeaker and listener positions
-    env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)] 
+    n_per_segment = env.num_lstn_pos // 4
+    segments = [
+        np.linspace(-0.5, -0.325, n_per_segment),
+        np.linspace(-0.225, -0.05, n_per_segment),
+        np.linspace(0.05, 0.225, n_per_segment),
+        np.linspace(0.325, 0.5, n_per_segment),
+    ]
+    y_positions = np.concatenate(segments)
+    env.lstn_pos = [[0.0, float(y)] for y in y_positions]
+    # env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)] 
     base_angle_rad = np.deg2rad(30.0)
     env.speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
     env.spk_pos = [
@@ -78,7 +87,7 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
 
 ## Initialize model
     # Initialize sound propagation module
-    stereo_prop = BinauralFreeFieldPropagation(stim=stim, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, fs=env.fs, sofa_file_path=env.sofa_path) # Load stereo anechoic propagation module
+    stereo_prop = BinauralFreeFieldPropagation(stim=stim, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, fs=env.fs, sofa_file_path=env.sofa_path, apply_distance_attenuation=True) # Load stereo anechoic propagation module
 
     # Initiate perceptual models
     loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, hrirs=hrirs, fs=env.fs, gtfb=gtfb).to(device=env.device, dtype=env.dtype) # Llado et al. 2025 model
@@ -126,6 +135,9 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
             "uncertainty": ListenerBasedLoss(model=unc_model, weight=1, device=env.device, dtype=env.dtype),
             "colouration": ListenerBasedLoss(model=col_model, weight=1, device=env.device, dtype=env.dtype)
         }
+    eval_lstn_pos = [[0.0 , 0.0], [0.0, 0.275], [0.0, -0.275]]
+    stereo_prop_eval = BinauralFreeFieldPropagation(stim=stim, lstn_pos=eval_lstn_pos, spk_pos=env.spk_pos, fs=env.fs, sofa_file_path=env.sofa_path, apply_distance_attenuation=True)
+    trainer.prop = stereo_prop_eval
     est_filters, estimation_dict, bin_stim = trainer.evaluate(loss_dict=eval_perceptual_dict)
     # Normalise filters to prevent clipping 
     est_filters /= np.max(np.abs(est_filters)) / 0.9 # TODO: move this to a more appropriate place at the end of the training loop
@@ -138,7 +150,7 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
         estimation_dict=estimation_dict,
         est_filters=est_filters,
         fs=env.fs,
-        lstn_pos=env.lstn_pos,
+        lstn_pos=eval_lstn_pos,
         spk_pos=env.spk_pos,
         trainer=trainer,
         env=env,
@@ -147,7 +159,7 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
         estimation_dict=estimation_dict,
         est_filters=est_filters,
         bin_stim=bin_stim,
-        prop_model=stereo_prop,
+        prop_model=stereo_prop_eval,
         loss_dict=loss_dict,
         target_pos=env.target_pos,
         stim=stim,
@@ -164,10 +176,10 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
 
     plt.close('all')
 
-    return(saver_obj.run_dir, env.lstn_pos, env.spk_pos)
+    return(saver_obj.run_dir, eval_lstn_pos, env.spk_pos)
 
 
-def DAFx2026_fig3_plots(run_folders, lstn_pos, spk_pos):
+def DAFx2026_fig2_plots(run_folders, lstn_pos, spk_pos):
 
     arrow_width = 3
     arrow_head_width = 0.12
@@ -288,7 +300,7 @@ if __name__ == "__main__":
                run_dir_10,
                run_dir_20]
     
-    DAFx2026_fig3_plots(folders, np.array(lstn_pos), np.array(spk_pos))
+    DAFx2026_fig2_plots(folders, np.array(lstn_pos), np.array(spk_pos))
 
 
 

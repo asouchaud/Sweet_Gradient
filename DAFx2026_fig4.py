@@ -36,7 +36,7 @@ from scripts.saving.save_results import saver
 
 def run_experiment(loss_dict_builder, run_label, init):
     repo_root = Path(__file__).resolve().parent
-    d = 10
+    d = 100
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
         epochs=1000,
         num_lstn_pos=3,
@@ -212,7 +212,7 @@ def sofa_find(source_angle, sofaile):
     return np.argmin(dists)
 
 
-def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos):
+def DAFx2026_fig4_plots(run_folders, lstn_pos, spk_pos):
 
 
     arrow_width = 3
@@ -353,7 +353,7 @@ if __name__ == "__main__":
                run_dir_init_2_r_0,
                run_dir_init_2_r_2]
     
-    DAFx2026_fig5_plots(folders, np.array(lstn_pos), np.array(spk_pos))
+    DAFx2026_fig4_plots(folders, np.array(lstn_pos), np.array(spk_pos))
 
 
 

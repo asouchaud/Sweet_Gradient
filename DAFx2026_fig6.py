@@ -39,7 +39,7 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
     repo_root = Path(__file__).resolve().parent
     d = 60
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
-        epochs=300,
+        epochs=1,
         num_lstn_pos=1,
         listener_batch_size=None,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=False,
@@ -50,7 +50,7 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
         lr=0.01,
         seed=46,
-        log=1,
+        log=0,
         fs=48000,
     )
     env.dtype = torch.float32
@@ -228,8 +228,8 @@ def DAFx2026_fig6_plots(run_folders):
     r2 = r2_score(vbap_icld[1:-1], E_ratio[1:-1])
 
     # --- TOP PLOT ---
-    plt.figure(figsize=(6, 7)) 
-    plt.subplot(2,1,1)
+    plt.figure() 
+    plt.subplot(1,2,1)
     l1, = plt.plot(angles[1:-1], -E_ratio[1:-1], linewidth=3)
     l2, = plt.plot(angles[1:-1], -vbap_icld[1:-1],  linewidth=2)
     plt.grid()
@@ -237,7 +237,9 @@ def DAFx2026_fig6_plots(run_folders):
             transform=plt.gca().transAxes,
             fontsize=20,
             verticalalignment='top')
+    plt.xlabel(r"Target Angle ($\theta^\circ$)", fontsize=20)
     plt.ylabel("Energy Ratio (dB)", fontsize=20)
+    plt.xticks(fontsize=20)
     plt.yticks(fontsize=20)
     ax = plt.gca()
     ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
@@ -252,7 +254,7 @@ def DAFx2026_fig6_plots(run_folders):
         est_angle[i] = json_data['localisation']
 
     # --- BOTTOM PLOT ---
-    plt.subplot(2,1,2)
+    plt.subplot(1,2,2)
     l3,= plt.plot(target_angles[1:-1], est_angle[1:-1], linewidth=3, label="Proposed Method")
     l4,= plt.plot(target_angles[1:-1], vbap_angle[1:-1], linewidth=2, label="VBAP")
     l5,= plt.plot(target_angles[1:-1], target_angles[1:-1], linestyle = "--", color = "black", linewidth=2, label = "Target")
@@ -261,20 +263,20 @@ def DAFx2026_fig6_plots(run_folders):
     plt.xticks(fontsize=20)
     plt.yticks(fontsize=20)
     plt.grid()
-    plt.legend(fontsize=15)
 
 
-    # # === LEGEND AT BOTTOM ===
-    # handles = [l1, l2, l5]
-    # labels = [h.get_label() for h in handles]
+    # === LEGEND AT BOTTOM ===
+    handles = [l3, l4, l5]
+    labels = [h.get_label() for h in handles]
 
-    # plt.figlegend(handles, labels,
-    #             loc='lower center',
-    #             ncol=2,
-    #             fontsize=20,
-    #             bbox_to_anchor=(0.5, -0.02))
+    plt.figlegend(handles, labels,
+                loc='lower center',
+                ncol=2,
+                fontsize=20,
+                bbox_to_anchor=(0.5, -0.02))
 
-    plt.tight_layout()
+    # plt.tight_layout()
+    plt.subplots_adjust(bottom=0.25)
     # plt.tight_layout(rect=[0, 0.05, 1, 1])  # leave space for legend
     plt.savefig("DAFx2026_fig6.pdf", format = "pdf")
     plt.show()

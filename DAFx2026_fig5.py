@@ -39,20 +39,20 @@ def run_experiment(loss_dict_builder, run_label):
     d = 100
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
         epochs=300,
-        num_lstn_pos=101,
-        listener_batch_size=11,  # 5 mirrored pairs plus the centre listener
+        num_lstn_pos=51,
+        listener_batch_size=5,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=False,
-        n_samples=96,
+        n_samples=64,
         target_pos=[d, float(np.tan(np.deg2rad(0.0)) * d)],
         selected_stim="impulse",
-        sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"),
+        sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
-        lr=0.1,
+        lr=0.01,
         seed=46,
         log=1,
         fs=48000,
     )
-    env.dtype = torch.float32
+    env.dtype = torch.float64
     # env.device_str = "cuda" if torch.cuda.is_available() else "cpu"
     env.device_str = "cpu"
     env.device = torch.device(env.device_str)
@@ -363,9 +363,9 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos):
 if __name__ == "__main__":
     run_dir_loc_init_2_r_2, _, _ = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
+            "localisation": ListenerBasedLoss(model=loc_model, weight=1e0, device=device, dtype=dtype),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-2),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-2),
         },
         run_label="loc_init_2_r_2"
     )
@@ -373,37 +373,37 @@ if __name__ == "__main__":
     run_dir_unc_init_2_r_2, _, _ = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "uncertainty": ListenerBasedLoss(model=unc_model, weight=1e-2, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-2),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-2),
         },
         run_label="unc_init_2_r_2"
     )
 
     run_dir_col_init_2_r_2, _, _ = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "colouration": ListenerBasedLoss(model=col_model, weight=1e-0, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
+            "colouration": ListenerBasedLoss(model=col_model, weight=1e2, device=device, dtype=dtype),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-2),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-2),
         },
         run_label="init_0col_init_2_r_2_r_2"
     )
 
     run_dir_loc_unc_init_2_r_2, _, _ = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
+            "localisation": ListenerBasedLoss(model=loc_model, weight=1e0, device=device, dtype=dtype),
             "uncertainty": ListenerBasedLoss(model=unc_model, weight=1e-2, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-2),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-2),
         },
         run_label="initloc_unc_init_2_r_2_0_r_2"
     )
 
     run_dir_loc_col_init_2_r_2, _, _ = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "colouration": ListenerBasedLoss(model=col_model, weight=1e-0, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
+            "localisation": ListenerBasedLoss(model=loc_model, weight=1e0, device=device, dtype=dtype),
+            "colouration": ListenerBasedLoss(model=col_model, weight=1e2, device=device, dtype=dtype),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-2),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-2),
         },
         run_label="iniloc_col_init_2_r_2t_0_r_2"
     )
@@ -411,20 +411,20 @@ if __name__ == "__main__":
     run_dir_unc_col_init_2_r_2, _, _ = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "uncertainty": ListenerBasedLoss(model=unc_model, weight=1e-2, device=device, dtype=dtype),
-            "colouration": ListenerBasedLoss(model=col_model, weight=1e-0, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
+            "colouration": ListenerBasedLoss(model=col_model, weight=1e2, device=device, dtype=dtype),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-2),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-2),
         },
         run_label="init_unc_col_init_2_r_20_r_2"
     )
 
     run_dir_loc_unc_col_init_2_r_2, lstn_pos, spk_pos = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
+            "localisation": ListenerBasedLoss(model=loc_model, weight=1e0, device=device, dtype=dtype),
             "uncertainty": ListenerBasedLoss(model=unc_model, weight=1e-2, device=device, dtype=dtype),
-            "colouration": ListenerBasedLoss(model=col_model, weight=1e-0, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
+            "colouration": ListenerBasedLoss(model=col_model, weight=1e2, device=device, dtype=dtype),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-2),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-2),
         },
         run_label="loc_unc_col_init_2_r_2nit_0_r_2"
     )
