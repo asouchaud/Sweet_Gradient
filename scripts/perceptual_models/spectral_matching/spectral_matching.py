@@ -13,7 +13,7 @@ from scripts.setup.helpers import true_conv1d
 
 
 class spectral_matching(nn.Module):
-    supports_listener_indices = False  ################# TRUE IS BROKEN ################
+    supports_listener_indices = True
 
     def __init__(self, loss, target, stim, hrirs, target_pos, fs, lstn_pos_conf = None, n_fft=4096, sofa_path = os.path.join('data', 'impulses', 'SOFA', 'SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa')):
         super(spectral_matching, self).__init__()
@@ -35,7 +35,6 @@ class spectral_matching(nn.Module):
             raise ValueError("target_pos must contain exactly two coordinates.")
 
         if isinstance(lstn_pos_conf, type(None)):
-            
             self.target_angle = torch.rad2deg(torch.atan2(self.target_pos[1], self.target_pos[0]))
             self.reference_hrir = self.get_IR(self.sofa_find(self.target_angle)).view(2,1,-1).to(dtype=self.dtype, device=self.device)
             self.reference_stim = true_conv1d(self.stim, self.reference_hrir)
@@ -43,7 +42,6 @@ class spectral_matching(nn.Module):
             low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
 
         elif isinstance(lstn_pos_conf, list):
-
             self.target_angle = near_field_comp_angles(self.target_pos, lstn_pos_conf)
 
             self.reference_hrir = self.get_IR(self.sofa_find(self.target_angle)).view(2*len(lstn_pos_conf),1,-1).to(dtype=self.dtype, device=self.device)
@@ -52,11 +50,10 @@ class spectral_matching(nn.Module):
             low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
         else:
             print("Wrong data type, defaulting to global target position angle")
-            self.target_angle = torch.rad2deg(torch.atan2(self.target_pos[1], self.target_pos[0]))
+            self.target_angle = torch.rad2deg(torch.atan2(self.target_pos[1], self.target_pos[0])) # TODO: this repeats the code of  isinstance(lstn_pos_conf, type(None)). Please fix. 
             self.reference_hrir = self.get_IR(self.sofa_find(self.target_angle)).view(2,1,-1).to(dtype=self.dtype, device=self.device)
             self.reference_stim = true_conv1d(self.stim, self.reference_hrir)
             low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
-
 
         self.target = target
         self.loss = loss
@@ -87,23 +84,14 @@ class spectral_matching(nn.Module):
 
     def forward(self, bin_stim, listener_indices=None):
         # Expects bin_stim as (batch, n_listeners, 2, T), where 2 is the left and right ear and T is the number of time samples of each ear signal;
-        # returns flattened coloration scores with shape (batch * n_listeners,).
+        # returns coloration scores with shape (batch, n_listeners) for ListenerBasedLoss (target subset + expand_as).
 
-        if len(bin_stim.shape) == 4:
-            batch_size = bin_stim.shape[0]
-            N_lstn_pos = bin_stim.shape[1]
-
-        elif len(bin_stim.shape) == 3:
-            batch_size = bin_stim.shape[0]
-            N_lstn_pos = 1
-        
-        elif len(bin_stim.shape) == 2:
-            batch_size = 1
-            N_lstn_pos = 1
-
-        else:
-            print('Expected input of dimensions greater than 1 and lower than 5')
-            return(0)
+        if len(bin_stim.shape) != 4:
+            raise ValueError(
+                f"bin_stim must have shape (batch, n_listeners, 2, T); got ndim={len(bin_stim.shape)}, shape={tuple(bin_stim.shape)}."
+            )
+        batch_size = bin_stim.shape[0]
+        N_lstn_pos = bin_stim.shape[1]
     
         N_signals = batch_size*N_lstn_pos
         L_signal = bin_stim.shape[-1]
@@ -112,8 +100,9 @@ class spectral_matching(nn.Module):
         reference_stim_base = self.reference_stim
         if reference_stim_base.ndim == 2:
             reference_stim_base = reference_stim_base.unsqueeze(0)
-        elif listener_indices is not None:  ################# BROKEN ###################
-            reference_stim_base = reference_stim_base[listener_indices]
+        if listener_indices is not None and reference_stim_base.shape[0] != 1:
+            idx = torch.as_tensor(listener_indices, device=reference_stim_base.device, dtype=torch.long)
+            reference_stim_base = reference_stim_base[idx]
 
         if reference_stim_base.shape[0] == 1:
             reference_stim = reference_stim_base.expand_as(bin_stim_reshaped)
@@ -124,4 +113,4 @@ class spectral_matching(nn.Module):
         
         coloration = log_spectral_distortion(bin_stim_reshaped, reference_stim)
 
-        return coloration.view(-1)
+        return coloration.view(batch_size, N_lstn_pos)

@@ -33,35 +33,36 @@ from scripts.perceptual_models.spectral_matching.spectral_matching import spectr
 from scripts.optimisation.regularisation import second_moment_regularisation
 from scripts.train.train import ListenerBasedLoss, SourceBasedLoss, Train
 from scripts.saving.save_results import saver
+from scripts.helpers.filters import bandpass_fir
 
 
 def run_experiment(loss_dict_builder, run_label, target_angle):
     repo_root = Path(__file__).resolve().parent
-    d = 10
+    d = 60
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
-        epochs=1000,
+        epochs=300,
         num_lstn_pos=1,
         listener_batch_size=None,  # 5 mirrored pairs plus the centre listener
-        symmetric_listener_sampling=True,
-        n_samples=128,
+        symmetric_listener_sampling=False,
+        n_samples=64,
         target_pos=[d, float(np.tan(np.deg2rad(target_angle)) * d)],
-        selected_stim="random",
-        sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"),
+        selected_stim="impulse",
+        sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
-        lr=0.001,
+        lr=0.01,
         seed=46,
         log=1,
         fs=48000,
     )
     env.dtype = torch.float32
-    env.device_str = "cuda" if torch.cuda.is_available() else "cpu"
+    env.device_str =  "cpu"
     env.device = torch.device(env.device_str)
 
 ## Initial setup
     print(f"Using device: {env.device}")
 
     # Loudspkeaker and listener positions
-    env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)] 
+    env.lstn_pos = [[0.0, 0.0]] 
     base_angle_rad = np.deg2rad(30.0)
     env.speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
     env.spk_pos = [
@@ -169,182 +170,164 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
     return(saver_obj.run_dir, env.lstn_pos, env.spk_pos)
 
 
+def VBAP_loc(vbap_icld):
+
+    repo_root = Path(__file__).resolve().parent
+    fs = 48000
+    dtype = torch.float32
+    device_str = "cuda" if torch.cuda.is_available() else "cpu"
+    device = torch.device(device_str)
+    sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
+    sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv")
+
+    lstn_pos = [[0.0, 0.0]] 
+    base_angle_rad = np.deg2rad(30.0)
+    speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
+    spk_pos = [
+        [speaker_distance * np.cos(base_angle_rad), speaker_distance * np.sin(base_angle_rad)],
+        [speaker_distance * np.cos(base_angle_rad), -speaker_distance * np.sin(base_angle_rad)],
+    ]
+
+    gtfb = load_gtfb(fs=fs, device=device, dtype=dtype)  # Load Gamma Tone Filter Bank
+    stim = load_stim(fs=fs, device=device, dtype=dtype, selected_stim='impulse')  # Load stimulus
+    hrirs = load_hrirs(dtype=dtype, device=device, sofa_path=sofa_path, idx_path=sofa_idx_path) # Load HRIRs using specific location from SOFA file
+
+    stereo_prop = BinauralFreeFieldPropagation(stim=stim, lstn_pos=lstn_pos, spk_pos=spk_pos, fs=fs, sofa_file_path=sofa_path, apply_distance_attenuation=True)
+    loc_model = llado2025(loss = F.mse_loss, target_pos=[0,0], hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # Llado et al. 2025 model
+
+    vbap_angle = torch.zeros(len(vbap_icld), device = device, dtype= dtype)
+    vbap_icld = torch.tensor(vbap_icld, device=device, dtype=dtype)
+    for i in range(len(vbap_icld)):
+
+        right_gains = torch.sqrt(1/(1+ 10**(vbap_icld[i]/10)))
+        left_gains = right_gains*10**(vbap_icld[i]/20)
+
+        filts = torch.zeros(1,2,64,device=device, dtype=dtype) 
+        filts[0,0,0] = left_gains
+        filts[0,1,0] = right_gains
+
+        bin_stim = stereo_prop(filts)
+
+        vbap_angle[i] = loc_model(bin_stim)
+
+    return(vbap_angle.detach().cpu().numpy())
+
+
 def DAFx2026_fig6_plots(run_folders):
 
-    vbap_icld = np.loadtxt(r"data\miscellaneous\VBAP_panning_curve.csv")
+    repo_root = Path(__file__).resolve().parent
+    fs = 48000
+    vbap_icld = np.loadtxt(repo_root / "data" / "miscellaneous" / "VBAP_panning_curve.csv")
 
-    filt = np.zeros((13,2,128))
+    tmp = np.load(run_folders[0] / "artifacts" / "est_filters.npy")
+    filt = np.zeros((13,2,tmp.shape[-1]))
 
     for i in range(len(run_folders)):
-        filt[i] = np.load(run_folders[i])
+        filt[i] = np.load(run_folders[i] / "artifacts" / "est_filters.npy")
 
-    E_ratio = 20*np.log(np.abs(np.sum(filt[:,0,:]**2, axis = -1))/np.abs(np.sum(filt[:,1,:]**2, axis = -1)))
+    filt_bp = bandpass_fir(filt, fs=fs)
+    E_ratio = 10*np.log10(np.abs(np.sum(filt_bp[:,0,:]**2, axis = -1))/np.abs(np.sum(filt_bp[:,1,:]**2, axis = -1)))
     angles = np.arange(-30,35,5)
 
     r2 = r2_score(vbap_icld[1:-1], E_ratio[1:-1])
 
-    plt.figure(figsize=(8,8))
-    plt.plot(angles[1:-1], -E_ratio[1:-1], label = "Proposed Method", linewidth = 3)
-    plt.plot(angles[1:-1],-vbap_icld[1:-1], label = "VBAP", linewidth = 3)
+    # --- TOP PLOT ---
+    plt.figure(figsize=(6, 7)) 
+    plt.subplot(2,1,1)
+    l1, = plt.plot(angles[1:-1], -E_ratio[1:-1], linewidth=3)
+    l2, = plt.plot(angles[1:-1], -vbap_icld[1:-1],  linewidth=2)
     plt.grid()
     plt.text(0.05, 0.95, f"$R^2 = {r2:.3f}$",
             transform=plt.gca().transAxes,
             fontsize=20,
             verticalalignment='top')
-    plt.xlabel(f"Panning Angle ($^\circ$)", fontsize = 20)
-    plt.ylabel("Energy Ratio (dB)", fontsize = 20)
-    plt.legend(fontsize = 20)
-    plt.xticks(fontsize = 20)
+    plt.ylabel("Energy Ratio (dB)", fontsize=20)
+    plt.yticks(fontsize=20)
+    ax = plt.gca()
+    ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
 
+    target_angles = np.arange(30,-35,-5)
+    vbap_angle = VBAP_loc(vbap_icld)
+    est_angle = np.zeros(len(run_folders))
+    for i in range(len(folders)):
+        json_file_path = os.path.join(run_folders[i] /  "results.json")
+        json_data = json.load(open(json_file_path))
+
+        est_angle[i] = json_data['localisation']
+
+    # --- BOTTOM PLOT ---
+    plt.subplot(2,1,2)
+    l3,= plt.plot(target_angles[1:-1], est_angle[1:-1], linewidth=3, label="Proposed Method")
+    l4,= plt.plot(target_angles[1:-1], vbap_angle[1:-1], linewidth=2, label="VBAP")
+    l5,= plt.plot(target_angles[1:-1], target_angles[1:-1], linestyle = "--", color = "black", linewidth=2, label = "Target")
+    plt.xlabel(r"Target Angle ($\theta^\circ$)", fontsize=20)
+    plt.ylabel(r"Predicted Angle ($\hat{\theta}^\circ$)", fontsize=20)
+    plt.xticks(fontsize=20)
+    plt.yticks(fontsize=20)
+    plt.grid()
+    plt.legend(fontsize=15)
+
+
+    # # === LEGEND AT BOTTOM ===
+    # handles = [l1, l2, l5]
+    # labels = [h.get_label() for h in handles]
+
+    # plt.figlegend(handles, labels,
+    #             loc='lower center',
+    #             ncol=2,
+    #             fontsize=20,
+    #             bbox_to_anchor=(0.5, -0.02))
+
+    plt.tight_layout()
+    # plt.tight_layout(rect=[0, 0.05, 1, 1])  # leave space for legend
     plt.savefig("DAFx2026_fig6.pdf", format = "pdf")
     plt.show()
 
+    plt.figure(figsize=(6, 6))
+    for i in range(7):
+        right_gains = np.sqrt(1/(1+ 10**(vbap_icld[i+1]/10)))
+        left_gains = right_gains*10**(vbap_icld[i+1]/20)
+
+        vbap_filts = np.zeros((1,2,64)) 
+        vbap_filts[0,0,0] = left_gains
+        vbap_filts[0,1,0] = right_gains
+        plt.subplot(7,2,2*i+1)
+
+        plt.plot(filt[i+1,0], label = "Left Filter", linewidth = 4)
+        plt.plot(vbap_filts[0,0], label = "VBAP Left Filter", linestyle = "--", linewidth = 2)
+        plt.grid()    
+        plt.ylim(-1.1,1.1)
+        
+
+        plt.subplot(7,2,2*i+2)
+        plt.plot(filt[i+1,1], label = "Right Filter", linewidth = 4)
+        plt.plot(vbap_filts[0,1], label = "VBAP Right Filter", linestyle = "--", linewidth = 2)           
+        plt.grid()    
+        plt.ylim(-1.1,1.1)
+
+        print(f"VBAP Energy Ratio: {10*np.log10(np.sum(vbap_filts[0,0]**2)/np.sum(vbap_filts[0,1]**2)):.2f} dB")
+        print(f"Estimated Energy Ratio: {10*np.log10(np.sum(filt[i+1,0]**2)/np.sum(filt[i+1,1]**2)):.2f} dB")
+
+    plt.show()
     
 
 if __name__ == "__main__":
-    run_dir_loc_30, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
-        },
-        run_label="loc_30",
-        target_angle=30.0
-    )
-
-    run_dir_loc_25, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
-        },
-        run_label="loc_25",
-        target_angle=25.0
-    )
-
-    run_dir_loc_20, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
-        },
-        run_label="loc_20",
-        target_angle=20.0
-    )
-
-    run_dir_loc_15, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
-        },
-        run_label="loc_15",
-        target_angle=15.0
-    )
-
-    run_dir_loc_10, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
-        },
-        run_label="loc_10",
-        target_angle=10.0
-    )
-
-    run_dir_loc_5, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
-        },
-        run_label="loc_5",
-        target_angle=5.0
-    )
-
-    run_dir_loc_0, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
-        },
-        run_label="loc_0",
-        target_angle=0.0
-    )
-
-    run_dir_loc_355, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
-        },
-        run_label="loc_355",
-        target_angle=355.0
-    )
-
-    run_dir_loc_350, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
-        },
-        run_label="loc_350",
-        target_angle=350.0
-    )
-
-    run_dir_loc_345, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
-        },
-        run_label="loc_345",
-        target_angle=345.0
-    )
-
-    run_dir_loc_340, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
-        },
-        run_label="loc_340",
-        target_angle=340.0
-    )
-
-    run_dir_loc_335, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
-        },
-        run_label="loc_335",
-        target_angle=335.0
-    )
-
-    run_dir_loc_330, lstn_pos, spk_pos = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-3),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-3),
-        },
-        run_label="loc_330",
-        target_angle=330.0
-    )
-
-    folders = [run_dir_loc_30,
-               run_dir_loc_25,
-               run_dir_loc_20,
-               run_dir_loc_15,
-               run_dir_loc_10,
-               run_dir_loc_5,
-               run_dir_loc_0,
-               run_dir_loc_355,
-               run_dir_loc_350,
-               run_dir_loc_345,
-               run_dir_loc_340,
-               run_dir_loc_335,
-               run_dir_loc_330]
+    angles = [30.0, 25.0, 20.0, 15.0, 10.0, 5.0, 0.0, 355.0, 350.0, 345.0, 340.0, 335.0, 330.0]
+    folders = []
+    lstn_pos, spk_pos = None, None
+    for angle in angles:
+        run_dir, run_lstn_pos, run_spk_pos = run_experiment(
+            loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype, angle=angle: {
+                "localisation": ListenerBasedLoss(model=loc_model, weight=1e-0 if angle == 330.0 else 1e1, device=device, dtype=dtype),
+                "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-0),
+                "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-0),
+            },
+            run_label=f"loc_{int(angle)}",
+            target_angle=angle
+        )
+        folders.append(run_dir)
+        if angle == 330.0:
+            lstn_pos, spk_pos = run_lstn_pos, run_spk_pos
     
     DAFx2026_fig6_plots(folders)
 

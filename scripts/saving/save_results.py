@@ -420,11 +420,13 @@ class saver():
             color_r = plots_or_time_plot.get("color_r_plot")
             directivity_plot = plots_or_time_plot.get("directivity_plot")
             directivity_arrow_plot = plots_or_time_plot.get("arrows_and_directivity")
+            directivity_arrow_centre_plot = plots_or_time_plot.get("arrows_and_directivity_centre")
         else:
             time_plot = plots_or_time_plot
             stimulus_plot = None
             directivity_plot = None
             directivity_arrow_plot = None
+            directivity_arrow_centre_plot = None
 
         plot_folder = self.run_dir / "plots"
         plot_folder.mkdir(parents=True)
@@ -446,4 +448,14 @@ class saver():
         if directivity_plot is not None:
             directivity_plot.savefig(plot_folder / "directivity_plot.pdf")
         if directivity_arrow_plot is not None:
-            directivity_arrow_plot.savefig(plot_folder / "arrows_and_directivity.pdf")
+            directivity_arrow_plot.savefig(
+                plot_folder / "arrows_and_directivity.pdf",
+                bbox_inches="tight",
+                pad_inches=0.06,
+            )
+        if directivity_arrow_centre_plot is not None:
+            directivity_arrow_centre_plot.savefig(
+                plot_folder / "arrows_and_directivity_centre.pdf",
+                bbox_inches="tight",
+                pad_inches=0.06,
+            )

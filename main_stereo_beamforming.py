@@ -28,11 +28,11 @@ from scripts.saving.save_results import saver
 if __name__ == "__main__":
     repo_root = Path(__file__).resolve().parent
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
-        epochs=100,
+        epochs=200,
         n_samples=41,
-        num_lstn_pos=50,
-        listener_batch_size=10,  # 5 mirrored pairs plus the centre listener
-        symmetric_listener_sampling=False,
+        num_lstn_pos=51,
+        listener_batch_size=5,  # 5 mirrored pairs plus the centre listener
+        symmetric_listener_sampling=True,
         selected_stim="impulse",
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
@@ -41,18 +41,21 @@ if __name__ == "__main__":
         log=1,
         fs=48000,
         directivity_radius_m=10.0,
-        directivity_freqs_hz=[250, 500, 1000, 2000, 4000, 8000],
+        directivity_freqs_hz=[250, 500, 1000, 2000, 4000],
         directivity_db_floor=-40,
         speakers_per_array=2,
         speaker_distance=2.5,  # Distance from each array centre to the reference-system center (0, 0)
         array_centre_angles_deg=[30.0, -30.0],
-        speaker_spacing_m=0.01,  # Adjacent spacing within each array (global y-axis)
-        target_pos=[float(2.5 * np.cos(np.deg2rad(30.0))), 0.0],
+        speaker_spacing_m=0.10,  # Adjacent spacing within each array (global y-axis)
         apply_distance_attenuation=True,
     )
     env.dtype = torch.float32
     env.device_str = "cuda" if torch.cuda.is_available() else "cpu"
     env.device = torch.device(env.device_str)
+
+    # env.target_pos=[float(env.speaker_distance * np.cos(np.deg2rad(env.array_centre_angles_deg[0]))), 0.0]
+    env.target_pos=[1.5, 0.0]
+    print(env.target_pos)
 
 ## Initial setup
     print(f"Using device: {env.device}")
@@ -61,7 +64,7 @@ if __name__ == "__main__":
     set_seed(seed=env.seed)
 
     # Loudspkeaker and listener positions
-    env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)]  # 10 listener positions
+    env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-1.25, 1.25, env.num_lstn_pos)]  # 10 listener positions
 
     relative_offsets = (np.arange(env.speakers_per_array, dtype=float) - (env.speakers_per_array - 1) / 2.0) * env.speaker_spacing_m
     upper_angle_deg, lower_angle_deg = env.array_centre_angles_deg
@@ -110,7 +113,7 @@ if __name__ == "__main__":
 
     env.loc_weight = 1.0
     env.unc_weight = 1.0e1
-    env.col_weight = 1.0e-2
+    env.col_weight = 1e-01
     env.reg_weight = 1.0e-2
 
     loss_dict = {
@@ -195,10 +198,10 @@ if __name__ == "__main__":
         show=False,
     )
 
-    rodenas2004_fig12_opt = np.loadtxt(repo_root / "data" / "miscellaneous" / "rodenas2004_fig12_opt.csv", delimiter=",", skiprows=1)
-    rodenas2004_fig12_opt = [[-((angle_deg + 180) % 360.0), level_db] for angle_deg, level_db in rodenas2004_fig12_opt]
-    rodenas2004_fig12_1000Hz = np.loadtxt(repo_root / "data" / "miscellaneous" / "rodenas2004_fig12_1000Hz.csv", delimiter=",", skiprows=1)
-    rodenas2004_fig12_1000Hz = [[-((angle_deg + 180) % 360.0), level_db] for angle_deg, level_db in rodenas2004_fig12_1000Hz]
+    rodenas2003_fig12_opt = np.loadtxt(repo_root / "data" / "miscellaneous" / "rodenas2003_fig12_opt.csv", delimiter=",", skiprows=1)
+    rodenas2003_fig12_opt = [[-((angle_deg + 180) % 360.0), level_db] for angle_deg, level_db in rodenas2003_fig12_opt]
+    rodenas2003_fig12_1000Hz = np.loadtxt(repo_root / "data" / "miscellaneous" / "rodenas2003_fig12_1000Hz.csv", delimiter=",", skiprows=1)
+    rodenas2003_fig12_1000Hz = [[-((angle_deg + 180) % 360.0), level_db] for angle_deg, level_db in rodenas2003_fig12_1000Hz]
     
     right_array_indices = tuple(range(env.speakers_per_array, 2 * env.speakers_per_array))
     left_array_indices = tuple(range(env.speakers_per_array))
@@ -209,8 +212,8 @@ if __name__ == "__main__":
         group_indices=right_array_indices,
         radius=env.directivity_radius_m,
         freqs_eval_hz=env.directivity_freqs_hz,
-        overlay_curves=[rodenas2004_fig12_opt, rodenas2004_fig12_1000Hz],
-        overlay_labels=["rodenas2004 (optimum)", "rodenas2004 (1000 Hz)"],
+        overlay_curves=[rodenas2003_fig12_opt, rodenas2003_fig12_1000Hz],
+        overlay_labels=["rodenas2003 (optimum)", "rodenas2003 (1000 Hz)"],
         db_floor=env.directivity_db_floor,
         show=False,
     )
@@ -224,34 +227,85 @@ if __name__ == "__main__":
         group_idx = [left_array_indices, right_array_indices],
         unc=None,
         col=None,
-        target_pos=None,
+        target_pos=env.target_pos,
+        show_listener_target_lines=False,
         vbap_values=None,
         show=False,
         n_angles=360,
-        freqs_eval_hz=(250, 500, 1000, 2000, 4000),
+        freqs_eval_hz=[250, 500, 1000, 2000, 4000],
+        directivity_observation_radius_m=env.directivity_radius_m,
         c=343.0,
         directivity_mode="avg",   # "avg" or "single"
         directivity_freq_idx=2,   # used if mode="single"
-        directivity_scale=0.3,
+        directivity_scale=0.6,
         directivity_floor_db=-20,
-        overlay_curves=[rodenas2004_fig12_opt, rodenas2004_fig12_1000Hz],
-        overlay_labels=["rodenas2004 (optimum)", "rodenas2004 (1000 Hz)"],
+        overlay_curves=[rodenas2003_fig12_opt, rodenas2003_fig12_1000Hz],
+        overlay_labels=["rodenas2003 (optimum)", "rodenas2003 (1000 Hz)"],
     )
+
+    npa = env.speakers_per_array
+    est_filters_centre = np.stack(
+        [
+            np.sum(est_filters[0:npa], axis=0),
+            np.sum(est_filters[npa : 2 * npa], axis=0),
+        ],
+        axis=0,
+    )
+    spk_pos_centre = np.stack([upper_centre, lower_centre], axis=0)
+    stereo_prop_centre = BinauralFreeFieldPropagation(
+        stim=stim,
+        lstn_pos=env.lstn_pos,
+        spk_pos=[upper_centre.tolist(), lower_centre.tolist()],
+        fs=env.fs,
+        sofa_file_path=env.sofa_path,
+        apply_distance_attenuation=env.apply_distance_attenuation,
+    ).to(device=env.device, dtype=env.dtype)
+    loc_model.eval()
+    with torch.no_grad():
+        h_centre = torch.as_tensor(est_filters_centre, device=env.device, dtype=env.dtype).unsqueeze(0)
+        bin_stim_centre = stereo_prop_centre(h_centre)
+        loc_centre = loc_model(bin_stim_centre).squeeze(0)
+
+    plots["arrows_and_directivity_centre"] = plot_arrows_with_directivity(
+        est_filters=est_filters_centre,
+        spk_pos=torch.as_tensor(spk_pos_centre, device=env.device, dtype=env.dtype),
+        lstn_pos=torch.tensor(env.lstn_pos, device=env.device, dtype=env.dtype),
+        loc=loc_centre,
+        fs=env.fs,
+        group_idx=[(0,), (1,)],
+        unc=None,
+        col=None,
+        target_pos=None,
+        show_listener_target_lines=False,
+        vbap_values=None,
+        show=False,
+        n_angles=360,
+        freqs_eval_hz=list(env.directivity_freqs_hz),
+        directivity_observation_radius_m=env.directivity_radius_m,
+        c=343.0,
+        directivity_mode="avg",
+        directivity_freq_idx=2,
+        directivity_scale=0.6,
+        directivity_floor_db=-20,
+        directivity_label="Omni source",
+        legend_ncol=1,
+    )
+
     saver_obj.save_plots(plots)
 
     # Save per-epoch source FIR evolution as videos (one per source)
-    saver_obj.save_filter_video(trainer.h_history, source_index=0, fs=env.fs)
-    saver_obj.save_filter_video(trainer.h_history, source_index=1, fs=env.fs)
-    saver_obj.save_filter_video(trainer.h_history, source_index=2, fs=env.fs)
-    saver_obj.save_filter_video(trainer.h_history, source_index=3, fs=env.fs)
-    saver_obj.save_directivity_video(
-        trainer.h_history,
-        spk_pos=env.spk_pos,
-        fs=env.fs,
-        group_indices=right_array_indices,
-        radius=env.directivity_radius_m,
-        freqs_eval_hz=env.directivity_freqs_hz,
-        overlay_curves=[rodenas2004_fig12_opt, rodenas2004_fig12_1000Hz],
-        overlay_labels=["rodenas2004 (optimum)", "rodenas2004 (1000 Hz)"],
-        db_floor=env.directivity_db_floor,
-    )
+    # saver_obj.save_filter_video(trainer.h_history, source_index=0, fs=env.fs)
+    # saver_obj.save_filter_video(trainer.h_history, source_index=1, fs=env.fs)
+    # saver_obj.save_filter_video(trainer.h_history, source_index=2, fs=env.fs)
+    # saver_obj.save_filter_video(trainer.h_history, source_index=3, fs=env.fs)
+    # saver_obj.save_directivity_video(
+    #     trainer.h_history,
+    #     spk_pos=env.spk_pos,
+    #     fs=env.fs,
+    #     group_indices=right_array_indices,
+    #     radius=env.directivity_radius_m,
+    #     freqs_eval_hz=env.directivity_freqs_hz,
+    #     overlay_curves=[rodenas2003_fig12_opt, rodenas2003_fig12_1000Hz],
+    #     overlay_labels=["rodenas2003 (optimum)", "rodenas2003 (1000 Hz)"],
+    #     db_floor=env.directivity_db_floor,
+    # )
