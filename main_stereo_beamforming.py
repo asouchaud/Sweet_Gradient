@@ -41,7 +41,7 @@ if __name__ == "__main__":
         log=1,
         fs=48000,
         directivity_radius_m=10.0,
-        directivity_freqs_hz=[250, 500, 1000, 2000, 4000, 8000],
+        directivity_freqs_hz=[250, 500, 1000, 2000, 4000],
         directivity_db_floor=-40,
         speakers_per_array=2,
         speaker_distance=2.5,  # Distance from each array centre to the reference-system center (0, 0)
@@ -228,7 +228,8 @@ if __name__ == "__main__":
         vbap_values=None,
         show=False,
         n_angles=360,
-        freqs_eval_hz=(250, 500, 1000, 2000, 4000),
+        freqs_eval_hz=[250, 500, 1000, 2000, 4000],
+        directivity_observation_radius_m=env.directivity_radius_m,
         c=343.0,
         directivity_mode="avg",   # "avg" or "single"
         directivity_freq_idx=2,   # used if mode="single"

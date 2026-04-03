@@ -284,6 +284,7 @@ def plot_arrows_with_directivity(
     show=True,
     n_angles=360,
     freqs_eval_hz=(250, 500, 1000, 2000, 4000),
+    directivity_observation_radius_m=None,
     c=343.0,
     directivity_mode="avg",
     directivity_freq_idx=2,
@@ -346,6 +347,12 @@ def plot_arrows_with_directivity(
     sm = cm.ScalarMappable(cmap=cmap, norm=norm)
     fig.colorbar(sm, ax=ax, label="LSD")
 
+    if len(overlay_curve_list) > 0:
+        curve_ref_global = np.asarray(overlay_curve_list[0])
+        overlay_angle_offset_deg = 180.0 - float(np.min(np.mod(curve_ref_global[:, 0], 360.0)))
+    else:
+        overlay_angle_offset_deg = 0.0
+
     # -----------------------------
     # Directivity loop
     # -----------------------------
@@ -358,6 +365,16 @@ def plot_arrows_with_directivity(
         p_group = spk_pos[group_indices]
 
         group_mid = np.mean(p_group, axis=0)
+        cy = float(group_mid[1])
+        if cy > 0.0:
+            theta_wedge0 = np.pi
+            theta_wedge1 = np.pi + np.pi / 3.0
+        elif cy < 0.0:
+            theta_wedge0 = np.pi - np.pi / 3.0
+            theta_wedge1 = np.pi
+        else:
+            theta_wedge0 = np.pi
+            theta_wedge1 = np.pi + np.pi / 3.0
 
         theta = np.linspace(0, 2*np.pi, n_angles, endpoint=False)
 
@@ -371,7 +388,10 @@ def plot_arrows_with_directivity(
 
         mag2 = np.zeros((len(freqs_eval_hz), len(theta)))
 
-        radius = np.mean(np.linalg.norm(p_group - group_mid, axis=1))
+        if directivity_observation_radius_m is None:
+            radius = float(np.mean(np.linalg.norm(p_group - group_mid, axis=1)))
+        else:
+            radius = float(directivity_observation_radius_m)
 
         for k, ang in enumerate(theta):
             obs = group_mid + np.array([radius*np.cos(ang), radius*np.sin(ang)])
@@ -389,39 +409,9 @@ def plot_arrows_with_directivity(
         else:
             dir_use = dir_db[directivity_freq_idx]
 
-        # -----------------------------
-        # Angle mask
-        # -----------------------------
-        if len(overlay_curve_list) > 0:
-            curve_ref = np.asarray(overlay_curve_list[0])
-            start_angle = np.min(np.mod(curve_ref[:, 0], 360.0))
-            end_angle = np.max(np.mod(curve_ref[:, 0], 360.0))
-        else:
-            start_angle, end_angle = 0, 360
-
-        if i == 0:
-            off_set = 180 - start_angle
-            start_angle += off_set
-            end_angle += off_set
-        else:
-            off_set = 0.0
-
-        start_rad = np.deg2rad(start_angle)
-        end_rad = np.deg2rad(end_angle)
-
-        theta_wrapped = np.mod(theta, 2*np.pi)
-        start_rad = np.mod(start_rad, 2*np.pi)
-        end_rad = np.mod(end_rad, 2*np.pi)
-
-        if start_rad <= end_rad:
-            mask = (theta_wrapped >= start_rad) & (theta_wrapped <= end_rad)
-        else:
-            mask = (theta_wrapped >= start_rad) | (theta_wrapped <= end_rad)
-
-        if start_rad <= end_rad:
-            mid_rad = 0.5 * (start_rad + end_rad)
-        else:
-            mid_rad = np.mod(0.5 * (start_rad + end_rad + 2 * np.pi), 2 * np.pi)
+        theta_wrapped = np.mod(theta, 2 * np.pi)
+        mask = (theta_wrapped >= theta_wedge0) & (theta_wrapped <= theta_wedge1)
+        mid_rad = 0.5 * (theta_wedge0 + theta_wedge1)
 
         delta_theta = np.abs((theta - mid_rad + np.pi) % (2 * np.pi) - np.pi)
         k_mid = int(np.argmin(delta_theta))
@@ -450,15 +440,6 @@ def plot_arrows_with_directivity(
                 line_extent,
                 directivity_scale * (db_ref - directivity_floor_db) / (0.0 - directivity_floor_db),
             )
-        if cy > 0.0:
-            theta_wedge0 = np.pi
-            theta_wedge1 = np.pi + np.pi / 3.0
-        elif cy < 0.0:
-            theta_wedge0 = np.pi - np.pi / 3.0
-            theta_wedge1 = np.pi
-        else:
-            theta_wedge0 = np.pi
-            theta_wedge1 = np.pi + np.pi / 3.0
         th_oblique_ray = theta_wedge1 if cy >= 0.0 else theta_wedge0
         n_arc = 72
         th_arc = np.linspace(theta_wedge0, theta_wedge1, n_arc)
@@ -515,15 +496,11 @@ def plot_arrows_with_directivity(
         for curve_idx, curve in enumerate(overlay_curve_list):
             curve = np.asarray(curve, dtype=float)
 
-            # Apply offset logic
-            if i == 0:
-                theta_overlay = np.deg2rad(np.mod(curve[:, 0] + off_set, 360.0))
-                angles_deg_plot = np.mod(curve[:, 0] + off_set, 360.0)
-                db_sel = np.flip(curve[:, 1])
-            else:
-                theta_overlay = np.deg2rad(np.mod(curve[:, 0], 360.0))
-                angles_deg_plot = np.mod(curve[:, 0], 360.0)
-                db_sel = curve[:, 1]
+            angles_deg_plot = np.mod(curve[:, 0] + overlay_angle_offset_deg, 360.0)
+            db_sel = np.flip(curve[:, 1])
+            if cy < 0.0:
+                angles_deg_plot = np.mod(360.0 - angles_deg_plot, 360.0)
+            theta_overlay = np.deg2rad(angles_deg_plot)
 
             db_at_mid = _db_at_nearest_angle_deg(angles_deg_plot, db_sel, mid_angle_deg)
             db_aligned = db_sel - db_at_mid
