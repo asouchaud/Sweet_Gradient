@@ -258,7 +258,7 @@ if __name__ == "__main__":
         radius=env.directivity_radius_m,
         freqs_eval_hz=env.directivity_freqs_hz,
         overlay_curves=[rodenas2003_fig12_opt, rodenas2003_fig12_1000Hz],
-        overlay_labels=["rodenas2003 (optimum)", "rodenas2003 (1000 Hz)"],
+        overlay_labels=["rodenas2003 (opt.)", "rodenas2003 (1 kHz)"],
         db_floor=env.directivity_db_floor,
         show=False,
     )
@@ -282,10 +282,12 @@ if __name__ == "__main__":
         c=343.0,
         directivity_mode="avg",   # "avg" or "single"
         directivity_freq_idx=2,   # used if mode="single"
-        directivity_scale=0.6,
+        directivity_scale=0.8,
         directivity_floor_db=-20,
         overlay_curves=[rodenas2003_fig12_opt, rodenas2003_fig12_1000Hz],
         overlay_labels=["rodenas2003 (optimum)", "rodenas2003 (1000 Hz)"],
+        legend_bbox_to_anchor=(0.28, 1.02),
+        figsize=(5, 5),
     )
 
     npa = env.speakers_per_array
@@ -330,10 +332,11 @@ if __name__ == "__main__":
         c=343.0,
         directivity_mode="avg",
         directivity_freq_idx=2,
-        directivity_scale=0.6,
+        directivity_scale=0.8,
         directivity_floor_db=-20,
         directivity_label="Omni source",
         legend_ncol=1,
+        figsize=(5, 5),
     )
 
     saver_obj.save_plots(plots)
