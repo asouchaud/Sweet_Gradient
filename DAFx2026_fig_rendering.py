@@ -146,9 +146,11 @@ def run_experiment(loss_dict_builder, run_label):
     # Normalise filters to prevent clipping 
     est_filters /= np.max(np.abs(est_filters)) / 0.9 # TODO: move this to a more appropriate place at the end of the training loop
 
-    # Print estimated perceptual metrics
     for key, value in estimation_dict.items():
-        print(f"Estimated {key}: {value}")
+        arr = np.asarray(value, dtype=float).ravel()
+        ref = float(env.target_angle) if key == "localisation" else 0.0
+        mean_abs_err = float(np.mean(np.abs(arr - ref)))
+        print(f"[{run_label}] Estimated {key}: {value} (mean abs error: {mean_abs_err:.4f})")
 
     saver_obj.save_results(
         estimation_dict=estimation_dict,
@@ -401,7 +403,7 @@ if __name__ == "__main__":
             "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight),
             "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=regularisation_weight),
         },
-        run_label="loc_init_2_r_2"
+        run_label="loc"
     )
 
     run_dir_unc_init_2_r_2, _, _ = run_experiment(
@@ -410,7 +412,7 @@ if __name__ == "__main__":
             "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight),
             "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=regularisation_weight),
         },
-        run_label="unc_init_2_r_2"
+        run_label="unc"
     )
 
     run_dir_col_init_2_r_2, _, _ = run_experiment(
@@ -419,7 +421,7 @@ if __name__ == "__main__":
             "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight_incl_colouration),
             "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=regularisation_weight_incl_colouration),
         },
-        run_label="init_0col_init_2_r_2_r_2"
+        run_label="col"
     )
 
     run_dir_loc_unc_col_init_2_r_2, lstn_pos, spk_pos = run_experiment(
@@ -430,7 +432,7 @@ if __name__ == "__main__":
             "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight_incl_colouration),
             "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=regularisation_weight_incl_colouration),
         },
-        run_label="loc_unc_col_init_2_r_2nit_0_r_2"
+        run_label="loc_unc_col"
     )
 
     folders = [run_dir_loc_init_2_r_2,
