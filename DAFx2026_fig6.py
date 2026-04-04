@@ -41,7 +41,7 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
     d = 60
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
         epochs=200,
-        n_samples=20,
+        n_samples=21,
         target_pos=[d, float(np.tan(np.deg2rad(target_angle)) * d)],
         selected_stim="noise",
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
@@ -93,10 +93,11 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
         n_sources=env.n_sources,
     ).to(device=env.device, dtype=env.dtype)
     # Initialise FIR filter weights
+    centre_tap_idx = env.n_samples // 2
     with torch.no_grad():
-        for i, branch in enumerate(nn_model.branches):
+        for branch in nn_model.branches:
             branch.weight.fill_(0.0)
-            branch.weight[0, 0] = 1.0
+            branch.weight[centre_tap_idx, 0] = 1.0
 
     nn_optimiser = torch.optim.Adam(nn_model.parameters(), lr=env.lr)
 
