@@ -39,11 +39,11 @@ def run_experiment(loss_dict_builder, run_label):
     d = 100
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
         epochs=300,
-        num_lstn_pos=101,
-        listener_batch_size=11,  # 5 mirrored pairs plus the centre listener
-        symmetric_listener_sampling=False,
+        num_lstn_pos=30,
+        listener_batch_size=5,  # 5 mirrored pairs plus the centre listener
+        symmetric_listener_sampling=True,
         n_samples=64,
-        target_pos=[d, float(np.tan(np.deg2rad(0.0)) * d)],
+        target_angle=10.0,
         selected_stim="impulse",
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
@@ -52,6 +52,7 @@ def run_experiment(loss_dict_builder, run_label):
         log=1,
         fs=48000,
     )
+    env.target_pos=[d, float(np.tan(np.deg2rad(env.target_angle)) * d)],
     env.dtype = torch.float32
     # env.device_str = "cuda" if torch.cuda.is_available() else "cpu"
     env.device_str = "cpu"
@@ -104,10 +105,11 @@ def run_experiment(loss_dict_builder, run_label):
         n_sources=env.n_sources,
     ).to(device=env.device, dtype=env.dtype)
     # Initialise FIR filter weights
+    centre_tap_idx = env.n_samples // 2
     with torch.no_grad():
-        for i, branch in enumerate(nn_model.branches):
+        for branch in nn_model.branches:
             branch.weight.fill_(0.0)
-            branch.weight[0, 0] = 1.0
+            branch.weight[centre_tap_idx, 0] = 1.0
 
     nn_optimiser = torch.optim.Adam(nn_model.parameters(), lr=env.lr)
 
@@ -226,7 +228,8 @@ def sofa_find(source_angle, sofaile):
 
 def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos):
 
-    sofaile = sf.read_sofa(r"data\impulses\SOFA\D1_48K_24bit_256tap_FIR_SOFA.sofa")
+    repo_root = Path(__file__).resolve().parent
+    sofaile = sf.read_sofa(str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"))
     idx = sofa_find(0, sofaile)
     ref_hrir = sofaile.Data_IR[idx]
 
@@ -240,11 +243,20 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos):
     est_mag_width = 3
     left_ir_width = 3
     right_ir_width = 2 
-    fontsize = 14
+    fontsize = 18
 
-    # Create a colormap with log scaling
-    max_col = 18.5
-    norm = colors.Normalize(vmin=0, vmax=max_col)  # avoid zero
+    lsd_observed = []
+    for folder_name in run_folders:
+        with open(os.path.join(folder_name, "results.json")) as f:
+            lsd_observed.extend(np.asarray(json.load(f)["colouration"]).ravel().tolist())
+    lsd_observed = np.asarray(lsd_observed, dtype=float)
+    lsd_step = 0.5
+    vmin_lsd = float(np.floor(np.min(lsd_observed) / lsd_step) * lsd_step)
+    vmax_lsd = float(np.ceil(np.max(lsd_observed) / lsd_step) * lsd_step)
+    if vmax_lsd <= vmin_lsd:
+        vmax_lsd = vmin_lsd + lsd_step
+
+    norm = colors.Normalize(vmin=vmin_lsd, vmax=vmax_lsd)
     cmap = colors.LinearSegmentedColormap.from_list(
         "bright_green_red",
         [(0,1,0), (0.8,0.4,0), (0.8,0,0)]  # green → yellow → red
@@ -253,15 +265,34 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos):
     sm = cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
 
+    n_rows = len(run_folders)
+    fig, axes = plt.subplots(n_rows, 3, figsize=(9, 3 * n_rows))
+    axes = np.atleast_1d(axes).flatten()
 
-    fig, axes = plt.subplots(7, 3, figsize=(9, 21))  # 3 columns × 7 rows
-    axes = axes.flatten()  # easier indexing
-
+    last_row_start = (n_rows - 1) * 3
+    target_angle_by_folder = {}
     for i, ax in enumerate(axes):
 
         folder_name = run_folders[i//3]
         json_file_path = os.path.join(folder_name, "results.json")
         json_data = json.load(open(json_file_path))
+        if folder_name not in target_angle_by_folder:
+            config_path = os.path.join(folder_name, "config.json")
+            with open(config_path) as f:
+                cfg = json.load(f)
+            main = cfg.get("main", {})
+            try:
+                target_angle_by_folder[folder_name] = float(main["target_angle"])
+            except (KeyError, TypeError, ValueError):
+                tp = main.get("target_pos")
+                if tp is not None and len(tp) > 0:
+                    row = tp[0] if isinstance(tp[0], (list, tuple)) else tp
+                    target_angle_by_folder[folder_name] = float(
+                        np.rad2deg(np.arctan2(float(row[1]), float(row[0])))
+                    )
+                else:
+                    target_angle_by_folder[folder_name] = 0.0
+        target_angle_deg = target_angle_by_folder[folder_name]
 
         #### IRs PLOT ####
         if i % 3 == 0:
@@ -275,9 +306,9 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos):
             ax.set_ylim(-1,1)
             ax.set_ylabel("Amplitude", fontsize = fontsize)
 
-            if i > 17:
-                ax.set_xlabel("Coefficients", fontsize = fontsize)
-            if i <= 17:
+            if i >= last_row_start:
+                ax.set_xlabel("Time index", fontsize = fontsize)
+            if i < last_row_start:
                 ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
 
         #### COLOURATION PLOT ####
@@ -285,7 +316,7 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos):
             stimulus_path = os.path.join(folder_name, "artifacts", "stimulus.npy")
             stimulus = np.load(stimulus_path)
         
-            prop = BinauralFreeFieldPropagation(torch.tensor(stimulus, dtype=torch.float32).view(1,1,-1), lstn_pos, spk_pos, r"data\impulses\SOFA\D1_48K_24bit_256tap_FIR_SOFA.sofa")
+            prop = BinauralFreeFieldPropagation(torch.tensor(stimulus, dtype=torch.float32).view(1,1,-1), lstn_pos, spk_pos, str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"))
             filters_torch = torch.tensor(filters, dtype=torch.float32).unsqueeze(0)
             bin_stim = prop(filters_torch).numpy()
 
@@ -306,10 +337,11 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos):
                 ax.semilogx(freq[9:], bin_fft_s[j,9:], color=fig_colors[j], linewidth = est_mag_width)
             ax.semilogx(freq[9:], ref_fft_s[9:], color="#000000", linewidth=ref_mag_width)
             ax.grid()
+            ax.set_xlim(80, 20000)
             ax.set_ylabel("Magnitude [dB]", fontsize = fontsize)
-            if i <= 17:
+            if i < last_row_start:
                 ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
-            if i > 17:
+            if i >= last_row_start:
                 ax.set_xlabel("Frequency [Hz]", fontsize = fontsize)
         
         #### ARROWS PLOT #####
@@ -322,18 +354,18 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos):
             ax.scatter(lstn_pos[:,0], lstn_pos[:,1], c='blue', label='Listener positions')
 
 
-            for x, y, ang, leng, col_val in zip(lstn_pos[:,0], lstn_pos[:,1], loc, unc, col):  
-                
-                angles = [0,10,20]
-                x_lin = np.linspace(-1,3,200)
-                y_lin = x_lin * np.tan(np.deg2rad(0)) - y
-
-                ax.plot(x_lin,y_lin, color = "#000000", linestyle = "dashed", lw = 1, zorder = 2)
+            theta_rad = np.deg2rad(target_angle_deg)
+            c_dir, s_dir = np.cos(theta_rad), np.sin(theta_rad)
+            t_ray = np.linspace(-2.5, 2.5, 200)
+            for x, y, ang, leng, col_val in zip(lstn_pos[:,0], lstn_pos[:,1], loc, unc, col):
+                x_lin = x + t_ray * c_dir
+                y_lin = y + t_ray * s_dir
+                ax.plot(x_lin, y_lin, color="#000000", linestyle="dashed", lw=1, zorder=2)
 
                 dx = (1-leng)*arrow_len * np.cos(np.deg2rad(ang))
                 dy = (1-leng)*arrow_len * np.sin(np.deg2rad(ang))
 
-                color = cmap(norm(max(col_val, 1e-2)))  # avoid zero for log scale
+                color = cmap(norm(col_val))
 
                 ax.arrow(float(x), float(y), float(dx), float(dy),
                         head_width=arrow_head_width, head_length=arrow_head_len, fc=color, ec=color, linewidth = arrow_width, zorder = 3)    
@@ -342,9 +374,9 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos):
             ax.set_xlim(-0.5,2.0)
             ax.grid(zorder = 1)
             ax.set_ylabel('Y position [m]', fontsize = fontsize)
-            if i <= 17:
+            if i < last_row_start:
                 ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
-            if i > 17:
+            if i >= last_row_start:
                 ax.set_xlabel('X position [m]', fontsize = fontsize)
 
         ax.tick_params(axis='both', labelsize=fontsize)  
@@ -361,11 +393,13 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos):
     
 
 if __name__ == "__main__":
+    regularisation_weight = 1e-1
+    regularisation_weight_incl_colouration = 1e-1
     run_dir_loc_init_2_r_2, _, _ = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=regularisation_weight),
         },
         run_label="loc_init_2_r_2"
     )
@@ -373,8 +407,8 @@ if __name__ == "__main__":
     run_dir_unc_init_2_r_2, _, _ = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "uncertainty": ListenerBasedLoss(model=unc_model, weight=1e-2, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=regularisation_weight),
         },
         run_label="unc_init_2_r_2"
     )
@@ -382,40 +416,10 @@ if __name__ == "__main__":
     run_dir_col_init_2_r_2, _, _ = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "colouration": ListenerBasedLoss(model=col_model, weight=1e-0, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight_incl_colouration),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=regularisation_weight_incl_colouration),
         },
         run_label="init_0col_init_2_r_2_r_2"
-    )
-
-    run_dir_loc_unc_init_2_r_2, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "uncertainty": ListenerBasedLoss(model=unc_model, weight=1e-2, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
-        },
-        run_label="initloc_unc_init_2_r_2_0_r_2"
-    )
-
-    run_dir_loc_col_init_2_r_2, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
-            "colouration": ListenerBasedLoss(model=col_model, weight=1e-0, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
-        },
-        run_label="iniloc_col_init_2_r_2t_0_r_2"
-    )
-
-    run_dir_unc_col_init_2_r_2, _, _ = run_experiment(
-        loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "uncertainty": ListenerBasedLoss(model=unc_model, weight=1e-2, device=device, dtype=dtype),
-            "colouration": ListenerBasedLoss(model=col_model, weight=1e-0, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
-        },
-        run_label="init_unc_col_init_2_r_20_r_2"
     )
 
     run_dir_loc_unc_col_init_2_r_2, lstn_pos, spk_pos = run_experiment(
@@ -423,8 +427,8 @@ if __name__ == "__main__":
             "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
             "uncertainty": ListenerBasedLoss(model=unc_model, weight=1e-2, device=device, dtype=dtype),
             "colouration": ListenerBasedLoss(model=col_model, weight=1e-0, device=device, dtype=dtype),
-            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
-            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
+            "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight_incl_colouration),
+            "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=regularisation_weight_incl_colouration),
         },
         run_label="loc_unc_col_init_2_r_2nit_0_r_2"
     )
@@ -432,9 +436,6 @@ if __name__ == "__main__":
     folders = [run_dir_loc_init_2_r_2,
                run_dir_unc_init_2_r_2,
                run_dir_col_init_2_r_2,
-               run_dir_loc_unc_init_2_r_2,
-               run_dir_loc_col_init_2_r_2,
-               run_dir_unc_col_init_2_r_2,
                run_dir_loc_unc_col_init_2_r_2]
     
     DAFx2026_fig5_plots(folders, np.array(lstn_pos), np.array(spk_pos))
