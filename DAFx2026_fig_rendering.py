@@ -34,7 +34,7 @@ from scripts.train.train import ListenerBasedLoss, SourceBasedLoss, Train
 from scripts.saving.save_results import saver
 
 
-def run_experiment(loss_dict_builder, run_label):
+def run_experiment(loss_dict_builder, run_label, plot_row_title=None):
     repo_root = Path(__file__).resolve().parent
     d = 100
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
@@ -52,6 +52,7 @@ def run_experiment(loss_dict_builder, run_label):
         log=1,
         fs=48000,
     )
+    env.plot_row_title = plot_row_title if plot_row_title is not None else run_label
     env.target_pos=[d, float(np.tan(np.deg2rad(env.target_angle)) * d)],
     env.dtype = torch.float32
     # env.device_str = "cuda" if torch.cuda.is_available() else "cpu"
@@ -182,7 +183,7 @@ def run_experiment(loss_dict_builder, run_label):
 
     plt.close('all')
 
-    return(saver_obj.run_dir, eval_lstn_pos, env.spk_pos)
+    return (saver_obj.run_dir, eval_lstn_pos, env.spk_pos, env.plot_row_title)
 
 def causal_conv1d(x, kernel):
     """
@@ -228,7 +229,7 @@ def sofa_find(source_angle, sofaile):
     return np.argmin(dists)
 
 
-def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos):
+def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos, row_titles=None):
 
     repo_root = Path(__file__).resolve().parent
     sofaile = sf.read_sofa(str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"))
@@ -245,7 +246,18 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos):
     est_mag_width = 3
     left_ir_width = 3
     right_ir_width = 2 
-    fontsize = 18
+    fontsize = 20
+
+    n_rows = len(run_folders)
+    if row_titles is None:
+        row_titles = []
+        for folder_name in run_folders:
+            config_path = os.path.join(folder_name, "config.json")
+            with open(config_path) as f:
+                cfg = json.load(f)
+            row_titles.append(cfg.get("main", {}).get("plot_row_title", cfg.get("run_name", "")))
+    elif len(row_titles) != n_rows:
+        raise ValueError("row_titles must have the same length as run_folders")
 
     lsd_observed = []
     for folder_name in run_folders:
@@ -267,17 +279,32 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos):
     sm = cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
 
-    n_rows = len(run_folders)
-    fig, axes = plt.subplots(n_rows, 3, figsize=(9, 3 * n_rows))
-    axes = np.atleast_1d(axes).flatten()
+    fig = plt.figure(figsize=(10.5, 3.15 * n_rows + 1.1))
+    top_gs, bottom_u, bottom_l = 0.90, 0.10, 0.38
+    axes_frac_u = top_gs - bottom_u
+    axes_frac_l = top_gs - bottom_l
+    last_row_ratio = axes_frac_u / axes_frac_l
+    height_ratios = [1.0] * (n_rows - 1) + [last_row_ratio] if n_rows > 1 else [1.0]
+    subfigs = fig.subfigures(n_rows, 1, squeeze=False, hspace=0.01, height_ratios=height_ratios)
+    axes_data = np.empty((n_rows, 3), dtype=object)
+    for r in range(n_rows):
+        row_subfig = subfigs[r, 0]
+        row_subfig.suptitle(row_titles[r], fontsize=fontsize, y=1.02, va="top")
+        bottom_pad = bottom_l if r == n_rows - 1 else bottom_u
+        axs = row_subfig.subplots(
+            1,
+            3,
+            gridspec_kw={"wspace": 0.42, "left": 0.07, "right": 0.995, "top": top_gs, "bottom": bottom_pad},
+        )
+        for c in range(3):
+            axes_data[r, c] = axs[c]
 
-    last_row_start = (n_rows - 1) * 3
     target_angle_by_folder = {}
-    for i, ax in enumerate(axes):
-
-        folder_name = run_folders[i//3]
+    for r in range(n_rows):
+        folder_name = run_folders[r]
         json_file_path = os.path.join(folder_name, "results.json")
-        json_data = json.load(open(json_file_path))
+        with open(json_file_path) as f:
+            json_data = json.load(f)
         if folder_name not in target_angle_by_folder:
             config_path = os.path.join(folder_name, "config.json")
             with open(config_path) as f:
@@ -296,100 +323,102 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos):
                     target_angle_by_folder[folder_name] = 0.0
         target_angle_deg = target_angle_by_folder[folder_name]
 
-        #### IRs PLOT ####
-        if i % 3 == 0:
-            filters_path = os.path.join(folder_name, "artifacts", "est_filters.npy")
-            filters = np.load(filters_path)
-            filters = filters * 0.9 / np.max(np.abs(filters))
+        filters_path = os.path.join(folder_name, "artifacts", "est_filters.npy")
+        filters = np.load(filters_path)
+        filters = filters * 0.9 / np.max(np.abs(filters))
 
-            ax.plot(filters[0], linewidth = left_ir_width)
-            ax.plot(filters[1], linewidth = right_ir_width)
-            ax.grid()
-            ax.set_ylim(-1,1)
-            ax.set_ylabel("Amplitude", fontsize = fontsize)
+        is_bottom_row = r == n_rows - 1
 
-            if i >= last_row_start:
-                ax.set_xlabel("Time index", fontsize = fontsize)
-            if i < last_row_start:
-                ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
+        for c in range(3):
+            ax = axes_data[r, c]
 
-        #### COLOURATION PLOT ####
-        if i % 3 == 1:
-            stimulus_path = os.path.join(folder_name, "artifacts", "stimulus.npy")
-            stimulus = np.load(stimulus_path)
-        
-            prop = BinauralFreeFieldPropagation(torch.tensor(stimulus, dtype=torch.float32).view(1,1,-1), lstn_pos, spk_pos, str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"))
-            filters_torch = torch.tensor(filters, dtype=torch.float32).unsqueeze(0)
-            bin_stim = prop(filters_torch).numpy()
+            #### IRs PLOT ####
+            if c == 0:
+                ax.plot(filters[0], linewidth = left_ir_width)
+                ax.plot(filters[1], linewidth = right_ir_width)
+                ax.grid()
+                ax.set_ylim(-1,1)
+                ax.set_ylabel("Amplitude", fontsize = fontsize)
 
-            n_fft = 4096
-            freq = np.fft.rfftfreq(n=n_fft,d=1/48000)
-            bin_stim_fft = 20*np.log10(np.abs(np.fft.rfft(bin_stim, n=n_fft, axis = -1))).squeeze()
+                if is_bottom_row:
+                    ax.set_xlabel("Time index", fontsize = fontsize)
+                else:
+                    ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
 
-            ref_stim = causal_conv1d(stimulus, ref_hrir[0])
-            ref_fft = 20*np.log10(np.abs(np.fft.rfft(ref_stim, n=n_fft)))
+            #### COLOURATION PLOT ####
+            if c == 1:
+                stimulus_path = os.path.join(folder_name, "artifacts", "stimulus.npy")
+                stimulus = np.load(stimulus_path)
 
-            ref_fft_s = smooth_third_octave(freq, ref_fft)
-            bin_fft_s = np.zeros_like(bin_stim_fft[:,0,:])
-            for j in range(3):
-                bin_fft_s[j] = smooth_third_octave(freq, bin_stim_fft[j,0,:])
+                prop = BinauralFreeFieldPropagation(torch.tensor(stimulus, dtype=torch.float32).view(1,1,-1), lstn_pos, spk_pos, str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"))
+                filters_torch = torch.tensor(filters, dtype=torch.float32).unsqueeze(0)
+                bin_stim = prop(filters_torch).numpy()
 
-            
-            for j in range(3):
-                ax.semilogx(freq[9:], bin_fft_s[j,9:], color=fig_colors[j], linewidth = est_mag_width)
-            ax.semilogx(freq[9:], ref_fft_s[9:], color="#000000", linewidth=ref_mag_width)
-            ax.grid()
-            ax.set_xlim(80, 20000)
-            ax.set_ylabel("Magnitude [dB]", fontsize = fontsize)
-            if i < last_row_start:
-                ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
-            if i >= last_row_start:
-                ax.set_xlabel("Frequency [Hz]", fontsize = fontsize)
-        
-        #### ARROWS PLOT #####
-        if i % 3 == 2:
-            loc = json_data['localisation']
-            unc = json_data['uncertainty']
-            col = json_data['colouration']
+                n_fft = 4096
+                freq = np.fft.rfftfreq(n=n_fft,d=1/48000)
+                bin_stim_fft = 20*np.log10(np.abs(np.fft.rfft(bin_stim, n=n_fft, axis = -1))).squeeze()
 
-            ax.scatter(spk_pos[:,0], spk_pos[:,1], c='black', label='Speaker', marker = 'x')
-            ax.scatter(lstn_pos[:,0], lstn_pos[:,1], c='blue', label='Listener positions')
+                ref_stim = causal_conv1d(stimulus, ref_hrir[0])
+                ref_fft = 20*np.log10(np.abs(np.fft.rfft(ref_stim, n=n_fft)))
 
+                ref_fft_s = smooth_third_octave(freq, ref_fft)
+                bin_fft_s = np.zeros_like(bin_stim_fft[:,0,:])
+                for j in range(3):
+                    bin_fft_s[j] = smooth_third_octave(freq, bin_stim_fft[j,0,:])
 
-            theta_rad = np.deg2rad(target_angle_deg)
-            c_dir, s_dir = np.cos(theta_rad), np.sin(theta_rad)
-            t_ray = np.linspace(-2.5, 2.5, 200)
-            for x, y, ang, leng, col_val in zip(lstn_pos[:,0], lstn_pos[:,1], loc, unc, col):
-                x_lin = x + t_ray * c_dir
-                y_lin = y + t_ray * s_dir
-                ax.plot(x_lin, y_lin, color="#000000", linestyle="dashed", lw=1, zorder=2)
+                for j in range(3):
+                    ax.semilogx(freq[9:], bin_fft_s[j,9:], color=fig_colors[j], linewidth = est_mag_width)
+                ax.semilogx(freq[9:], ref_fft_s[9:], color="#000000", linewidth=ref_mag_width)
+                ax.grid()
+                ax.set_xlim(80, 20000)
+                ax.set_ylabel("Magnitude [dB]", fontsize = fontsize)
+                if not is_bottom_row:
+                    ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
+                else:
+                    ax.set_xlabel("Frequency [Hz]", fontsize = fontsize)
 
-                dx = (1-leng)*arrow_len * np.cos(np.deg2rad(ang))
-                dy = (1-leng)*arrow_len * np.sin(np.deg2rad(ang))
+            #### ARROWS PLOT #####
+            if c == 2:
+                loc = json_data['localisation']
+                unc = json_data['uncertainty']
+                col = json_data['colouration']
 
-                color = cmap(norm(col_val))
+                ax.scatter(spk_pos[:,0], spk_pos[:,1], c='black', label='Speaker', marker = 'x')
+                ax.scatter(lstn_pos[:,0], lstn_pos[:,1], c='blue', label='Listener positions')
 
-                ax.arrow(float(x), float(y), float(dx), float(dy),
-                        head_width=arrow_head_width, head_length=arrow_head_len, fc=color, ec=color, linewidth = arrow_width, zorder = 3)    
+                theta_rad = np.deg2rad(target_angle_deg)
+                c_dir, s_dir = np.cos(theta_rad), np.sin(theta_rad)
+                t_ray = np.linspace(-2.5, 2.5, 200)
+                for x, y, ang, leng, col_val in zip(lstn_pos[:,0], lstn_pos[:,1], loc, unc, col):
+                    x_lin = x + t_ray * c_dir
+                    y_lin = y + t_ray * s_dir
+                    ax.plot(x_lin, y_lin, color="#000000", linestyle="dashed", lw=1, zorder=2)
 
-            ax.set_ylim(-1.25,1.25)
-            ax.set_xlim(-0.5,2.0)
-            ax.grid(zorder = 1)
-            ax.set_ylabel('Y position [m]', fontsize = fontsize)
-            if i < last_row_start:
-                ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
-            if i >= last_row_start:
-                ax.set_xlabel('X position [m]', fontsize = fontsize)
+                    dx = (1-leng)*arrow_len * np.cos(np.deg2rad(ang))
+                    dy = (1-leng)*arrow_len * np.sin(np.deg2rad(ang))
 
-        ax.tick_params(axis='both', labelsize=fontsize)  
+                    color = cmap(norm(col_val))
 
+                    ax.arrow(float(x), float(y), float(dx), float(dy),
+                            head_width=arrow_head_width, head_length=arrow_head_len, fc=color, ec=color, linewidth = arrow_width, zorder = 3)
 
-    plt.tight_layout(rect=[0, 0.05, 1, 1])
+                ax.set_ylim(-1.25,1.25)
+                ax.set_xlim(-0.5,2.0)
+                ax.grid(zorder = 1)
+                ax.set_ylabel('Y position [m]', fontsize = fontsize)
+                if not is_bottom_row:
+                    ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
+                else:
+                    ax.set_xlabel('X position [m]', fontsize = fontsize)
 
-    cbar = fig.colorbar(sm, ax=axes, orientation='horizontal', fraction=0.05, pad=0.08)
-    cbar.set_label("LSD", fontsize=fontsize)
+            ax.tick_params(axis='both', labelsize=fontsize)
+
+    fig.subplots_adjust(bottom=0.36, top=0.99, left=0.06, right=0.99)
+    cbar_ax = fig.add_axes([0.1, 0.006, 0.8, 0.024])
+    cbar = fig.colorbar(sm, cax=cbar_ax, orientation="horizontal")
     cbar.ax.tick_params(labelsize=fontsize)
-    plt.savefig("DAFx2026_fig5.pdf", format = "pdf")
+    cbar.ax.set_xlabel("LSD [dB] (lower the better)", fontsize=fontsize, labelpad=5)
+    plt.savefig("DAFx2026_fig5.pdf", format="pdf", bbox_inches="tight", pad_inches=0.38)
     plt.show()
 
     
@@ -397,34 +426,37 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos):
 if __name__ == "__main__":
     regularisation_weight = 1e-1
     regularisation_weight_incl_colouration = 1e-1
-    run_dir_loc_init_2_r_2, _, _ = run_experiment(
+    run_dir_loc_init_2_r_2, _, _, title_loc = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
             "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight),
             "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=regularisation_weight),
         },
-        run_label="loc"
+        run_label="loc",
+        plot_row_title="Localisation loss alone",
     )
 
-    run_dir_unc_init_2_r_2, _, _ = run_experiment(
+    run_dir_unc_init_2_r_2, _, _, title_unc = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "uncertainty": ListenerBasedLoss(model=unc_model, weight=1e-2, device=device, dtype=dtype),
             "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight),
             "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=regularisation_weight),
         },
-        run_label="unc"
+        run_label="unc",
+        plot_row_title="Uncertainty loss alone",
     )
 
-    run_dir_col_init_2_r_2, _, _ = run_experiment(
+    run_dir_col_init_2_r_2, _, _, title_col = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "colouration": ListenerBasedLoss(model=col_model, weight=1e-0, device=device, dtype=dtype),
             "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight_incl_colouration),
             "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=regularisation_weight_incl_colouration),
         },
-        run_label="col"
+        run_label="col",
+        plot_row_title="Colouration loss alone",
     )
 
-    run_dir_loc_unc_col_init_2_r_2, lstn_pos, spk_pos = run_experiment(
+    run_dir_loc_unc_col_init_2_r_2, lstn_pos, spk_pos, title_all = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
             "uncertainty": ListenerBasedLoss(model=unc_model, weight=1e-2, device=device, dtype=dtype),
@@ -432,15 +464,16 @@ if __name__ == "__main__":
             "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight_incl_colouration),
             "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=regularisation_weight_incl_colouration),
         },
-        run_label="loc_unc_col"
+        run_label="loc_unc_col",
+        plot_row_title="Combined losses",
     )
 
     folders = [run_dir_loc_init_2_r_2,
                run_dir_unc_init_2_r_2,
                run_dir_col_init_2_r_2,
                run_dir_loc_unc_col_init_2_r_2]
-    
-    DAFx2026_fig5_plots(folders, np.array(lstn_pos), np.array(spk_pos))
+
+    DAFx2026_fig5_plots(folders, np.array(lstn_pos), np.array(spk_pos), row_titles=[title_loc, title_unc, title_col, title_all])
 
 
 
