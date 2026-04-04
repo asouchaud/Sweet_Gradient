@@ -40,7 +40,7 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
     repo_root = Path(__file__).resolve().parent
     d = 60
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
-        epochs=1,
+        epochs=300,
         num_lstn_pos=1,
         listener_batch_size=None,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=False,
@@ -241,12 +241,12 @@ def DAFx2026_fig6_plots(run_folders):
             transform=plt.gca().transAxes,
             fontsize=20,
             verticalalignment='top')
-    plt.xlabel(r"Target Angle ($\theta^\circ$)", fontsize=20)
-    plt.ylabel("Energy Ratio (dB)", fontsize=20)
-    plt.xticks(fontsize=20)
-    plt.yticks(fontsize=20)
-    ax = plt.gca()
-    ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
+    plt.xlabel(r"Target Angle ($\theta^\circ$)", fontsize=18)
+    plt.ylabel("Energy Ratio (dB)", fontsize=18)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    # ax = plt.gca()
+    # ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
 
     target_angles = np.arange(30,-35,-5)
     vbap_angle = VBAP_loc(vbap_icld)
@@ -262,10 +262,10 @@ def DAFx2026_fig6_plots(run_folders):
     l3,= plt.plot(target_angles[1:-1], est_angle[1:-1], linewidth=3, label="Proposed Method")
     l4,= plt.plot(target_angles[1:-1], vbap_angle[1:-1], linewidth=2, label="VBAP")
     l5,= plt.plot(target_angles[1:-1], target_angles[1:-1], linestyle = "--", color = "black", linewidth=2, label = "Target")
-    plt.xlabel(r"Target Angle ($\theta^\circ$)", fontsize=20)
-    plt.ylabel(r"Predicted Angle ($\hat{\theta}^\circ$)", fontsize=20)
-    plt.xticks(fontsize=20)
-    plt.yticks(fontsize=20)
+    plt.xlabel(r"Target Angle ($\theta^\circ$)", fontsize=18)
+    plt.ylabel(r"Predicted Angle ($\hat{\theta}^\circ$)", fontsize=18)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
     plt.grid()
 
 
@@ -280,8 +280,8 @@ def DAFx2026_fig6_plots(run_folders):
                 bbox_to_anchor=(0.5, -0.02))
 
     # plt.tight_layout()
-    plt.subplots_adjust(bottom=0.25)
-    # plt.tight_layout(rect=[0, 0.05, 1, 1])  # leave space for legend
+    # plt.subplots_adjust(bottom=0.25)
+    plt.tight_layout(rect=[0, 0.16, 1, 1])  # leave space for legend
     plt.savefig("DAFx2026_fig6.pdf", format = "pdf")
     plt.show()
 
