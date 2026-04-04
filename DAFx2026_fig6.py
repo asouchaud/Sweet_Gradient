@@ -40,13 +40,10 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
     repo_root = Path(__file__).resolve().parent
     d = 60
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
-        epochs=300,
-        num_lstn_pos=1,
-        listener_batch_size=None,  # 5 mirrored pairs plus the centre listener
-        symmetric_listener_sampling=False,
-        n_samples=64,
+        epochs=200,
+        n_samples=20,
         target_pos=[d, float(np.tan(np.deg2rad(target_angle)) * d)],
-        selected_stim="impulse",
+        selected_stim="noise",
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
         lr=0.01,
@@ -114,9 +111,7 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
                     prop=stereo_prop,
                     loss_dict=loss_dict,
                     optimiser=nn_optimiser,
-                    loggers = [logger, None], 
-                    listener_batch_size=env.listener_batch_size,
-                    symmetric_listener_sampling=env.symmetric_listener_sampling) # Initialize training class
+                    loggers = [logger, None]) # Initialize training class
     time_train_start = time.time()
     trainer.train()
     env.time_train_seconds = time.time() - time_train_start
@@ -237,7 +232,7 @@ def DAFx2026_fig6_plots(run_folders):
     l1, = plt.plot(angles[1:-1], -E_ratio[1:-1], linewidth=3)
     l2, = plt.plot(angles[1:-1], -vbap_icld[1:-1],  linewidth=2)
     plt.grid()
-    plt.text(0.05, 0.95, f"$R^2 = {r2:.3f}$",
+    plt.text(0.05, 0.95, f"$R^2 = {r2:.2f}$",
             transform=plt.gca().transAxes,
             fontsize=20,
             verticalalignment='top')
@@ -251,8 +246,8 @@ def DAFx2026_fig6_plots(run_folders):
     target_angles = np.arange(30,-35,-5)
     vbap_angle = VBAP_loc(vbap_icld)
     est_angle = np.zeros(len(run_folders))
-    for i in range(len(folders)):
-        json_file_path = os.path.join(run_folders[i] /  "results.json")
+    for i in range(len(run_folders)):
+        json_file_path = os.path.join(run_folders[i], "results.json")
         json_data = json.load(open(json_file_path))
 
         est_angle[i] = json_data['localisation']
@@ -320,9 +315,9 @@ if __name__ == "__main__":
     for angle in angles:
         run_dir, run_lstn_pos, run_spk_pos = run_experiment(
             loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype, angle=angle: {
-                "localisation": ListenerBasedLoss(model=loc_model, weight=1e-0 if angle == 330.0 else 1e1, device=device, dtype=dtype),
-                "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-0),
-                "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-0),
+                "localisation": ListenerBasedLoss(model=loc_model, weight=1e-0, device=device, dtype=dtype),
+                "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
+                "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
             },
             run_label=f"loc_{int(angle)}",
             target_angle=angle
