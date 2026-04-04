@@ -338,10 +338,11 @@ if __name__ == "__main__":
         n_sources=env.n_sources,
     ).to(device=env.device, dtype=env.dtype)
     # Initialise FIR filter weights
+    centre_tap_idx = env.n_samples // 2
     with torch.no_grad():
-        for i, branch in enumerate(nn_model.branches):
+        for branch in nn_model.branches:
             branch.weight.fill_(0.0)
-            branch.weight[0, 0] = 1.0
+            branch.weight[centre_tap_idx, 0] = 1.0
 
     nn_optimiser = torch.optim.Adam(nn_model.parameters(), lr=env.lr)
 
