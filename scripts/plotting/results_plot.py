@@ -296,6 +296,8 @@ def plot_arrows_with_directivity(
     overlay_curves=None,
     overlay_labels=None,
     legend_ncol=None,
+    legend_bbox_to_anchor=(0.5, 1.02),
+    figsize=(6, 6),
 ):
     # -----------------------------
     # Prepare inputs
@@ -327,7 +329,7 @@ def plot_arrows_with_directivity(
     # -----------------------------
     # Create plot
     # -----------------------------
-    fig, ax = plt.subplots(figsize=(6, 6))
+    fig, ax = plt.subplots(figsize=figsize)
 
     ax.scatter(spk_pos[:, 0], spk_pos[:, 1], c='black', marker='x', label='Loudspeakers')
     ax.scatter(lstn_pos[:, 0], lstn_pos[:, 1], c='blue', label='Virtual Listeners')
@@ -591,7 +593,7 @@ def plot_arrows_with_directivity(
         unique.values(),
         unique.keys(),
         loc="lower center",
-        bbox_to_anchor=(0.5, 1.02),
+        bbox_to_anchor=legend_bbox_to_anchor,
         ncol=legend_ncol,
         frameon=False,
         fontsize=9,
