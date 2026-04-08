@@ -1,25 +1,30 @@
 import torch
 import torch.nn as nn
 
+from scripts.setup.helpers import load_gtfb
+
 from scripts.perceptual_models.desena2020.desena2020_estimateinterauralcues import desena2020_estimateinterauralcues
 from scripts.perceptual_models.desena2020.desena2020_distance import desena2020_distance
 from scripts.perceptual_models.desena2020.desena2020_loudnessweighting import desena2020_loudnessweighting
 from scripts.perceptual_models.desena2020.desena2020_estimateuncertainty import desena2020_estimateuncertainty
 from scripts.perceptual_models.desena2020.desena2020_Hmin import desena2020_Hmin
+from scripts.perceptual_models.desena2020.desena2020_helpers import desena_get_hrirs
 
 
 class desena2020(nn.Module):
-    def __init__(self, loss, target, hrirs, fs, gtfb, tau_IACC=0.01):
+    def __init__(self, loss, target, fs, sofa_path, tau_IACC=0.01, device = 'cpu', dtype = torch.float64):
         super(desena2020, self).__init__()
-        
-        self.dtype = hrirs.dtype
-        self.device = hrirs.device
 
         self.fs = fs
-        self.gtfb = gtfb
+        self.device = device
+        self.dtype = dtype 
+        
         self.tau_IACC = tau_IACC
 
-        self.template = desena2020_estimateinterauralcues(hrirs, fs, gtfb, tau_IACC)
+        self.gtfb = load_gtfb(fs, device, dtype)
+        hrirs = desena_get_hrirs(sofa_path, device, dtype)
+
+        self.template = desena2020_estimateinterauralcues(hrirs.unsqueeze(0), fs, self.gtfb, tau_IACC)
         self.template['azimuths'] = torch.arange(-90,95,5,dtype=self.dtype, device=self.device).view(-1,1)
         self.template['ild'] = self.template['ild'].squeeze()
         self.template['itd'] = self.template['itd'].squeeze()
@@ -31,8 +36,7 @@ class desena2020(nn.Module):
         
     def forward(self, bin_stim):
         # Expects bin_stim as (batch, n_listeners, 2, T), where 2 is the left and right ear and T is the number of time samples of each ear signal;
-        # returns uncertainty per listener as (batch, n_listeners, 1). # TODO: Antoine, why does this keep the trailing dimension, as opposed to the other models?
-        # Estimate Interaural Cues
+        # returns uncertainty per listener as (batch, n_listeners, 1). 
         interauralcues = desena2020_estimateinterauralcues(bin_stim, self.fs, self.gtfb, self.tau_IACC)
 
         # Calculate Distance

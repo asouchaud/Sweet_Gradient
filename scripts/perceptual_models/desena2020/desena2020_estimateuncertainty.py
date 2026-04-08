@@ -10,8 +10,8 @@ def desena2020_estimateuncertainty(distance, natural_angles, Hmin = 0.8822):
     cos = torch.cos(torch.deg2rad(natural_angles)*2).view(1,1,n_angles)
     sin = torch.sin(torch.deg2rad(natural_angles)*2).view(1,1,n_angles)
 
-    alpha = torch.sum(weightedLikelihood*cos, dim = 2, keepdim=True)
-    beta = torch.sum(weightedLikelihood*sin, dim = 2, keepdim=True)
+    alpha = torch.sum(weightedLikelihood*cos, dim = 2)
+    beta = torch.sum(weightedLikelihood*sin, dim = 2)
 
     H = 1 - torch.sqrt(torch.pow(alpha,2) + torch.pow(beta,2))
 

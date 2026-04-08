@@ -1,5 +1,11 @@
 import torch
 import torch.nn.functional as F
+import numpy as np
+import sofar as sf
+
+
+
+from scripts.setup.helpers import sofa_find
 
 def softmax_st(z, dim = -1, tau=1.0):
     y_soft = F.softmax(z / tau, dim=dim)
@@ -33,3 +39,29 @@ def hilbert_transform(x):
 
 def rms(x, dim, keepdim = False):
     return torch.sqrt(torch.mean(x**2, dim=dim, keepdim=keepdim))
+
+
+def desena_get_hrirs(sofa_path, device = 'cpu', dtype = torch.float64):
+    
+    sofaile = sf.read_sofa(sofa_path) 
+    
+    angles = np.linspace(-90, 90, 37) 
+    indices =  sofa_find(angles, sofaile)
+    
+    # Get IRs from SOFA File and Pad for Desired Output 
+    hrirs = sofaile.Data_IR[indices.astype(int),:,:]
+    hrirs = torch.tensor(hrirs, dtype=dtype, device=device)
+
+    return hrirs
+
+
+
+def desena_set_norm(loss, spk_pos, device = 'cpu', dtype = torch.float64):
+    
+    spk_pos = np.array(spk_pos)
+    spk_angles = np.sort(np.rad2deg(np.arctan2(spk_pos[:,1], spk_pos[:,0]))%360)
+    spk_angles_diff = spk_angles[1:] - spk_angles[:-1] # Get angle differences between adjacent speakers
+    max_angle_diff = np.max(spk_angles_diff)%180 # Get maximum angle difference
+    norm = loss(torch.tensor([max_angle_diff]), torch.tensor([0.0])) # Maximum possible loss for normalization
+
+    return norm.to(device=device, dtype=dtype)
