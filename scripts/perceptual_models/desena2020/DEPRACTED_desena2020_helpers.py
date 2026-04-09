@@ -7,11 +7,13 @@ import sofar as sf
 
 from scripts.setup.helpers import sofa_find
 
+
 def softmax_st(z, dim = -1, tau=1.0):
     y_soft = F.softmax(z / tau, dim=dim)
     index = z.max(dim=dim, keepdim=True)[1]
     y_hard = torch.zeros_like(z).scatter_(dim, index, 1.0)
     return (y_hard - y_soft).detach() + y_soft
+
 
 def hilbert_transform(x):
     """
@@ -22,7 +24,7 @@ def hilbert_transform(x):
     Xf = torch.fft.fft(x, dim=-1)
 
     # Build the Hilbert filter mask
-    h = torch.zeros(N, dtype=torch.float32, device=x.device)
+    h = torch.zeros(N, dtype=x.dtype, device=x.device)
     if N % 2 == 0:
         h[0] = 1
         h[1:N//2] = 2
@@ -54,7 +56,6 @@ def desena_get_hrirs(sofa_path, device = 'cpu', dtype = torch.float64):
     hrirs = torch.tensor(hrirs, dtype=dtype, device=device)
 
     return hrirs
-
 
 
 def desena_set_norm(loss, spk_pos, device = 'cpu', dtype = torch.float64):

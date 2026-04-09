@@ -2,12 +2,23 @@ from __future__ import annotations
 
 import pytest
 import torch
+import numpy as np 
+from pathlib import Path
 
-from scripts.perceptual_models.llado2025.llado2025_distance import llado2025_distance
-from scripts.perceptual_models.llado2025.llado2025_estimatelocalisation import (
-    llado2025_estimatelocalisation_torch,
-)
+from scripts.helpers.template_comparison import itd_ild_template_distance
+from scripts.perceptual_models.llado2025.llado2025 import llado2025
 
+def make_model() -> llado2025:
+    
+    repo_root = Path(__file__).resolve().parent.parent
+
+    dummy_loss = torch.nn.functional.mse_loss
+    dummy_target = [100, float(np.tan(np.deg2rad(0.0)) * 100)]
+    dummy_fs = 48000
+    dummy_sofa_path = str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
+    llado2025_model = llado2025(dummy_loss, dummy_target, dummy_fs, dummy_sofa_path)
+
+    return(llado2025_model)
 
 def make_template() -> dict[str, torch.Tensor]:
     # As in the distance tests, we use a simple synthetic three-angle template with 24 bands.
@@ -25,14 +36,16 @@ def make_template() -> dict[str, torch.Tensor]:
 def estimate_localisation(target_value: float) -> torch.Tensor:
     # This helper runs the same distance + localisation stages as the actual model, but on a small
     # synthetic cue set where the expected output is easy to reason about.
+    model = make_model()
     template = make_template()
     target = {
         "itd": torch.full((1, 1, 24), target_value, dtype=torch.float32),
         "ild": torch.full((1, 1, 24), target_value, dtype=torch.float32),
     }
+    model.template = template
 
-    distance = llado2025_distance(target, template)
-    return llado2025_estimatelocalisation_torch(distance, template)
+    distance = itd_ild_template_distance(target, template)
+    return model._estimate_localisation(distance)
 
 
 def test_localisation_estimator_returns_middle_azimuth_for_middle_template() -> None:

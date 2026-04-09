@@ -86,38 +86,3 @@ def llado_get_hrirs(sofa_path, device = 'cpu', dtype = torch.float64):
 
     return hrirs
 
-def llado_set_target(lstn_pos_conf, target_pos, device = 'cpu', dtype = torch.float64):
-
-    target_pos = torch.as_tensor(target_pos, device=device, dtype=dtype)
-
-    if isinstance(lstn_pos_conf, type(None)):
-        target = torch.rad2deg(torch.atan2(target_pos[1], target_pos[0]))
-    elif isinstance(lstn_pos_conf, list):
-        target = near_field_comp_angles(target_pos, lstn_pos_conf)
-    else:
-        print("Wrong data type, defaulting to global target position angle")
-        target = torch.rad2deg(torch.atan2(target_pos[1], target_pos[0]))
-
-    return target_pos, target
-
-
-def llado_set_norm(loss, spk_pos, device = 'cpu', dtype = torch.float64):
-    
-    spk_pos = np.array(spk_pos)
-
-    angles = np.rad2deg(np.arctan2(spk_pos[:,1], spk_pos[:,0]))
-    angles = np.sort(angles)
-
-    # Compute circular differences (including wrap-around)
-    diffs = np.diff(angles)
-    wrap_diff = (angles[0] + 360) - angles[-1]
-    diffs = np.append(diffs, wrap_diff)
-
-    # Take smallest equivalent angle (important!)
-    diffs = np.minimum(diffs, 360 - diffs)
-
-    max_angle_diff = np.max(diffs)
-    
-    norm = loss(torch.tensor([max_angle_diff]), torch.tensor([0.0])) # Maximum possible loss for normalization
-
-    return norm.to(device=device, dtype=dtype)

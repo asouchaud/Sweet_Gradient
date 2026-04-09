@@ -3,17 +3,18 @@ from __future__ import annotations
 import pytest
 import torch
 
-from scripts.setup.helpers import l3_loss, true_conv1d
+from scripts.helpers.dsp import causal_conv1d
+from scripts.helpers.dsp import l3_loss
 
 
-def test_true_conv1d_matches_expected_causal_response() -> None:
+def test_causal_conv1d_matches_expected_causal_response() -> None:
     # This checks the project-specific causal convolution helper rather than torch.conv1d itself.
     # The kernel [2, -1] is flipped inside true_conv1d, and the input is left-padded to make the
     # operation causal while preserving the original signal length.
     input_signal = torch.tensor([[[1.0, 2.0, 3.0]]], dtype=torch.float32)
     kernel = torch.tensor([[[2.0, -1.0]]], dtype=torch.float32)
 
-    output = true_conv1d(input_signal, kernel)
+    output = causal_conv1d(input_signal, kernel)
 
     # Expected values are computed by hand for a causal FIR:
     # y[0] = 2*1
@@ -24,13 +25,13 @@ def test_true_conv1d_matches_expected_causal_response() -> None:
     assert torch.allclose(output, expected)
 
 
-def test_true_conv1d_preserves_input_length() -> None:
+def test_causal_conv1d_preserves_input_length() -> None:
     # The helper is written to implement a "same-length" causal convolution by padding the input on
     # the left by K-1 samples before calling conv1d. This test checks that contract directly.
     input_signal = torch.arange(1, 6, dtype=torch.float32).view(1, 1, -1)
     kernel = torch.tensor([[[1.0, 0.5, -0.25]]], dtype=torch.float32)
 
-    output = true_conv1d(input_signal, kernel)
+    output = causal_conv1d(input_signal, kernel)
 
     # The expected length is therefore exactly the input length, regardless of kernel size.
     assert output.shape == input_signal.shape

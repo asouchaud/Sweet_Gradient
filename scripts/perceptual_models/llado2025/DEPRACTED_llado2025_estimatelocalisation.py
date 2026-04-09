@@ -1,6 +1,6 @@
 import torch
 
-from scripts.perceptual_models.llado2025.llado2025_helpers import softmax_st
+from scripts.perceptual_models.llado2025.DEPRACTED_llado2025_helpers import softmax_st
 
 def llado2025_estimatelocalisation_torch(distance, template, tau_L=1):
 

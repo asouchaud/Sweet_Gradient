@@ -3,11 +3,9 @@ from __future__ import annotations
 import pytest
 import torch
 
-from scripts.perceptual_models.llado2025.llado2025_helpers import (
-    near_field_comp_angles,
-    near_field_target,
-    softmax_st,
-)
+from scripts.helpers.miscelaneous import near_field_target
+from scripts.helpers.miscelaneous import near_field_comp_angles
+from scripts.helpers.dsp import softmax_st
 
 
 def test_near_field_target_at_zero_degrees_lies_on_x_axis() -> None:

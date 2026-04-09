@@ -6,7 +6,7 @@ import torch.nn as nn
 import sofar as sf
 import numpy as np
 
-from scripts.setup.helpers import true_conv1d
+from scripts.helpers.dsp import causal_conv1d
 
 class SingleSourceBinauralFreeFieldPropagation(nn.Module):
     """One source, multiple listeners. Returns binaural (L/R ear) per listener."""
@@ -95,9 +95,9 @@ class SingleSourceBinauralFreeFieldPropagation(nn.Module):
         """
         hrirs = self.hrirs if listener_indices is None else self.hrirs[listener_indices]
 
-        src_signal = true_conv1d(self.stim, source_filter).permute(1, 0, 2)
-        L_ear = true_conv1d(src_signal, hrirs[:, 0:1, :])
-        R_ear = true_conv1d(src_signal, hrirs[:, 1:2, :])
+        src_signal = causal_conv1d(self.stim, source_filter).permute(1, 0, 2)
+        L_ear = causal_conv1d(src_signal, hrirs[:, 0:1, :])
+        R_ear = causal_conv1d(src_signal, hrirs[:, 1:2, :])
         if self.apply_distance_attenuation:
             distance_gain = self.distance_gain if listener_indices is None else self.distance_gain[listener_indices]
             distance_gain = distance_gain.view(1, -1, 1)

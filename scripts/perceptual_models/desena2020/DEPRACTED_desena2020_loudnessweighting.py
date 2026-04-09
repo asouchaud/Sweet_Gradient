@@ -1,6 +1,6 @@
 import torch
 
-from scripts.perceptual_models.desena2020.desena2020_helpers import rms
+from scripts.perceptual_models.desena2020.DEPRACTED_desena2020_helpers import rms
 
 
 def desena2020_loudnessweighting(interauralcues, distance):

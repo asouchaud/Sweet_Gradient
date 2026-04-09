@@ -2,10 +2,10 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
-from scripts.perceptual_models.desena2020.desena2020_distance import desena2020_distance
-from scripts.perceptual_models.desena2020.desena2020_estimateinterauralcues import desena2020_estimateinterauralcues
-from scripts.perceptual_models.desena2020.desena2020_estimateuncertainty import desena2020_estimateuncertainty
-from scripts.perceptual_models.desena2020.desena2020_loudnessweighting import desena2020_loudnessweighting  
+from scripts.perceptual_models.desena2020.DEPRACTED_desena2020_distance import desena2020_distance
+from scripts.perceptual_models.desena2020.DEPRACTED_desena2020_estimateinterauralcues import desena2020_estimateinterauralcues
+from scripts.perceptual_models.desena2020.DEPRACTED_desena2020_estimateuncertainty import desena2020_estimateuncertainty
+from scripts.perceptual_models.desena2020.DEPRACTED_desena2020_loudnessweighting import desena2020_loudnessweighting  
 
 
 def desena2020_Hmin(template):

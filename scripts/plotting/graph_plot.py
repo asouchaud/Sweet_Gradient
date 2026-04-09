@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as colors
 
-from scripts.perceptual_models.llado2025.llado2025_estimateinterauralcues import llado2025_estimateinterauralcues
+from scripts.helpers.peripheral_processing import estimate_interauralcues
 
 
 def rfft_freq_response(h, fs, n_fft: int = 4096):
@@ -418,7 +418,7 @@ def plot_bin_cues(bin_stim, fs, gtfb, show = True):
         bin_stim = bin_stim.unsqueeze(0).unsqueeze(0)
     elif len(bin_stim.shape) == 3:
         bin_stim = bin_stim.unsqueeze(0)
-    interaural_cues = llado2025_estimateinterauralcues(bin_stim=bin_stim, fs = fs, gtfb=gtfb)
+    interaural_cues = estimateinterauralcues(bin_stim=bin_stim, fs = fs, gtfb=gtfb)
     
     ild_np = interaural_cues['ild'].detach().cpu().numpy()
     itd_np = interaural_cues['itd'].detach().cpu().numpy()

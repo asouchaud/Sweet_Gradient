@@ -2,8 +2,8 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 
-from scripts.perceptual_models.llado2025.llado2025_helpers import hilbert_transform
-from scripts.perceptual_models.llado2025.llado2025_helpers import softmax_st
+from scripts.perceptual_models.llado2025.DEPRACTED_llado2025_helpers import hilbert_transform
+from scripts.perceptual_models.llado2025.DEPRACTED_llado2025_helpers import softmax_st
 
 from scripts.setup.helpers import true_conv1d
 

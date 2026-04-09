@@ -9,7 +9,7 @@ import torchaudio.functional as TF
 
 from scripts.perceptual_models.spectral_matching.spectral_matching_helpers import near_field_comp_angles
 from scripts.perceptual_models.spectral_matching.spectral_matching_helpers import log_spectral_distortion
-from scripts.setup.helpers import true_conv1d
+from scripts.helpers.dsp import causal_conv1d
 
 
 class spectral_matching(nn.Module):
@@ -37,7 +37,7 @@ class spectral_matching(nn.Module):
         if isinstance(lstn_pos_conf, type(None)):
             self.target_angle = torch.rad2deg(torch.atan2(self.target_pos[1], self.target_pos[0]))
             self.reference_hrir = self.get_IR(self.sofa_find(self.target_angle)).view(2,1,-1).to(dtype=self.dtype, device=self.device)
-            self.reference_stim = true_conv1d(self.stim, self.reference_hrir)
+            self.reference_stim = causal_conv1d(self.stim, self.reference_hrir)
 
             low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
 
@@ -45,14 +45,14 @@ class spectral_matching(nn.Module):
             self.target_angle = near_field_comp_angles(self.target_pos, lstn_pos_conf)
 
             self.reference_hrir = self.get_IR(self.sofa_find(self.target_angle)).view(2*len(lstn_pos_conf),1,-1).to(dtype=self.dtype, device=self.device)
-            self.reference_stim = true_conv1d(self.stim, self.reference_hrir).view(len(lstn_pos_conf), 2, -1)
+            self.reference_stim = causal_conv1d(self.stim, self.reference_hrir).view(len(lstn_pos_conf), 2, -1)
 
             low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
         else:
             print("Wrong data type, defaulting to global target position angle")
             self.target_angle = torch.rad2deg(torch.atan2(self.target_pos[1], self.target_pos[0])) # TODO: this repeats the code of  isinstance(lstn_pos_conf, type(None)). Please fix. 
             self.reference_hrir = self.get_IR(self.sofa_find(self.target_angle)).view(2,1,-1).to(dtype=self.dtype, device=self.device)
-            self.reference_stim = true_conv1d(self.stim, self.reference_hrir)
+            self.reference_stim = causal_conv1d(self.stim, self.reference_hrir)
             low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
 
         self.target = target

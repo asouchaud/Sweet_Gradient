@@ -3,8 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from scripts.perceptual_models.desena2020.desena2020_distance import desena2020_distance
-from scripts.perceptual_models.llado2025.llado2025_distance import llado2025_distance
+from scripts.helpers.template_comparison import itd_ild_template_distance
 
 
 def make_template() -> dict[str, torch.Tensor]:
@@ -20,7 +19,7 @@ def make_template() -> dict[str, torch.Tensor]:
     }
 
 
-@pytest.mark.parametrize("distance_fn", [llado2025_distance, desena2020_distance])
+@pytest.mark.parametrize("distance_fn", [itd_ild_template_distance, itd_ild_template_distance])
 def test_distance_module_prefers_exact_template_match(distance_fn) -> None:
     # This is a larger behavioural test for both distance modules. We choose a target whose ITD and
     # ILD are all +1 across the 24 bands. In make_template(), the +30 degree entry also has cue
