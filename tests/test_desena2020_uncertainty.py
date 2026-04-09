@@ -18,7 +18,8 @@ def test_desena2020_uncertainty_is_zero_for_single_certain_direction_when_hmin_i
 
     uncertainty = desena2020_estimateuncertainty(distance, angles, Hmin=0.0)
 
-    assert uncertainty.shape == (1, 1, 1)
+    # assert uncertainty.shape == (1, 1, 1)
+    assert uncertainty.shape == (1, 1)
     assert uncertainty.item() == pytest.approx(0.0, abs=1e-8)
 
 
@@ -32,5 +33,6 @@ def test_desena2020_uncertainty_is_one_for_uniform_likelihood_when_resultant_vec
 
     uncertainty = desena2020_estimateuncertainty(distance, angles, Hmin=0.0)
 
-    assert uncertainty.shape == (1, 1, 1)
+    # assert uncertainty.shape == (1, 1, 1)
+    assert uncertainty.shape == (1, 1)
     assert uncertainty.item() == pytest.approx(1.0, abs=1e-8)

@@ -50,6 +50,7 @@ def desena_get_hrirs(sofa_path, device = 'cpu', dtype = torch.float64):
     
     # Get IRs from SOFA File and Pad for Desired Output 
     hrirs = sofaile.Data_IR[indices.astype(int),:,:]
+    hrirs = np.pad(hrirs, ((0,0),(0,0),(0,4096-hrirs.shape[2])), mode='constant') # Pad to 4096 samples for GTFB filtering
     hrirs = torch.tensor(hrirs, dtype=dtype, device=device)
 
     return hrirs

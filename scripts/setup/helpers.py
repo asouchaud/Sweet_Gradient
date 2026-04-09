@@ -24,8 +24,8 @@ def l3_loss(input, target, reduction="mean"):
     
 def sofa_find(angle, sofaile):
     # Find index of closest angle in sofaile.SourcePosition
-    sofa_angles = sofaile.SourcePosition[:,:2] # N_y x (az, elv)
-    angles = np.concat((angle[:, None], np.zeros_like(angle[:, None])), axis=1) # N_x x (az, elv)
+    sofa_angles = sofaile.SourcePosition[:,:2]%360 # N_y x (az, elv)
+    angles = np.concat((angle[:, None], np.zeros_like(angle[:, None])), axis=1)%360 # N_x x (az, elv)
     diff = sofa_angles[:,None,:] - angles[None,:,:] # N_y x N_x x (az, elv)
     dist = np.linalg.norm(diff, axis=-1) # N_y x N_x
     idx = np.argmin(dist, axis=0) # N_x

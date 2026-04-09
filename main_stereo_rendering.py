@@ -43,7 +43,7 @@ def run_experiment(loss_dict_builder, run_label):
         log=1,
         fs=48000,
     )
-    env.dtype = torch.float64
+    env.dtype = torch.float32
     env.device_str = "cpu"
     env.device = torch.device(env.device_str)
 
@@ -83,9 +83,9 @@ def run_experiment(loss_dict_builder, run_label):
     stereo_prop = BinauralFreeFieldPropagation(stim=stim, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, fs=env.fs, sofa_file_path=env.sofa_path) # Load stereo anechoic propagation module
 
     # Initiate perceptual models
-    loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos).to(device=env.device, dtype=env.dtype) # Llado et al. 2025 model
-    col_model = spectral_matching(loss = F.l1_loss, target = 0, stim=stim, hrirs=hrirs, target_pos=env.target_pos, fs=env.fs).to(device=env.device, dtype=env.dtype) # Spectral Matching model
-    unc_model = desena2020(loss = F.l1_loss, target = 0, fs=env.fs, sofa_path=env.sofa_path).to(device=env.device, dtype=env.dtype) # De Sena et al. 2020 model
+    loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, device=env.device, dtype=env.dtype) # Llado et al. 2025 model
+    col_model = spectral_matching(loss = F.l1_loss, target = 0, stim=stim, hrirs=hrirs, target_pos=env.target_pos, fs=env.fs) # Spectral Matching model
+    unc_model = desena2020(loss = F.l1_loss, target = 0, fs=env.fs, sofa_path=env.sofa_path, device=env.device, dtype=env.dtype) # De Sena et al. 2020 model
     regularisation = second_moment_regularisation(n_samples=env.n_samples, device=env.device, dtype=env.dtype)
     loss_dict = loss_dict_builder(loc_model, col_model, unc_model, regularisation, env.device, env.dtype)
 
@@ -98,7 +98,8 @@ def run_experiment(loss_dict_builder, run_label):
     with torch.no_grad():
         for i, branch in enumerate(nn_model.branches):
             branch.weight.fill_(0.0)
-            branch.weight[0, 0] = 1.0
+            # branch.weight[0, 0] = 1.0
+        nn_model.branches[0].weight[0, 0] = 1.0
 
     nn_optimiser = torch.optim.Adam(nn_model.parameters(), lr=env.lr)
 
@@ -171,7 +172,7 @@ def run_experiment(loss_dict_builder, run_label):
 if __name__ == "__main__":
     run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "uncertainty": ListenerBasedLoss(model=unc_model, weight=1.0e0, device=device, dtype=dtype),
+            "localisation": ListenerBasedLoss(model=loc_model, weight=1.0e0, device=device, dtype=dtype),
         },
-        run_label="uncertaintyS_only",
+        run_label="localisation_only",
     )

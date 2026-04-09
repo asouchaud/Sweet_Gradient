@@ -45,14 +45,14 @@ class SingleSourceBinauralFreeFieldPropagation(nn.Module):
         # HRIRs: (n_listeners, 2, ir_len) — 2 = left ear, right ear
         hrirs = self._get_IRs(src_idx).to(dtype=self.dtype, device=self.device)
         # Pad to match stimulus length (same as stereo_anechoic: concat with zeros)
-        self.hrirs = torch.concat(
-            (hrirs, torch.zeros_like(hrirs, dtype=self.dtype)), dim=-1
-        )
+        if delay_samples is not None:
+            max_delay_samples = delay_samples[1]
+            self.hrirs = torch.nn.functional.pad(hrirs, (0, max_delay_samples))
 
         # Optional per-listener delay (samples) to align with another source
         if delay_samples is not None:
             for i in range(self.n_listeners):
-                d = int(delay_samples[i])
+                d = int(delay_samples[0][i])
                 if d != 0:
                     self.hrirs[i, 0, :] = torch.roll(self.hrirs[i, 0, :], d, dims=0)
                     self.hrirs[i, 1, :] = torch.roll(self.hrirs[i, 1, :], d, dims=0)
@@ -62,7 +62,7 @@ class SingleSourceBinauralFreeFieldPropagation(nn.Module):
             self.sofaile.SourcePosition[:, :2],
             device=self.device,
             dtype=torch.float32,
-        )
+        )%360
         source_angle = torch.concat(
             (source_angle, torch.zeros_like(source_angle)), dim=1
         ).to(self.device, dtype=torch.float32)
@@ -135,6 +135,7 @@ class BinauralFreeFieldPropagation(nn.Module):
         # Keep previous behaviour: farther sources get additional delay.
         min_tau_per_listener = torch.min(tau_sources, dim=0).values
         delay_samples = torch.round((tau_sources - min_tau_per_listener[None, :]) * fs).to(torch.int64)
+        max_delay_samples = torch.max(delay_samples)
 
         self.sources = nn.ModuleList()
         for source_idx in range(self.n_sources):
@@ -146,7 +147,7 @@ class BinauralFreeFieldPropagation(nn.Module):
                     source_pos=spk_pos[source_idx],
                     sofa_file_path=sofa_file_path,
                     fs=fs,
-                    delay_samples=source_delay_samples,
+                    delay_samples=[source_delay_samples, max_delay_samples],
                     apply_distance_attenuation=apply_distance_attenuation,
                 )
             )
