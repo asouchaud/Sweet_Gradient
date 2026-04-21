@@ -15,6 +15,9 @@ def get_IRs(idx, sofaile, device = 'cpu', dtype = torch.float64):
 
 def sofa_find(angle, sofaile, elv = 0):
 
+    if isinstance(angle, torch.Tensor):
+        angle = angle.detach().cpu().numpy()
+
     assert len(angle.shape) == 1 
     
     # Find index of closest angle in sofaile.SourcePosition

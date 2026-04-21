@@ -151,6 +151,8 @@ class BinauralFreeFieldPropagation(nn.Module):
                     fs=fs,
                     delay_samples=[source_delay_samples, max_delay_samples],
                     apply_distance_attenuation=apply_distance_attenuation,
+                    device=device,
+                    dtype=dtype,
                 )
             )
 

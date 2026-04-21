@@ -15,10 +15,10 @@ class StaticStimulusDataset(Dataset):
 
     def _generate_dataset(self):
         if self.stimulus_type == 'white_noise':
-            data = torch.randn(self.num_samples, 1, self.signal_length, dtype=self.dtype)
+            data = torch.randn(self.num_samples, 1, self.signal_length, device=self.device, dtype=self.dtype)
 
         elif self.stimulus_type == 'impulse':
-            data = torch.zeros(self.num_samples, 1, self.signal_length, dtype=self.dtype)
+            data = torch.zeros(self.num_samples, 1, self.signal_length, device=self.device, dtype=self.dtype)
             
             # distribute impulses across time
             positions = torch.arange(self.num_samples) % self.signal_length
@@ -42,6 +42,7 @@ def get_stim_loader(fs, batch_size, num_samples, stimulus_type='white_noise',
         fs=fs,
         num_samples=num_samples,
         stimulus_type=stimulus_type,
+        device=device,
         dtype=dtype
     )
 

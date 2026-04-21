@@ -84,7 +84,7 @@ class llado2025(nn.Module):
         if isinstance(self.spk_pos, type(None)):
             return(torch.tensor([1], device=self.device, dtype=self.dtype))
         
-        spk_pos = np.array(self.spk_pos)
+        spk_pos = self.spk_pos.detach().cpu().numpy()
 
         angles = np.rad2deg(np.arctan2(spk_pos[:,1], spk_pos[:,0]))
         angles = np.sort(angles)

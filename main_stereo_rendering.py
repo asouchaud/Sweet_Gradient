@@ -40,7 +40,7 @@ def run_experiment(loss_dict_builder, run_label):
     d =100
     fs = 48000
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
-        epochs=5,
+        epochs=100,
         num_lstn_pos=5,
         listener_batch_size=2,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=False,
@@ -56,7 +56,7 @@ def run_experiment(loss_dict_builder, run_label):
         fs=fs,
     )
     env.dtype = torch.float64
-    env.device_str = "cpu"
+    env.device_str = "cuda"
     env.device = torch.device(env.device_str)
 
     assert isinstance(env.listener_batch_size, int), "listener_batch_size must be set to positive integer"
@@ -81,12 +81,12 @@ def run_experiment(loss_dict_builder, run_label):
     set_seed(seed=env.seed)
 
 ## Load data
-    training_stimulus_data_loader, stimulus_dataset = get_stim_loader(env.fs, env.stimulus_batch_size, env.n_stimulus)
-    training_listener_data_loader, _ = get_listener_loader(env.lstn_pos, env.listener_batch_size, env.symmetric_listener_sampling)
+    training_stimulus_data_loader, stimulus_dataset = get_stim_loader(env.fs, env.stimulus_batch_size, env.n_stimulus, device=env.device, dtype=env.dtype) # Get stimulus dataloader
+    training_listener_data_loader, _ = get_listener_loader(env.lstn_pos, env.listener_batch_size, env.symmetric_listener_sampling) # Get listener dataloader
 
 ## Initialize model
     # Initialize sound propagation module
-    stereo_prop = BinauralFreeFieldPropagation(fs=env.fs, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, sofa_file_path=env.sofa_path) # Load stereo anechoic propagation module
+    stereo_prop = BinauralFreeFieldPropagation(fs=env.fs, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, sofa_file_path=env.sofa_path, device=env.device, dtype=env.dtype) # Load stereo anechoic propagation module
 
     # Initiate perceptual models
     loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, device=env.device, dtype=env.dtype) # Llado et al. 2025 model
