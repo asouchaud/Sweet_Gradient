@@ -418,7 +418,7 @@ def plot_bin_cues(bin_stim, fs, gtfb, show = True):
         bin_stim = bin_stim.unsqueeze(0).unsqueeze(0)
     elif len(bin_stim.shape) == 3:
         bin_stim = bin_stim.unsqueeze(0)
-    interaural_cues = estimateinterauralcues(bin_stim=bin_stim, fs = fs, gtfb=gtfb)
+    interaural_cues = estimate_interauralcues(bin_stim=bin_stim, fs = fs, gtfb=gtfb)
     
     ild_np = interaural_cues['ild'].detach().cpu().numpy()
     itd_np = interaural_cues['itd'].detach().cpu().numpy()
