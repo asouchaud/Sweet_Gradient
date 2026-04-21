@@ -6,22 +6,24 @@ import torch.nn as nn
 import sofar as sf
 import numpy as np
 
-from scripts.helpers.dsp import causal_conv1d
+from scripts.helpers.dsp import causal_conv1d, calculate_source_angle_2D
+from scripts.helpers.miscelaneous import sofa_find, get_IRs
 
 class SingleSourceBinauralFreeFieldPropagation(nn.Module):
     """One source, multiple listeners. Returns binaural (L/R ear) per listener."""
 
-    def __init__(self, stim, lstn_pos, source_pos, sofa_file_path, fs=48000, delay_samples=None, apply_distance_attenuation=False):
+    def __init__(self, lstn_pos, source_pos, sofa_file_path, fs=48000, delay_samples=None, apply_distance_attenuation=False, device = 'cpu', dtype = torch.float64):
         super().__init__()
+        
         self.fs = fs
-        self.dtype = stim.dtype
-        self.device = stim.device
+        self.device = device
+        self.dtype = dtype
         self.apply_distance_attenuation = apply_distance_attenuation
 
-        self.stim = stim.detach()
         self.lstn_pos = torch.tensor(lstn_pos, device=self.device, dtype=self.dtype)
         self.n_listeners = len(self.lstn_pos)
         self.source_pos = torch.tensor(source_pos, device=self.device, dtype=self.dtype)
+        self.sofa_file_path = sofa_file_path
         self.sofaile = sf.read_sofa(sofa_file_path)
 
         # Broadcast source_pos across listeners to get one [dx, dy] vector per listener.
@@ -34,23 +36,23 @@ class SingleSourceBinauralFreeFieldPropagation(nn.Module):
         )
 
         # Angle from listener to source (degrees, 0–360)
-        source_angle = torch.remainder(
-            self._calculate_source_angle_2D(source_vec),
-            torch.tensor(360.0, device=self.device)
-        ).unsqueeze(1)
+        source_angle = calculate_source_angle_2D(source_vec)
+
+        # assert 360 >= source_angle >= 0 #TODO: Make this work
 
         # SOFA index per listener
-        src_idx = self._sofa_find(source_angle)
+        src_idx = sofa_find(source_angle, self.sofaile)
 
         # HRIRs: (n_listeners, 2, ir_len) — 2 = left ear, right ear
-        hrirs = self._get_IRs(src_idx).to(dtype=self.dtype, device=self.device)
-        # Pad to match stimulus length (same as stereo_anechoic: concat with zeros)
-        if delay_samples is not None:
-            max_delay_samples = delay_samples[1]
-            self.hrirs = torch.nn.functional.pad(hrirs, (0, max_delay_samples))
-
+        hrirs = get_IRs(src_idx, sofaile=self.sofaile, device=self.device, dtype=self.dtype)
+        
         # Optional per-listener delay (samples) to align with another source
         if delay_samples is not None:
+            # Pad to match stimulus length (same as stereo_anechoic: concat with zeros)
+            max_delay_samples = delay_samples[1]
+            self.hrirs = torch.nn.functional.pad(hrirs, (0, max_delay_samples))
+            
+            # Roll the HRIRs by the corresponding sample delay
             for i in range(self.n_listeners):
                 d = int(delay_samples[0][i])
                 if d != 0:
@@ -70,10 +72,6 @@ class SingleSourceBinauralFreeFieldPropagation(nn.Module):
         dists = torch.linalg.vector_norm(diff, dim=2)
         return torch.argmin(dists, dim=1)
 
-    def _calculate_source_angle_2D(self, vec1):
-        vec1_i = vec1[:, 0] + 1j * vec1[:, 1]
-        theta = torch.rad2deg(torch.angle(vec1_i))
-        return theta.to(self.device)
 
     def _get_IRs(self, src_idx):
         left_ear_IR = torch.tensor(
@@ -88,35 +86,36 @@ class SingleSourceBinauralFreeFieldPropagation(nn.Module):
         )
         return torch.stack((left_ear_IR, right_ear_IR), dim=1)
 
-    def forward(self, source_filter, listener_indices=None):
+    def forward(self, stim, source_filter, listener_indices):
         """
+        stim: (batch, 1, stim_len)
         source_filter: (batch, 1, filter_len)
         Returns: (batch, n_listeners, 2, T) — 2 = L/R ear.
         """
-        hrirs = self.hrirs if listener_indices is None else self.hrirs[listener_indices]
+        n_stim = len(stim)
+        n_lstn = len(listener_indices)
+        hrirs = self.hrirs[listener_indices].reshape(2*n_lstn, 1, -1)
 
-        src_signal = causal_conv1d(self.stim, source_filter).permute(1, 0, 2)
-        L_ear = causal_conv1d(src_signal, hrirs[:, 0:1, :])
-        R_ear = causal_conv1d(src_signal, hrirs[:, 1:2, :])
+        src_signal = causal_conv1d(stim, source_filter)
+        ear_signals = causal_conv1d(src_signal, hrirs).reshape(n_stim, n_lstn, 2, -1)
+
         if self.apply_distance_attenuation:
-            distance_gain = self.distance_gain if listener_indices is None else self.distance_gain[listener_indices]
-            distance_gain = distance_gain.view(1, -1, 1)
-            L_ear = L_ear * distance_gain
-            R_ear = R_ear * distance_gain
-        return torch.cat([L_ear.unsqueeze(2), R_ear.unsqueeze(2)], dim=2)
+            distance_gain = self.distance_gain[listener_indices].view(1, n_lstn, 1, 1)
+            ear_signals = ear_signals * distance_gain
+        return ear_signals
 
 ## Multiple source anechoic class definition (omitting the "MultipleSource" prefix for brevity)
 class BinauralFreeFieldPropagation(nn.Module):
     """Generic multi-source anechoic propagation with summed binaural output."""
 
-    def __init__(self, stim, lstn_pos, spk_pos, sofa_file_path, fs=48000, apply_distance_attenuation=False):
+    def __init__(self, fs, lstn_pos, spk_pos, sofa_file_path, apply_distance_attenuation=False, device = 'cpu', dtype = torch.float64):
         super().__init__()
+        
         self.fs = fs
-        self.dtype = stim.dtype
-        self.device = stim.device
+        self.dtype = dtype
+        self.device = device
         self.apply_distance_attenuation = apply_distance_attenuation
 
-        self.stim = stim.detach()
         self.lstn_pos = torch.tensor(lstn_pos, device=self.device, dtype=self.dtype)
         self.n_listeners = len(self.lstn_pos)
         self.spk_pos = torch.tensor(spk_pos, device=self.device, dtype=self.dtype)
@@ -134,15 +133,18 @@ class BinauralFreeFieldPropagation(nn.Module):
         tau_sources = torch.linalg.vector_norm(source_vec.float(), dim=-1) / 343
         # Keep previous behaviour: farther sources get additional delay.
         min_tau_per_listener = torch.min(tau_sources, dim=0).values
-        delay_samples = torch.round((tau_sources - min_tau_per_listener[None, :]) * fs).to(torch.int64)
-        max_delay_samples = torch.max(delay_samples)
+       
+        delay_samples = torch.round((tau_sources - min_tau_per_listener[None, :]) * fs).to(torch.int64).detach().cpu().numpy()
+        max_delay_samples = int(np.max(delay_samples))
+        
+        assert isinstance(max_delay_samples, int) 
+        assert isinstance(delay_samples, type(np.array([0])))
 
         self.sources = nn.ModuleList()
         for source_idx in range(self.n_sources):
-            source_delay_samples = [int(delay_samples[source_idx, i]) for i in range(self.n_listeners)]
+            source_delay_samples = delay_samples[source_idx]
             self.sources.append(
                 SingleSourceBinauralFreeFieldPropagation(
-                    stim=stim,
                     lstn_pos=lstn_pos,
                     source_pos=spk_pos[source_idx],
                     sofa_file_path=sofa_file_path,
@@ -152,7 +154,10 @@ class BinauralFreeFieldPropagation(nn.Module):
                 )
             )
 
-    def forward(self, spk_filters, listener_indices=None):
+    def forward(self, stim, spk_filters, listener_indices=None):
+        if listener_indices is None:
+            listener_indices = torch.arange(self.n_listeners, device=self.device)
+
         if spk_filters.shape[1] != self.n_sources:
             raise ValueError(
                 f"Expected spk_filters with {self.n_sources} sources on dim=1, "
@@ -162,6 +167,6 @@ class BinauralFreeFieldPropagation(nn.Module):
         binaural_sum = 0
         for source_idx, source in enumerate(self.sources):
             source_filter = spk_filters[:, source_idx:source_idx + 1, :]
-            binaural_sum = binaural_sum + source(source_filter, listener_indices=listener_indices)
+            binaural_sum = binaural_sum + source(stim, source_filter, listener_indices=listener_indices)
 
         return binaural_sum

@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 import sofar as sf
 
-from scripts.setup.helpers import sofa_find
+from scripts.setup.DEPRACTED_helpers import sofa_find
 
 
 def softmax_st(z, dim = -1, tau=1.0):

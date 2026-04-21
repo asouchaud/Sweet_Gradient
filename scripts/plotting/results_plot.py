@@ -13,8 +13,10 @@ from scripts.plotting.graph_plot import plot_frequency_response
 from scripts.plotting.dense_arrows_plot import plot_arrows
 from scripts.plotting.graph_plot import plot_color
 
+from scripts.helpers.dsp import compute_reference_bin
 
-def plot_results(estimation_dict, est_filters, bin_stim, prop_model, loss_dict, target_pos, stim, fs, device, dtype, show=True):
+
+def plot_results(estimation_dict, est_filters, bin_stim, lstn_pos, spk_pos, loss_dict, target_pos, fs, stim, device, dtype, show=True):
     """
     Plot generic multi-source results (time/frequency filters, localisation arrows,
     and colouration comparison).
@@ -31,27 +33,6 @@ def plot_results(estimation_dict, est_filters, bin_stim, prop_model, loss_dict, 
 
     time_plot = plot_time(est_filters, show=False)
     freq_plot = plot_freq(est_filters, fs, show=False)
-    stim_np = torch.as_tensor(stim, device=device, dtype=dtype).detach().cpu().numpy().reshape(-1)
-    stimulus_plot, (stimulus_time_ax, stimulus_freq_ax) = plt.subplots(
-        1,
-        2,
-        figsize=(10, 3),
-        gridspec_kw={"width_ratios": [2.0, 1.3]},
-    )
-    plot_stem_signal(
-        stim_np,
-        ax=stimulus_time_ax,
-        title="Input stimulus (time domain)",
-        max_min=float(np.max(np.abs(stim_np))) if stim_np.size and np.max(np.abs(stim_np)) > 0.0 else 1.0,
-    )
-    plot_frequency_response(
-        h=stim_np,
-        fs=fs,
-        ax_mag=stimulus_freq_ax,
-        mag_title="Input stimulus (frequency domain)",
-        include_phase=False,
-    )
-    stimulus_plot.tight_layout()
 
     target_marker = torch.as_tensor(target_pos, device=device, dtype=dtype)
 
@@ -59,8 +40,8 @@ def plot_results(estimation_dict, est_filters, bin_stim, prop_model, loss_dict, 
     loc_model = perceptual_models.get("localisation")
     if "localisation" in estimation_dict and loc_model is not None:
         arrow_plot = plot_arrows(
-            prop_model.lstn_pos,
-            prop_model.spk_pos,
+            lstn_pos,
+            spk_pos,
             torch.tensor(estimation_dict["localisation"], device=device, dtype=dtype),
             torch.tensor(estimation_dict["uncertainty"], device=device, dtype=dtype) if "uncertainty" in estimation_dict else None,
             torch.tensor(estimation_dict["colouration"], device=device, dtype=dtype) if "colouration" in estimation_dict else None,
@@ -72,10 +53,19 @@ def plot_results(estimation_dict, est_filters, bin_stim, prop_model, loss_dict, 
     color_r_plot = None
     col_model = perceptual_models.get("colouration")
     if col_model is not None:
+        
+        col_reference = compute_reference_bin(stim, 
+                                              col_model.reference_hrirs, 
+                                              listener_indices=torch.arange(lstn_pos.shape[0], device=device)).view(stim.shape[0], 
+                                                                                                                    col_model.reference_hrirs.shape[0], 
+                                                                                                                    2, 
+                                                                                                                    -1)
+        
+    
         color_l_plot, color_r_plot = plot_color(
             bin_stim,
-            col_model.reference_stim,
-            prop_model.lstn_pos,
+            col_reference,
+            lstn_pos,
             show=False,
         )
 
@@ -85,7 +75,6 @@ def plot_results(estimation_dict, est_filters, bin_stim, prop_model, loss_dict, 
     return {
         "time_plot": time_plot,
         "freq_plot": freq_plot,
-        "stimulus_plot": stimulus_plot,
         "arrow_plot": arrow_plot,
         "color_l_plot": color_l_plot,
         "color_r_plot": color_r_plot,

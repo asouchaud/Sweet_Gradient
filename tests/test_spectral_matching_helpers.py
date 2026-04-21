@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from scripts.perceptual_models.spectral_matching.spectral_matching_helpers import (
+from scripts.perceptual_models.spectral_matching.DEPRACATED_spectral_matching_helpers import (
     log_spectral_distortion,
 )
 

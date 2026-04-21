@@ -15,7 +15,8 @@ def make_model() -> desena2020:
     dummy_target = 0
     dummy_fs = 48000
     dummy_sofa_path = str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
-    desena2020_model = desena2020(dummy_loss, dummy_target, dummy_fs, dummy_sofa_path)
+    dummy_lstn_pos = torch.tensor([[0.0, 0.0]], dtype=torch.float64)
+    desena2020_model = desena2020(dummy_loss, dummy_target, dummy_fs, dummy_sofa_path, dummy_lstn_pos)
 
     return desena2020_model
 
@@ -25,6 +26,7 @@ def test_desena2020_uncertainty_is_zero_for_single_certain_direction_when_hmin_i
     
     desena2020_model = make_model()
     desena2020_model.Hmin = 0
+    
     weighted_likelihood = torch.zeros(1,1,37, dtype=torch.float64)
     weighted_likelihood[0,0,18] = 1.0
     distance = {

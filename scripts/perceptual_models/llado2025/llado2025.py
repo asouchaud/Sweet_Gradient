@@ -5,7 +5,7 @@ import numpy as np
 from scripts.helpers.dsp import softmax_st
 
 from scripts.helpers.miscelaneous import get_hrirs_for_template
-from scripts.helpers.miscelaneous import near_field_comp_angles
+from scripts.helpers.miscelaneous import pos2angle
 from scripts.helpers.miscelaneous import load_gtfb
 
 from scripts.helpers.peripheral_processing import estimate_interauralcues
@@ -14,9 +14,11 @@ from scripts.helpers.template_comparison import itd_ild_template_distance
 
 
 class llado2025(nn.Module):
-    def __init__(self, loss, target_pos, fs, sofa_path, lstn_pos = None, spk_pos = None, tau_IACC=0.01, tau_L=1, device = 'cpu', dtype = torch.float64):
+    def __init__(self, loss, target_pos, fs, sofa_path, lstn_pos, spk_pos = None, tau_IACC=0.01, tau_L=1, device = 'cpu', dtype = torch.float64):
         super(llado2025, self).__init__()
         
+        self.name = "llado2025"
+        self.ref_flag = 0
         self.fs = fs
         self.device = device
         self.dtype = dtype
@@ -71,15 +73,9 @@ class llado2025(nn.Module):
     def _set_target(self, target_pos):
 
         target_pos = torch.as_tensor(target_pos, device=self.device, dtype=self.dtype)
-
-        if isinstance(self.lstn_pos, type(None)):
-            target = torch.rad2deg(torch.atan2(target_pos[1], target_pos[0]))
-        elif isinstance(self.lstn_pos, list):
-            target = near_field_comp_angles(target_pos, self.lstn_pos)
-        else:
-            print("Wrong data type, defaulting to global target position angle")
-            target = torch.rad2deg(torch.atan2(target_pos[1], target_pos[0]))
-
+        
+        target = pos2angle(target_pos, self.lstn_pos) # TODO: Should the target angles match the available angles in the SOFA files e.g. target at 0.3 deg but 0.0 only available in SOFA
+        
         return target_pos, target
 
 

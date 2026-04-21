@@ -5,7 +5,7 @@ import numpy as np
 from scripts.perceptual_models.llado2025.DEPRACTED_llado2025_helpers import hilbert_transform
 from scripts.perceptual_models.llado2025.DEPRACTED_llado2025_helpers import softmax_st
 
-from scripts.setup.helpers import true_conv1d
+from scripts.setup.DEPRACTED_helpers import causal_conv1d
 
 
 def llado2025_estimateinterauralcues(bin_stim,fs,gtfb, tau_IACC=0.01):

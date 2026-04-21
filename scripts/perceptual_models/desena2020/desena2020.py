@@ -2,8 +2,7 @@ import torch
 import torch.nn as nn
 
 
-from scripts.helpers.miscelaneous import get_hrirs_for_template
-from scripts.helpers.miscelaneous import load_gtfb
+from scripts.helpers.miscelaneous import get_hrirs_for_template, load_gtfb, set_target
 
 from scripts.helpers.peripheral_processing import estimate_interauralcues
 
@@ -13,14 +12,18 @@ from scripts.helpers.dsp import rms
 
 
 class desena2020(nn.Module):
-    def __init__(self, loss, target, fs, sofa_path, tau_IACC=0.01, device = 'cpu', dtype = torch.float64):
+    def __init__(self, loss, target, fs, sofa_path, lstn_pos, tau_IACC=0.01, device = 'cpu', dtype = torch.float64):
         super(desena2020, self).__init__()
 
+        self.name = "desena2020"
+        self.ref_flag = 0
         self.fs = fs
         self.device = device
         self.dtype = dtype 
         
         self.tau_IACC = tau_IACC
+
+        self.lstn_pos = lstn_pos
 
         self.gtfb = load_gtfb(fs, device, dtype)
         hrirs = get_hrirs_for_template(sofa_path, device, dtype)
@@ -33,7 +36,7 @@ class desena2020(nn.Module):
         self.Hmin = 0
         self.Hmin = self._set_Hmin() # Hard coded APPARENT SADIE value
 
-        self.target = target
+        self.target = set_target(lstn_pos, target)
         self.loss = loss
         self.loss_norm = 1.0 # No normalization needed for uncertainty as it is already between 0 and 1
         
@@ -129,5 +132,8 @@ class desena2020(nn.Module):
         Hmin = torch.min(estimated_uncertainty)
 
         return(Hmin)
+    
+
+        
     
 

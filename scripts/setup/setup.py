@@ -8,6 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__))))
 import random
 import torch
 import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F 
 import numpy as np
 import scipy
@@ -16,7 +17,6 @@ from pathlib import Path
 import re
 
 from scripts.helpers.peripheral_processing import estimate_interauralcues
-
 
 
 def set_seed(seed=44):
@@ -83,7 +83,7 @@ def load_hrirs(dtype, device, sofa_path = os.path.join('data', 'impulses', 'SOFA
 
 def load_template(hrirs, gtfb, fs, device, dtype):
     # Compute Interaural Cues for Template
-    template_dict = estimateinterauralcues(hrirs.unsqueeze(0),fs, gtfb=gtfb, tau_IACC = 1e-2)
+    template_dict = estimate_interauralcues(hrirs.unsqueeze(0),fs, gtfb=gtfb, tau_IACC = 1e-2)
     template_dict['azimuths'] = torch.arange(-90,95,5,dtype=dtype, device=device, requires_grad=True).view(-1,1)
     template_dict['ild'] = template_dict['ild'].squeeze()
     template_dict['itd'] = template_dict['itd'].squeeze()
@@ -109,7 +109,7 @@ def load_sofa_gtfb_template(device, dtype, fs):
     gtfb = torch.tensor(np.real(MATLAB_GTFB_dict['gtfb'].T), dtype=torch.float, device=device).unsqueeze(1)
 
     # Compute Interaural Cues for Template
-    template_dict = estimateinterauralcues(bin_stim.unsqueeze(0),fs, gtfb=gtfb, tau_IACC = 1e-2)
+    template_dict = estimate_interauralcues(bin_stim.unsqueeze(0),fs, gtfb=gtfb, tau_IACC = 1e-2)
     template_dict['azimuths'] = torch.arange(-90,95,5,dtype=dtype, device=device, requires_grad=True).view(-1,1)
     template_dict['ild'] = template_dict['ild'].squeeze()
     template_dict['itd'] = template_dict['itd'].squeeze()

@@ -5,7 +5,17 @@ import os
 import scipy
 
 
+def get_IRs(idx, sofaile, device = 'cpu', dtype = torch.float64):
+    # Get hrir
+    assert isinstance(idx, type(np.array([0])))
+
+    hrir = torch.tensor(sofaile.Data_IR[idx], device=device, dtype=dtype)
+
+    return hrir
+
 def sofa_find(angle, sofaile, elv = 0):
+
+    assert len(angle.shape) == 1 
     
     # Find index of closest angle in sofaile.SourcePosition
     sofa_angles = sofaile.SourcePosition[:, :2] % 360  # N_y x (az, elv)
@@ -14,6 +24,8 @@ def sofa_find(angle, sofaile, elv = 0):
     diff = sofa_angles[:, None, :] - angles[None, :, :]  # N_y x N_x x (az, elv)
     dist = np.linalg.norm(diff, axis=-1)  # N_y x N_x
     idx = np.argmin(dist, axis=0)  # N_x
+    
+    assert np.allclose(sofaile.SourcePosition[idx, :2], angles, rtol = 1) #TODO: Set rtol to value that makes sense
 
     return idx
 
@@ -40,28 +52,21 @@ def near_field_target(target):
     x = torch.tensor(1.732, device=theta.device, dtype=theta.dtype)
     y = torch.tan(theta) * x
     
-
     return torch.stack((x, y)) # Works only for loudspeakers at x = 1 
 
 
 
-def near_field_comp_angles(target_pos, lstn_pos_conf):
+def pos2angle(target_pos, lstn_pos):
+
+    assert type(target_pos) == torch.Tensor
     
-    # # Project into complex 
-    # lstn_pos_conf_tensor = torch.tensor(lstn_pos_conf)
-    # vec_diff = target_pos.expand_as(lstn_pos_conf_tensor) - lstn_pos_conf_tensor
-
-    # vec_i = torch.tensor([vec_diff[:,0], 1j*vec_diff[:,1]])
-    # # Find angle via complex plane angle
-    # theta = torch.rad2deg(torch.angle(vec_i))
-
-    lstn_pos_conf_tensor = torch.as_tensor(
-    lstn_pos_conf, 
+    lstn_pos_tensor = torch.as_tensor(
+    lstn_pos, 
     dtype=target_pos.dtype, 
     device=target_pos.device
     )
 
-    vec_diff = target_pos - lstn_pos_conf_tensor  # (N, 2)
+    vec_diff = target_pos - lstn_pos_tensor  # (N, 2)
 
     # Angle relative to (1, 0)
     theta = torch.rad2deg(torch.atan2(vec_diff[:, 1], vec_diff[:, 0]))
@@ -84,3 +89,22 @@ def load_gtfb(fs, device = 'cpu', dtype = torch.float64):
         gtfb = torch.nn.functional.interpolate(gtfb, size=num_samples, mode='linear', align_corners=False)
 
     return gtfb
+
+
+def set_target(lstn_pos, target):
+    ## TODO: Make this dependent on listener position?
+    assert type(lstn_pos) == torch.Tensor
+
+    if isinstance(target, (int, float)):
+        target_tensor = torch.full((len(lstn_pos),), target, device=lstn_pos.device, dtype=lstn_pos.dtype)
+    
+    elif isinstance(target, torch.Tensor):
+        if target.numel() == 1:
+            target_tensor = torch.full((len(lstn_pos),), target.item(), device=lstn_pos.device, dtype=lstn_pos.dtype)
+        else:
+            target_tensor = target.to(device=lstn_pos.device, dtype=lstn_pos.dtype)
+    
+    else:
+        raise ValueError("Target must be int, float or torch.Tensor")
+    
+    return target_tensor

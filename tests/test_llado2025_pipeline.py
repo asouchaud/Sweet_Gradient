@@ -15,15 +15,16 @@ def make_model() -> llado2025:
     dummy_loss = torch.nn.functional.mse_loss
     dummy_target = [100, float(np.tan(np.deg2rad(0.0)) * 100)]
     dummy_fs = 48000
+    dummy_lstn_pos = torch.tensor([[0.0, 0.0]], dtype=torch.float64)
     dummy_sofa_path = str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
-    llado2025_model = llado2025(dummy_loss, dummy_target, dummy_fs, dummy_sofa_path)
+    llado2025_model = llado2025(dummy_loss, dummy_target, dummy_fs, dummy_sofa_path, dummy_lstn_pos)
 
     return(llado2025_model)
 
 def make_template() -> dict[str, torch.Tensor]:
     # As in the distance tests, we use a simple synthetic three-angle template with 24 bands.
     # The cue values are -1, 0 and +1, corresponding to -30, 0 and +30 degrees.
-    angles = torch.tensor([-30.0, 0.0, 30.0], dtype=torch.float32).view(-1, 1)
+    angles = torch.tensor([-30.0, 0.0, 30.0], dtype=torch.float64).view(-1, 1)
     cues = (angles / 30.0).repeat(1, 24)
 
     return {
@@ -39,8 +40,8 @@ def estimate_localisation(target_value: float) -> torch.Tensor:
     model = make_model()
     template = make_template()
     target = {
-        "itd": torch.full((1, 1, 24), target_value, dtype=torch.float32),
-        "ild": torch.full((1, 1, 24), target_value, dtype=torch.float32),
+        "itd": torch.full((1, 1, 24), target_value, dtype=torch.float64),
+        "ild": torch.full((1, 1, 24), target_value, dtype=torch.float64),
     }
     model.template = template
 

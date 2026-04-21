@@ -9,7 +9,7 @@ import torchaudio.functional as TF
 
 from scripts.perceptual_models.time_matching.time_matching_helpers import near_field_comp_angles
 from scripts.perceptual_models.time_matching.time_matching_helpers import time_match
-from scripts.setup.helpers import true_conv1d
+from scripts.setup.DEPRACTED_helpers import true_conv1d
 
 
 class time_matching(nn.Module):

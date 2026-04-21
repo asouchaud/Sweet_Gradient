@@ -7,82 +7,40 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchaudio.functional as TF
 
-from scripts.perceptual_models.spectral_matching.spectral_matching_helpers import near_field_comp_angles
-from scripts.perceptual_models.spectral_matching.spectral_matching_helpers import log_spectral_distortion
-from scripts.helpers.dsp import causal_conv1d
+from scripts.helpers.miscelaneous import pos2angle, sofa_find, get_IRs, set_target
+from scripts.helpers.dsp import causal_conv1d, compute_reference_bin
 
 
 class spectral_matching(nn.Module):
     supports_listener_indices = True
 
-    def __init__(self, loss, target, stim, hrirs, target_pos, fs, lstn_pos_conf = None, n_fft=4096, sofa_path = os.path.join('data', 'impulses', 'SOFA', 'SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa')):
+    def __init__(self, loss, target, target_pos, fs, sofa_path, lstn_pos, n_fft=4096, eps = 1e-8, device = 'cpu', dtype = torch.float64):
         super(spectral_matching, self).__init__()
-        
-        if stim is None or hrirs is None or fs is None:
-            raise ValueError("stim, hrirs, and fs are required.")
 
-        self.dtype = hrirs.dtype
-        self.device = hrirs.device
 
+        self.name = "spectral_matching"
+        self.ref_flag = 1
         self.fs = fs
+        self.device = device
+        self.dtype = dtype 
+
+        self.eps = eps
         self.n_fft = n_fft
-        self.hrirs = hrirs
-        self.stim = stim
         self.sofaile = sf.read_sofa(sofa_path)
 
+        self.lstn_pos = lstn_pos
         self.target_pos = torch.as_tensor(target_pos, device=self.device, dtype=self.dtype).reshape(-1)
         if self.target_pos.numel() != 2:
             raise ValueError("target_pos must contain exactly two coordinates.")
 
-        if isinstance(lstn_pos_conf, type(None)):
-            self.target_angle = torch.rad2deg(torch.atan2(self.target_pos[1], self.target_pos[0]))
-            self.reference_hrir = self.get_IR(self.sofa_find(self.target_angle)).view(2,1,-1).to(dtype=self.dtype, device=self.device)
-            self.reference_stim = causal_conv1d(self.stim, self.reference_hrir)
+        reference_stim, low_stim = self._set_references()
 
-            low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
-
-        elif isinstance(lstn_pos_conf, list):
-            self.target_angle = near_field_comp_angles(self.target_pos, lstn_pos_conf)
-
-            self.reference_hrir = self.get_IR(self.sofa_find(self.target_angle)).view(2*len(lstn_pos_conf),1,-1).to(dtype=self.dtype, device=self.device)
-            self.reference_stim = causal_conv1d(self.stim, self.reference_hrir).view(len(lstn_pos_conf), 2, -1)
-
-            low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
-        else:
-            print("Wrong data type, defaulting to global target position angle")
-            self.target_angle = torch.rad2deg(torch.atan2(self.target_pos[1], self.target_pos[0])) # TODO: this repeats the code of  isinstance(lstn_pos_conf, type(None)). Please fix. 
-            self.reference_hrir = self.get_IR(self.sofa_find(self.target_angle)).view(2,1,-1).to(dtype=self.dtype, device=self.device)
-            self.reference_stim = causal_conv1d(self.stim, self.reference_hrir)
-            low_stim = TF.lowpass_biquad(self.reference_stim, self.fs, 7000)
-
-        self.target = target
+        self.target = set_target(self.lstn_pos, target)
         self.loss = loss
-        self.loss_norm = log_spectral_distortion(self.reference_stim, low_stim).mean().item() # Maximum possible loss for normalization
+        self.loss_norm = self._log_spectral_distortion(reference_stim, low_stim).mean().item() # Maximum possible loss for normalization
+    
 
-    def sofa_find(self, spk_angle):
-        # Take out distance coordinate from SOFA source position and add elv = 0 to speaker angles
-        spk_angle = torch.as_tensor(spk_angle%360, device=self.device, dtype = self.dtype).view(-1,1)
-        pos = torch.tensor(self.sofaile.SourcePosition[:,:2],device=self.device, dtype = self.dtype)
-        spk_angle = torch.concat((spk_angle, torch.zeros_like(spk_angle)), dim=1).to(self.device).to(self.dtype)
-
-        # Calculate vector between speaker angles and source position angles
-        diff = spk_angle[:,None,:] - pos[None,:,:]
-
-        # Calculate vector norm
-        dists = torch.linalg.vector_norm(diff, dim = 2)
-
-        # Find minium amongst the vector norms
-        spk_idx = torch.argmin(dists, dim = 1)
-        
-        return spk_idx
-
-    def get_IR(self, spk_idx):
-        # Get hrir
-        hrir = torch.tensor(self.sofaile.Data_IR[spk_idx.cpu().numpy()], device=self.device, dtype = self.dtype)
-
-        return hrir
-
-    def forward(self, bin_stim, listener_indices=None):
+    def forward(self, bin_stim, reference_stim, listener_indices):
         # Expects bin_stim as (batch, n_listeners, 2, T), where 2 is the left and right ear and T is the number of time samples of each ear signal;
         # returns coloration scores with shape (batch, n_listeners) for ListenerBasedLoss (target subset + expand_as).
 
@@ -90,27 +48,96 @@ class spectral_matching(nn.Module):
             raise ValueError(
                 f"bin_stim must have shape (batch, n_listeners, 2, T); got ndim={len(bin_stim.shape)}, shape={tuple(bin_stim.shape)}."
             )
-        batch_size = bin_stim.shape[0]
-        N_lstn_pos = bin_stim.shape[1]
-    
-        N_signals = batch_size*N_lstn_pos
+        n_stim = bin_stim.shape[0]
+        n_lstn = bin_stim.shape[1]
         L_signal = bin_stim.shape[-1]
-        bin_stim_reshaped = bin_stim.view(N_signals, 2, L_signal)
-
-        reference_stim_base = self.reference_stim
-        if reference_stim_base.ndim == 2:
-            reference_stim_base = reference_stim_base.unsqueeze(0)
-        if listener_indices is not None and reference_stim_base.shape[0] != 1:
-            idx = torch.as_tensor(listener_indices, device=reference_stim_base.device, dtype=torch.long)
-            reference_stim_base = reference_stim_base[idx]
-
-        if reference_stim_base.shape[0] == 1:
-            reference_stim = reference_stim_base.expand_as(bin_stim_reshaped)
-        else:
-            if reference_stim_base.shape[0] != N_lstn_pos:
-                raise ValueError("reference_stim and bin_stim disagree on the number of listener positions.")
-            reference_stim = reference_stim_base.repeat(batch_size, 1, 1)
         
-        coloration = log_spectral_distortion(bin_stim_reshaped, reference_stim)
+        bin_stim_reshaped = bin_stim.view(n_stim*n_lstn, 2, L_signal)
 
-        return coloration.view(batch_size, N_lstn_pos)
+        reference_bin = compute_reference_bin(reference_stim=reference_stim, 
+                                              reference_hrirs=self.reference_hrirs, 
+                                              listener_indices=listener_indices)
+
+        colouration = self._log_spectral_distortion(bin_stim_reshaped, reference_bin) #TODO: Normalise both between 0 and 1 to not have difference in level
+
+        return colouration.view(n_stim, n_lstn)
+
+
+    def _set_references(self):
+        assert type(self.lstn_pos) == torch.Tensor, "lstn_pos must be a Torch tensor here"
+        
+        target_angles = pos2angle(self.target_pos, self.lstn_pos)
+
+        src_idx = sofa_find(target_angles, self.sofaile)
+
+        # HRIRs: (n_listeners, 2, ir_len) — 2 = left ear, right ear
+        self.reference_hrirs = get_IRs(src_idx, self.sofaile, self.device, self.dtype)
+
+        reference_stim = causal_conv1d(torch.randn(1,1,self.fs, device=self.device, dtype = self.dtype), self.reference_hrirs.view(len(self.lstn_pos*2),1,-1)).view(len(self.lstn_pos),2, -1)
+        low_stim = TF.lowpass_biquad(reference_stim, self.fs, 7000)
+
+        return(reference_stim, low_stim)
+
+
+    def _log_spectral_distortion(self, x, y):
+        """
+        Compute LSD between two time signals.
+
+        Args:
+            x, y: tensors of shape [a, b, c]
+            n_fft: FFT size (default: c)
+
+        Returns:
+            LSD tensor of shape [a]
+        """
+
+        assert len(x.shape) == 3
+        assert len(y.shape) == 3
+
+        # FFT along time dimension
+        X = torch.fft.rfft(x, n=self.n_fft, dim=-1)
+        Y = torch.fft.rfft(y, n=self.n_fft, dim=-1)
+
+        # Magnitude
+        X_mag = torch.abs(X)
+        Y_mag = torch.abs(Y)
+
+        # Log magnitude (dB)
+        log_X = 20 * torch.log10(X_mag + self.eps)
+        log_Y = 20 * torch.log10(Y_mag + self.eps)
+
+        # Normalise FFTs
+        # First find the max abs of the log max FFTs along the frequency dimension for both ears,
+        # then find it over the ears and normalise the listners compared to that
+        norm_X = torch.max(torch.max(torch.abs(log_X), dim = -1, keepdim=True).values, dim = -2, keepdim=True).values # TODO: Is this an in-place operation and therefore destroys the computational graph
+        norm_Y = torch.max(torch.max(torch.abs(log_Y), dim = -1, keepdim=True).values, dim = -2, keepdim=True).values
+        
+        log_X = log_X / norm_X.clamp(min=self.eps)
+        log_Y = log_Y / norm_Y.clamp(min=self.eps)
+
+        # LSD over frequency bins
+        lsd_freq = torch.sqrt(torch.mean((log_X - log_Y) ** 2, dim=-1))  # [a, b]
+
+        # Average across b
+        lsd = lsd_freq.mean(dim=-1)  # [a]
+
+        return lsd
+
+
+    # def _set_target(self, target):
+    #     # TODO: Make uncertainty target vary by position?
+
+    #     if isinstance(target, int) or isinstance(target, float):
+            
+    #         target_tensor = target*torch.ones(len(self.lstn_pos))
+        
+    #     elif isinstance(target, type(torch.tensor([0]))):
+    #         if len(target) == 1:
+    #             target_tensor = target.item()*torch.ones(len(self.lstn_pos))
+    #         else:
+    #             target_tensor = target
+
+    #     else:
+    #         raise ValueError("Target must be int, float or torch tensor")
+        
+    #     return(target_tensor)

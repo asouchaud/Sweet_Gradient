@@ -7,8 +7,10 @@ def softmax_st(z, dim = -1, tau=1.0):
     y_hard = torch.zeros_like(z).scatter_(dim, index, 1.0)
     return (y_hard - y_soft).detach() + y_soft
 
+
 def math_conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     return torch.nn.functional.conv1d(input, torch.flip(weight, dims = [-1]), bias, stride, padding, dilation, groups)
+
 
 def causal_conv1d(input, weight):
     K = weight.shape[-1]
@@ -16,6 +18,7 @@ def causal_conv1d(input, weight):
     out = torch.nn.functional.conv1d(pad_input, torch.flip(weight, [-1]))
     
     return out
+
 
 def hilbert_transform(x):
     """
@@ -41,8 +44,10 @@ def hilbert_transform(x):
     x_analytic = torch.fft.ifft(Xf_filtered, dim=-1)
     return x_analytic  # Complex tensor: real + j*hilbert(real)
 
+
 def rms(x, dim, keepdim = False):
     return torch.sqrt(torch.mean(x**2, dim=dim, keepdim=keepdim))
+
 
 def l3_loss(input, target, reduction="mean"):
     loss = torch.abs(input - target) ** 3
@@ -52,3 +57,20 @@ def l3_loss(input, target, reduction="mean"):
         return loss.sum()
     else:
         return loss
+
+
+def calculate_source_angle_2D(vec1):
+    vec1_i = vec1[:, 0] + 1j * vec1[:, 1]
+    theta = torch.rad2deg(torch.angle(vec1_i))%360
+    return theta
+
+
+def compute_reference_bin(reference_stim, reference_hrirs, listener_indices):
+    # Compute reference binaural signal (convolution of stimulus with HRIR)
+    n_lstn = len(listener_indices)
+    n_stim = len(reference_stim)
+    hrirs = reference_hrirs[listener_indices].view(2*n_lstn, 1, -1) # Reshape to (2*n_listeners, 1, ir_len) for convolution
+
+    reference_bin = causal_conv1d(reference_stim, hrirs).view(n_stim, n_lstn, 2, -1) # Reshape back to (n_stim, n_listeners, 2, signal_len)
+
+    return reference_bin.view(n_stim * n_lstn, 2, -1) # Reshape to (n_stim*n_listeners, 2, signal_len) for LSD calculation

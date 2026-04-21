@@ -3,8 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from scripts.helpers.miscelaneous import near_field_target
-from scripts.helpers.miscelaneous import near_field_comp_angles
+from scripts.helpers.miscelaneous import near_field_target, pos2angle
 from scripts.helpers.dsp import softmax_st
 
 
@@ -18,13 +17,13 @@ def test_near_field_target_at_zero_degrees_lies_on_x_axis() -> None:
     assert target_pos[1].item() == pytest.approx(0.0, abs=1e-6)
 
 
-def test_near_field_comp_angles_are_symmetric_around_centre_listener() -> None:
+def test_pos2angle_are_symmetric_around_centre_listener() -> None:
     # This checks the geometry helper for a symmetric listener layout around the y-axis.
     # The target is straight ahead at 0 degrees, and the listeners are placed at y = 0, +0.5, -0.5.
-    target_pos = near_field_target(0.0)
-    listeners = [[0.0, 0.0], [0.0, 0.5], [0.0, -0.5]]
+    target_pos = torch.tensor([[1.0, 0.0]], dtype=torch.float64)
+    listeners = torch.tensor([[0.0, 0.0], [0.0, 0.5], [0.0, -0.5]], dtype=torch.float64)
 
-    angles = near_field_comp_angles(target_pos, listeners)
+    angles = pos2angle(target_pos, listeners)
 
     # The centre listener should see the source at exactly 0 degrees.
     assert angles[0].item() == pytest.approx(0.0, abs=1e-6)

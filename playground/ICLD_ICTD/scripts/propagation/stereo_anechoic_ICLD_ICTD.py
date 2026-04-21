@@ -7,7 +7,7 @@ import sofar as sf
 import numpy as np
 import pyfar as pf 
 
-from scripts.setup.helpers import math_conv1d 
+from scripts.setup.DEPRACTED_helpers import math_conv1d 
 
 ## Stereo anechoic class definition
 

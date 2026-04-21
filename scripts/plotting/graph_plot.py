@@ -469,6 +469,10 @@ def plot_color(bin_stim, ref_stim, lstn_pos, show = True):
     bin_stim_fft = 20*np.log(np.abs(np.fft.rfft(bin_stim, n=n_fft, axis = -1)))
     ref_fft = 20*np.log(np.abs(np.fft.rfft(ref_stim_np, n=n_fft, axis = -1)))
 
+    if len(bin_stim_fft.shape) == 4 and len(ref_fft.shape) == 4:
+        bin_stim_fft = bin_stim_fft.mean(axis=0)
+        ref_fft = ref_fft.mean(axis=0)
+
     if len(bin_stim_fft.shape) == 2:
         bin_stim_fft = bin_stim_fft[None,:,:]
     if ref_fft.shape[0] == 1:
