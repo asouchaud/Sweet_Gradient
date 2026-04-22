@@ -67,6 +67,12 @@ def calculate_source_angle_2D(vec1):
 
 def compute_reference_bin(reference_stim, reference_hrirs, listener_indices):
     # Compute reference binaural signal (convolution of stimulus with HRIR)
+
+    assert reference_stim.dim() == 3, "reference_stim should have shape (batch_size, 1, signal_length)"
+    assert reference_stim.shape[1] == 1, "reference_stim should have a single channel dimension"
+    assert reference_hrirs.dim() == 3, "reference_hrirs should have shape (n_listeners*2, 1, ir_length)"
+    
+
     n_lstn = len(listener_indices)
     n_stim = len(reference_stim)
     hrirs = reference_hrirs[listener_indices].view(2*n_lstn, 1, -1) # Reshape to (2*n_listeners, 1, ir_len) for convolution
