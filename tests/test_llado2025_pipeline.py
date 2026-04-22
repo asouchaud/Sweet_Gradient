@@ -72,3 +72,16 @@ def test_localisation_estimator_changes_sign_with_target_cues() -> None:
     # estimate should recover the corresponding template azimuths exactly: -30 and +30 degrees.
     assert left_estimate == pytest.approx(-30.0, abs=1e-6)
     assert right_estimate == pytest.approx(30.0, abs=1e-6)
+
+
+def test_llado2025_output_shape() -> None:
+    # The model should output a single azimuth estimate per listener.
+    model = make_model()
+    
+    batch_size = 4
+    n_listeners = 2
+    bin_stim = torch.randn(batch_size, n_listeners, 2, 64,dtype=torch.float64)
+
+    estimated = model(bin_stim)
+
+    assert estimated.shape == (batch_size, n_listeners)
