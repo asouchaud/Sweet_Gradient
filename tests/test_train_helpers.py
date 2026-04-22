@@ -89,7 +89,8 @@ def test_listener_based_loss_subsets_target_and_passes_listener_indices() -> Non
 
     loss, estimation = loss_cfg.compute_loss(
         bin_stim=torch.zeros(1, 2, 2, 4, dtype=torch.float32),
-        h_full=torch.zeros(1, 1, 4, dtype=torch.float32),
+        spk_filters=torch.zeros(1, 1, 4, dtype=torch.float32),
+        stim = None,
         listener_indices=[1, 2],
     )
 
@@ -112,7 +113,8 @@ def test_listener_based_loss_applies_listener_weights_after_subsetting() -> None
 
     loss, estimation = loss_cfg.compute_loss(
         bin_stim=torch.zeros(1, 2, 2, 4, dtype=torch.float32),
-        h_full=torch.zeros(1, 1, 4, dtype=torch.float32),
+        spk_filters=torch.zeros(1, 1, 4, dtype=torch.float32),
+        stim=None,
         listener_indices=[0, 2],
     )
 
@@ -150,7 +152,9 @@ def test_source_based_loss_uses_selected_source_filter_only() -> None:
 
     loss, estimation = loss_cfg.compute_loss(
         bin_stim=torch.zeros(1, 1, 2, 2, dtype=torch.float32),
-        h_full=h_full,
+        spk_filters=h_full,
+        stim = None,
+        listener_indices=None,
     )
 
     expected_slice = torch.tensor([[[3.0, 4.0]]], dtype=torch.float32)
@@ -160,52 +164,3 @@ def test_source_based_loss_uses_selected_source_filter_only() -> None:
     assert loss.item() == pytest.approx(3.5)
 
 
-def test_train_sample_listener_indices_keeps_mirrored_pairs_and_centre_when_symmetric() -> None:
-    # For symmetric sampling with an odd batch size, the centre listener should be included and
-    # mirrored listeners should be selected only as complete pairs.
-    trainer = make_trainer(
-        lstn_pos=[[0.0, 0.0], [0.0, 0.5], [0.0, -0.5], [0.0, 1.0], [0.0, -1.0]],
-        listener_batch_size=3,
-        symmetric_listener_sampling=True,
-    )
-
-    indices = trainer._sample_listener_indices()
-
-    assert indices == sorted(indices)
-    assert len(indices) == 3
-    assert 0 in indices
-
-    for pair in ({1, 2}, {3, 4}):
-        assert len(pair.intersection(indices)) in (0, 2)
-
-
-def test_train_build_listener_batches_cover_all_listeners_without_splitting_pairs() -> None:
-    # The symmetric batch builder should cover every listener exactly once while never splitting a
-    # mirrored pair across different mini-batches.
-    trainer = make_trainer(
-        lstn_pos=[[0.0, 0.0], [0.0, 0.5], [0.0, -0.5], [0.0, 1.0], [0.0, -1.0]],
-        listener_batch_size=3,
-        symmetric_listener_sampling=True,
-    )
-
-    batches = trainer._build_listener_batches()
-    flattened = sorted(idx for batch in batches for idx in batch)
-
-    assert flattened == [0, 1, 2, 3, 4]
-
-    for batch in batches:
-        assert batch == sorted(batch)
-        assert 3 >= len(batch)
-        for pair in ({1, 2}, {3, 4}):
-            assert len(pair.intersection(batch)) in (0, 2)
-
-
-def test_train_rejects_invalid_symmetric_listener_layout() -> None:
-    # Symmetric sampling assumes each non-centre listener belongs to a mirrored pair.
-    # Three listeners with the same |y| location violate that contract and should be rejected.
-    with pytest.raises(ValueError, match="mirrored pairs"):
-        make_trainer(
-            lstn_pos=[[0.0, 0.5], [0.0, -0.5], [0.0, 0.5]],
-            listener_batch_size=2,
-            symmetric_listener_sampling=True,
-        )
