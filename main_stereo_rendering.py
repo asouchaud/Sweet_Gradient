@@ -27,6 +27,7 @@ from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagat
 from scripts.perceptual_models.llado2025.llado2025 import llado2025
 from scripts.perceptual_models.desena2020.desena2020 import desena2020
 from scripts.perceptual_models.spectral_matching.spectral_matching import spectral_matching
+from scripts.perceptual_models.ipd.ipd import interaural_phase_difference_matching
 
 from scripts.optimisation.regularisation import second_moment_regularisation
 
@@ -56,7 +57,7 @@ def run_experiment(loss_dict_builder, run_label):
         fs=fs,
     )
     env.dtype = torch.float64
-    env.device_str = "cuda"
+    env.device_str = "cpu"
     env.device = torch.device(env.device_str)
 
     assert isinstance(env.listener_batch_size, int), "listener_batch_size must be set to positive integer"
@@ -92,11 +93,10 @@ def run_experiment(loss_dict_builder, run_label):
     loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, device=env.device, dtype=env.dtype) # Llado et al. 2025 model
     col_model = spectral_matching(loss = F.l1_loss, target = 0, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, device=env.device, dtype=env.dtype) # Spectral Matching model
     unc_model = desena2020(loss = F.l1_loss, target = 0, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, device=env.device, dtype=env.dtype) # De Sena et al. 2020 model
+    ipd_model = interaural_phase_difference_matching(loss = F.l1_loss, target = 0, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, device=env.device, dtype=env.dtype) # Interaural Phase Difference model
     regularisation = second_moment_regularisation(n_samples=env.n_filter_taps, device=env.device, dtype=env.dtype)
     # loss_dict = loss_dict_builder(loc_model, col_model, unc_model, regularisation, env.device, env.dtype)
-    loss_dict = {"localisation": ListenerBasedLoss(loc_model, 1, env.device, env.dtype),
-                 "uncertainty": ListenerBasedLoss(unc_model, 1, env.device, env.dtype),
-                 "colouration": ListenerBasedLoss(col_model, 1, env.device, env.dtype)}
+    loss_dict = {"ipd": ListenerBasedLoss(ipd_model, 1, env.device, env.dtype)}
 
     # Initialise neural network
     nn_model = MultiSourceFIR(

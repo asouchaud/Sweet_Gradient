@@ -55,27 +55,27 @@ class interaural_phase_difference_matching(nn.Module):
             raise ValueError("Expected bin_stim.shape[2] == 2 (left/right).")
 
         batch_size, n_lstn_pos, _two, t = bin_stim.shape
-        bin_reshaped = bin_stim.view(batch_size * n_lstn_pos, 2, t)
 
         reference_bin = compute_reference_bin(reference_stim=reference_stim, 
                                               reference_hrirs=self.reference_hrirs, 
-                                              listener_indices=listener_indices)
+                                              listener_indices=listener_indices).view(batch_size, n_lstn_pos, 2, t)
         
-        assert bin_reshaped.shape == reference_bin.shape, f"Expected bin_stim and reference_bin to have the same shape after reshaping, but got {bin_reshaped.shape} and {reference_bin.shape}."
 
-        bin_f = torch.fft.rfft(bin_reshaped, n=self.n_fft, dim=-1)
+        assert bin_stim.shape == reference_bin.shape, f"Expected bin_stim and reference_bin to have the same shape after reshaping, but got {bin_stim.shape} and {reference_bin.shape}."
+
+        bin_f = torch.fft.rfft(bin_stim, n=self.n_fft, dim=-1)
         ref_f = torch.fft.rfft(reference_bin, n=self.n_fft, dim=-1)
 
         # IPD := phase(L) - phase(R)
-        ipd_bin = self._wrap_to_pi(torch.angle(bin_f[:, 0, :]) - torch.angle(bin_f[:, 1, :]))
-        ipd_ref = self._wrap_to_pi(torch.angle(ref_f[:, 0, :]) - torch.angle(ref_f[:, 1, :]))
+        ipd_bin = self._wrap_to_pi(torch.angle(bin_f[:, :, 0, :]) - torch.angle(bin_f[:, :, 1, :]))
+        ipd_ref = self._wrap_to_pi(torch.angle(ref_f[:, :, 0, :]) - torch.angle(ref_f[:, :, 1, :]))
 
         ipd_err = self._wrap_to_pi(ipd_bin - ipd_ref)
 
         freqs = torch.fft.rfftfreq(self.n_fft, d=1.0 / float(self.fs)).to(device=ipd_err.device)
         mask = (freqs >= self.fmin) & (freqs <= self.fmax)
         if mask.any():
-            ipd_err = ipd_err[:, mask]
+            ipd_err = ipd_err[:, :, mask]
 
         # Mean absolute wrapped phase error per signal.
         return torch.mean(torch.abs(ipd_err), dim=-1)
