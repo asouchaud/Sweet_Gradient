@@ -73,7 +73,7 @@ def test_ipd_zero_when_bin_equals_reference() -> None:
     out = model(torch.zeros(1,1,2,64, dtype=torch.float64), 
                 torch.zeros(1,1,64, dtype=torch.float64), 
                 dummy_lstn_idx)
-    assert out.shape == (1 * 1,)
+    assert out.shape == (1,1)
     assert float(out.item()) == pytest.approx(0.0, abs=1e-8)
 
 
@@ -104,7 +104,7 @@ def test_ipd_output_shape_and_bounds() -> None:
     ref = torch.randn(batch, 1, t, dtype=torch.float64)
     out = model(bin_stim, ref, dummy_lstn_idx)
 
-    assert out.shape == (batch * n_listeners,)
+    assert out.shape == (batch, n_listeners)
     assert torch.all(out >= 0.0)
     assert torch.all(out <= float(torch.pi) + 1e-5)
 
@@ -133,4 +133,4 @@ def test_ipd_mask_empty_does_not_crash() -> None:
     out = model(torch.zeros(1, 1, 2, 128, dtype=torch.float64),
                 torch.zeros(1, 1, 128, dtype=torch.float64),
                 dummy_lstn_idx)
-    assert out.shape == (1 * 1,)
+    assert out.shape == (1,1)
