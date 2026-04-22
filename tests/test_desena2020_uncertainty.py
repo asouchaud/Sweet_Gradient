@@ -53,3 +53,16 @@ def test_desena2020_uncertainty_is_one_for_uniform_likelihood_when_resultant_vec
 
     assert uncertainty.shape == (1, 1)
     assert uncertainty.item() == pytest.approx(1.0, abs=1e-8)
+
+
+def test_desena2020_uncertainty_output_shape() -> None:
+    # The output shape should be (batch, n_listeners), which is (2, 5) in this test case.
+    desena2020_model = make_model()
+
+    batch_size = 4
+    n_listeners = 2
+    bin_stim = torch.randn(batch_size, n_listeners, 2, 64, dtype=torch.float64)
+
+    uncertainty = desena2020_model(bin_stim)
+
+    assert uncertainty.shape == (batch_size, n_listeners)
