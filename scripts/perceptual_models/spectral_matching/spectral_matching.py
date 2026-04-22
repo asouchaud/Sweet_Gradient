@@ -122,22 +122,3 @@ class spectral_matching(nn.Module):
         lsd = lsd_freq.mean(dim=-1)  # [a]
 
         return lsd
-
-
-    # def _set_target(self, target):
-    #     # TODO: Make uncertainty target vary by position?
-
-    #     if isinstance(target, int) or isinstance(target, float):
-            
-    #         target_tensor = target*torch.ones(len(self.lstn_pos))
-        
-    #     elif isinstance(target, type(torch.tensor([0]))):
-    #         if len(target) == 1:
-    #             target_tensor = target.item()*torch.ones(len(self.lstn_pos))
-    #         else:
-    #             target_tensor = target
-
-    #     else:
-    #         raise ValueError("Target must be int, float or torch tensor")
-        
-    #     return(target_tensor)
