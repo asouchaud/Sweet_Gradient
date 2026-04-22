@@ -147,7 +147,7 @@ class SourceBasedLoss:
             return 1.0
         return len(listener_indices) / float(n_listeners)
 
-    def compute_loss(self, bin_stim, spk_filters, stim):  # noqa: ARG002 - kept for uniform interface
+    def compute_loss(self, bin_stim, spk_filters, stim, listener_indices=None):  # noqa: ARG002 - kept for uniform interface
         """
         Args:
             bin_stim: Tensor shaped (batch, n_listeners, 2, n_samples), propagated binaural signals, 
