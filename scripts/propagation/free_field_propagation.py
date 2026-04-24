@@ -58,33 +58,7 @@ class SingleSourceBinauralFreeFieldPropagation(nn.Module):
                 if d != 0:
                     self.hrirs[i, 0, :] = torch.roll(self.hrirs[i, 0, :], d, dims=0)
                     self.hrirs[i, 1, :] = torch.roll(self.hrirs[i, 1, :], d, dims=0)
-
-    def _sofa_find(self, source_angle):
-        pos = torch.tensor(
-            self.sofaile.SourcePosition[:, :2],
-            device=self.device,
-            dtype=torch.float32,
-        )%360
-        source_angle = torch.concat(
-            (source_angle, torch.zeros_like(source_angle)), dim=1
-        ).to(self.device, dtype=torch.float32)
-        diff = source_angle[:, None, :] - pos[None, :, :]
-        dists = torch.linalg.vector_norm(diff, dim=2)
-        return torch.argmin(dists, dim=1)
-
-
-    def _get_IRs(self, src_idx):
-        left_ear_IR = torch.tensor(
-            self.sofaile.Data_IR[src_idx.cpu().numpy(), 0],
-            device=self.device,
-            dtype=self.dtype,
-        )
-        right_ear_IR = torch.tensor(
-            self.sofaile.Data_IR[src_idx.cpu().numpy(), 1],
-            device=self.device,
-            dtype=self.dtype,
-        )
-        return torch.stack((left_ear_IR, right_ear_IR), dim=1)
+                    
 
     def forward(self, stim, source_filter, listener_indices):
         """
