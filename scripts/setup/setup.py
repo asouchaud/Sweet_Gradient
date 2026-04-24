@@ -50,7 +50,7 @@ def build_eval_objects(env,
                        eval_lstn_pos = torch.tensor([[0.0 , 0.0], [0.0, 0.5], [0.0, -0.5]], device='cpu', dtype=torch.float64),
                        n_eval_stim = 10):
     
-    eval_stimulus_data_loader, eval_stimulus_dataset = get_stim_loader(env.fs, n_eval_stim, n_eval_stim) # Get new stimulus dataloader for evaluation (to avoid overfitting to training stimuli)
+    eval_stimulus_data_loader, eval_stimulus_dataset = get_stim_loader(env.fs, n_eval_stim, n_eval_stim, stimulus_type=env.selected_stim, device=env.device, dtype=env.dtype) # Get new stimulus dataloader for evaluation (to avoid overfitting to training stimuli)
 
     # Initiate perceptual models
     eval_loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=eval_lstn_pos, spk_pos=env.spk_pos, device=env.device, dtype=env.dtype) # Llado et al. 2025 model
