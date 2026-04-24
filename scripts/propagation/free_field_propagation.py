@@ -44,13 +44,13 @@ class SingleSourceBinauralFreeFieldPropagation(nn.Module):
         src_idx = sofa_find(source_angle, self.sofaile)
 
         # HRIRs: (n_listeners, 2, ir_len) — 2 = left ear, right ear
-        hrirs = get_IRs(src_idx, sofaile=self.sofaile, device=self.device, dtype=self.dtype)
+        self.hrirs = get_IRs(src_idx, sofaile=self.sofaile, device=self.device, dtype=self.dtype)
         
         # Optional per-listener delay (samples) to align with another source
         if delay_samples is not None:
             # Pad to match stimulus length (same as stereo_anechoic: concat with zeros)
             max_delay_samples = delay_samples[1]
-            self.hrirs = torch.nn.functional.pad(hrirs, (0, max_delay_samples))
+            self.hrirs = torch.nn.functional.pad(self.hrirs, (0, max_delay_samples))
             
             # Roll the HRIRs by the corresponding sample delay
             for i in range(self.n_listeners):

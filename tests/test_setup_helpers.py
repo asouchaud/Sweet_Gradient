@@ -25,6 +25,24 @@ def test_causal_conv1d_matches_expected_causal_response() -> None:
     assert torch.allclose(output, expected)
 
 
+def test_causal_conv1d_matches_expected_causal_response_2() -> None:
+    # This is a second test of the same helper with a different kernel and input, to check that the
+    # convolution is being performed correctly and not just accidentally correct for one specific case.
+    input_signal = torch.tensor([[[0.0, 1.0, 0.0, 0.0]]], dtype=torch.float32)
+    kernel = torch.tensor([[[1.0, 0.5, 0.25]]], dtype=torch.float32)
+
+    output = causal_conv1d(input_signal, kernel)
+
+    # Expected values are computed by hand for a causal FIR:
+    # y[0] = 1*0
+    # y[1] = 1*1 + 0.5*0
+    # y[2] = 1*0 + 0.5*1 + 0.25*0
+    # y[3] = 1*0 + 0.5*0 + 0.25*1
+    expected = torch.tensor([[[0.0, 1.0, 0.5, 0.25]]], dtype=torch.float32)
+
+    assert torch.allclose(output, expected)
+
+
 def test_causal_conv1d_preserves_input_length() -> None:
     # The helper is written to implement a "same-length" causal convolution by padding the input on
     # the left by K-1 samples before calling conv1d. This test checks that contract directly.

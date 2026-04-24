@@ -3,9 +3,13 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from pathlib import Path
 import torch
 
+from scripts.helpers.miscelaneous import sofa_find
+
 pytest.importorskip("sofar")
+
 
 from scripts.propagation import free_field_propagation
 
@@ -18,6 +22,55 @@ def _mock_sofa() -> SimpleNamespace:
         SourcePosition=torch.tensor([[0.0, 0.0, 1.0]], dtype=torch.float64).numpy(),
         Data_IR=torch.tensor([[[1.0], [1.0]]], dtype=torch.float64).numpy(),
     )
+
+def test_single_source_free_field_propagation_computes_silent_output_for_silent_input(monkeypatch) -> None:
+    monkeypatch.setattr(free_field_propagation.sf, "read_sofa", lambda _path: _mock_sofa())
+
+    stim = torch.zeros((1, 1, 480), dtype=torch.float64)
+    spk_filters = torch.tensor([[[1.0]]], dtype=torch.float64)
+    lstn_pos = torch.tensor([[0.0, 0.0]], dtype=torch.float64)
+    lstn_idx = torch.tensor([0], dtype=torch.long)
+    spk_pos = torch.tensor([[2.0, 0.0]], dtype=torch.float64)
+
+    propagation = free_field_propagation.SingleSourceBinauralFreeFieldPropagation(
+        fs=48000,
+        lstn_pos=lstn_pos,
+        source_pos=spk_pos[0],
+        sofa_file_path="unused.sofa",
+    )
+
+    output = propagation(stim, spk_filters, lstn_idx)
+
+    expected = torch.zeros((1, 1, 2, 1), dtype=torch.float64)
+
+    assert torch.allclose(output, expected)
+
+
+def test_single_source_free_field_propagation_computes_expected_hrirs_for_unit_impulse_input(monkeypatch) -> None:
+
+    repo_root = Path(__file__).resolve().parent.parent
+
+    spk_filters = torch.tensor([[[1.0]]], dtype=torch.float64)
+    spk_pos = torch.tensor([[2.0, 0.0]], dtype=torch.float64)
+    lstn_pos = torch.tensor([[0.0, 0.0]], dtype=torch.float64)
+    lstn_idx = torch.tensor([0], dtype=torch.long)
+    sofa_path = str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
+    
+    propagation = free_field_propagation.SingleSourceBinauralFreeFieldPropagation(
+        fs=48000,
+        lstn_pos=lstn_pos,
+        source_pos=spk_pos[0],
+        sofa_file_path=sofa_path,
+    )
+
+    idx_0 = sofa_find(0, propagation.sofaile)
+    expected_hrirs = torch.tensor(propagation.sofaile.Data_IR[idx_0], dtype=torch.float64).unsqueeze(0)
+    stim = torch.zeros((1,1,expected_hrirs.shape[-1]), dtype=torch.float64)
+    stim[0, 0, 0] = 1.0
+
+    output = propagation(stim, spk_filters, lstn_idx)
+
+    assert torch.allclose(output, expected_hrirs)
 
 
 def test_binaural_free_field_propagation_optionally_applies_inverse_distance_gain(monkeypatch) -> None:
