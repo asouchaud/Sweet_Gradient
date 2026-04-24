@@ -73,7 +73,7 @@ class spectral_matching(nn.Module):
         # HRIRs: (n_listeners, 2, ir_len) — 2 = left ear, right ear
         self.reference_hrirs = get_IRs(src_idx, self.sofaile, self.device, self.dtype)
 
-        reference_stim = causal_conv1d(torch.randn(1,1,self.fs, device=self.device, dtype = self.dtype), self.reference_hrirs.view(len(self.lstn_pos*2),1,-1)).view(len(self.lstn_pos),2, -1)
+        reference_stim = causal_conv1d(torch.randn(1,1,self.fs, device=self.device, dtype = self.dtype), self.reference_hrirs.view(len(self.lstn_pos)*2,1,-1)).view(len(self.lstn_pos),2, -1)
         low_stim = TF.lowpass_biquad(reference_stim, self.fs, 7000)
 
         return(reference_stim, low_stim)
