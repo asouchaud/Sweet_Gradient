@@ -41,15 +41,15 @@ def run_experiment(loss_dict_builder, run_label):
     d =100
     fs = 48000
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
-        epochs=100,
-        num_lstn_pos=5,
-        listener_batch_size=2,  # 5 mirrored pairs plus the centre listener
+        epochs=10,
+        num_lstn_pos=1,
+        listener_batch_size=1,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=False,
-        selected_stim="random",
-        stimulus_batch_size = 8,
-        n_stimulus = 64,
+        selected_stim="impulse",
+        stimulus_batch_size = 1,
+        n_stimulus = 1,
         n_filter_taps=128,
-        target_pos=[d, float(np.tan(np.deg2rad(0.0)) * d)],
+        target_pos=[d, float(np.tan(np.deg2rad(15.0)) * d)],
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         lr=0.1,
         seed=46,
@@ -67,8 +67,9 @@ def run_experiment(loss_dict_builder, run_label):
     print(f"Using device: {env.device}")
 
     # Loudspkeaker and listener positions
-    env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)] 
-    env.lstn_pos = torch.tensor(env.lstn_pos, device = env.device, dtype = env.dtype)
+    # env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)] 
+    # env.lstn_pos = torch.tensor(env.lstn_pos, device = env.device, dtype = env.dtype)
+    env.lstn_pos = torch.tensor([[0.0, 0.0]], device = env.device, dtype = env.dtype)
     base_angle_rad = np.deg2rad(30.0)
     env.speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
     env.spk_pos = [
