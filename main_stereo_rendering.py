@@ -83,7 +83,7 @@ def run_experiment(loss_dict_builder, run_label):
     set_seed(seed=env.seed)
 
 ## Load data
-    training_stimulus_data_loader, stimulus_dataset = get_stim_loader(env.fs, env.stimulus_batch_size, env.n_stimulus, device=env.device, dtype=env.dtype) # Get stimulus dataloader
+    training_stimulus_data_loader, stimulus_dataset = get_stim_loader(env.fs, env.stimulus_batch_size, env.n_stimulus, stimulus_type=env.selected_stim, device=env.device, dtype=env.dtype) # Get stimulus dataloader
     training_listener_data_loader, _ = get_listener_loader(env.lstn_pos, env.listener_batch_size, env.symmetric_listener_sampling) # Get listener dataloader
 
 ## Initialize model
