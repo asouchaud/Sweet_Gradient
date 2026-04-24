@@ -38,6 +38,7 @@ class FixedEstimationModel(nn.Module):
         self.target = torch.tensor([10.0, 20.0, 30.0], dtype=torch.float32)
         self.loss = F.l1_loss
         self.loss_norm = 2.0
+        self.ref_flag = 1
         self.seen_listener_indices = None
 
     def forward(self, bin_stim: torch.Tensor, listener_indices=None) -> torch.Tensor:
@@ -91,7 +92,7 @@ def test_listener_based_loss_subsets_target_and_passes_listener_indices() -> Non
         bin_stim=torch.zeros(1, 2, 2, 4, dtype=torch.float32),
         spk_filters=torch.zeros(1, 1, 4, dtype=torch.float32),
         stim = None,
-        listener_indices=[1, 2],
+        listener_indices=[1, 2]
     )
 
     assert model.seen_listener_indices == [1, 2]
