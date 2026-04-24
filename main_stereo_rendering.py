@@ -20,7 +20,7 @@ from scripts.optimisation.custom_modules import MultiSourceFIR
 
 from scripts.plotting.results_plot import plot_results
 
-from scripts.setup.setup import set_seed
+from scripts.setup.setup import set_seed, build_eval_objects
 
 from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagation
 
@@ -38,7 +38,7 @@ from scripts.saving.save_results import saver
 
 def run_experiment(loss_dict_builder, run_label):
     repo_root = Path(__file__).resolve().parent
-    d =100
+    d = 100
     fs = 48000
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
         epochs=10,
@@ -97,7 +97,12 @@ def run_experiment(loss_dict_builder, run_label):
     ipd_model = interaural_phase_difference_matching(loss = F.l1_loss, target = 0, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, device=env.device, dtype=env.dtype) # Interaural Phase Difference model
     regularisation = second_moment_regularisation(n_samples=env.n_filter_taps, device=env.device, dtype=env.dtype)
     # loss_dict = loss_dict_builder(loc_model, col_model, unc_model, regularisation, env.device, env.dtype)
-    loss_dict = {"ipd": ListenerBasedLoss(ipd_model, 1, env.device, env.dtype)}
+    loss_dict = {"localisation": ListenerBasedLoss(loc_model, 1, env.device, env.dtype),
+                 # "colouration": ListenerBasedLoss(col_model, 1, env.device, env.dtype),
+                  #"ipd": ListenerBasedLoss(ipd_model, 1e-1, env.device, env.dtype),
+                 #"regularisation_l": SourceBasedLoss(regularisation, 0, 1),
+                 #"regularisation_r": SourceBasedLoss(regularisation, 1, 1)
+                }
 
     # Initialise neural network
     nn_model = MultiSourceFIR(
@@ -128,6 +133,7 @@ def run_experiment(loss_dict_builder, run_label):
                     optimiser=nn_optimiser,
                     loggers = [logger, None]
                     ) # Initialize training class
+    
     time_train_start = time.time()
     trainer.train()
     env.time_train_seconds = time.time() - time_train_start
@@ -135,23 +141,9 @@ def run_experiment(loss_dict_builder, run_label):
 
 ## Print and Plot results
     # Evaluate final neural network FIRs
-    eval_lstn_pos = torch.tensor([[0.0 , 0.0], [0.0, 0.5], [0.0, -0.5]], device=env.device, dtype=env.dtype)
-    n_eval_stim = 10
-    eval_stimulus_data_loader, eval_stimulus_dataset = get_stim_loader(env.fs, n_eval_stim, n_eval_stim) # Get new stimulus dataloader for evaluation (to avoid overfitting to training stimuli)
-
-    # Initiate perceptual models
-    eval_loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=eval_lstn_pos, spk_pos=env.spk_pos, device=env.device, dtype=env.dtype) # Llado et al. 2025 model
-    eval_col_model = spectral_matching(loss = F.l1_loss, target = 0, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=eval_lstn_pos, device=env.device, dtype=env.dtype) # Spectral Matching model
-    eval_unc_model = desena2020(loss = F.l1_loss, target = 0, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=eval_lstn_pos, device=env.device, dtype=env.dtype) # De Sena et al. 2020 model
-    regularisation = second_moment_regularisation(n_samples=env.n_filter_taps, device=env.device, dtype=env.dtype)
-
-    eval_perceptual_dict = {
-            "localisation": ListenerBasedLoss(model=eval_loc_model, weight=1.0, device=env.device, dtype=env.dtype),
-            "uncertainty": ListenerBasedLoss(model=eval_unc_model, weight=1, device=env.device, dtype=env.dtype),
-            "colouration": ListenerBasedLoss(model=eval_col_model, weight=1, device=env.device, dtype=env.dtype)
-        }
-    
+    eval_lstn_pos, eval_perceptual_dict, eval_stimulus_data_loader, eval_stimulus_dataset = build_eval_objects(env)
     est_filters, estimation_dict, bin_stim = trainer.evaluate(eval_lstn_pos=eval_lstn_pos, eval_stimulus_data_loader=eval_stimulus_data_loader, loss_dict=eval_perceptual_dict)
+    
     # Normalise filters to prevent clipping 
     est_filters /= np.max(np.abs(est_filters)) / 0.9 # TODO: move this to a more appropriate place at the end of the training loop
 
@@ -174,7 +166,7 @@ def run_experiment(loss_dict_builder, run_label):
         loss_dict=eval_perceptual_dict,
         target_pos=env.target_pos,
         fs=env.fs,
-        stim = eval_stimulus_dataset.data[:n_eval_stim],
+        stim = eval_stimulus_dataset.data,
         device=env.device,
         dtype=env.dtype,
         show=True,
