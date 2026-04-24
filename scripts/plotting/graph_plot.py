@@ -339,11 +339,21 @@ def plot_freq(est_filters, fs, show = True):
 
 def plot_arrows(lstn_pos, spk_pos, loc, unc=None, col=None, target_pos=None, show=True):
 
+    assert isinstance(lstn_pos, torch.Tensor), "lstn_pos should be a torch.Tensor of shape (n_listeners, 2)"
+    assert isinstance(spk_pos, torch.Tensor), "spk_pos should be a torch.Tensor of shape (n_sources, 2)"
+    assert isinstance(loc, torch.Tensor), "loc should be a torch.Tensor of shape (n_listeners,)"
+
     if unc is None:
         unc = torch.zeros_like(loc, device=loc.device, dtype=loc.dtype)
-
+    else:
+        assert isinstance(unc, torch.Tensor), "unc should be a torch.Tensor of shape (n_listeners,)"
+        assert unc.shape == loc.shape, "unc should have the same shape as loc"
+    
     if col is None:
         col = torch.zeros_like(loc, device=loc.device, dtype=loc.dtype)
+    else:
+        assert isinstance(col, torch.Tensor), "col should be a torch.Tensor of shape (n_listeners,)"
+        assert col.shape == loc.shape, "col should have the same shape as loc"
 
     # Convert to numpy
     lstn_pos = lstn_pos.detach().cpu().numpy().squeeze().reshape(-1, 2) 
