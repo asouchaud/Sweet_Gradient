@@ -13,22 +13,25 @@ def get_IRs(idx, sofaile, device = 'cpu', dtype = torch.float64):
 
     return hrir
 
-def sofa_find(angle, sofaile, elv = 0):
+def sofa_find(angle, sofaile, elv=0):
 
+    # Handle tensor
     if isinstance(angle, torch.Tensor):
         angle = angle.detach().cpu().numpy()
 
-    assert len(angle.shape) == 1 
-    
+    # Convert int/float/array to numpy array, then ensure 1D
+    angle = np.atleast_1d(np.asarray(angle, dtype=float))
+
+    assert angle.ndim == 1, "Angle must be a scalar or 1D array"
+
     # Find index of closest angle in sofaile.SourcePosition
     sofa_angles = sofaile.SourcePosition[:, :2] % 360  # N_y x (az, elv)
-    angle = np.atleast_1d(angle)  
-    angles = np.concatenate((angle[:, None], elv*np.ones_like(angle[:, None])), axis=1) % 360  # N_x x (az, elv)
+    angles = np.concatenate((angle[:, None], elv * np.ones_like(angle[:, None])), axis=1) % 360  # N_x x (az, elv)
     diff = sofa_angles[:, None, :] - angles[None, :, :]  # N_y x N_x x (az, elv)
     dist = np.linalg.norm(diff, axis=-1)  # N_y x N_x
     idx = np.argmin(dist, axis=0)  # N_x
-    
-    assert np.allclose(sofaile.SourcePosition[idx, :2], angles, rtol = 1) #TODO: Set rtol to value that makes sense
+
+    assert np.allclose(sofaile.SourcePosition[idx, :2], angles, rtol=1)  # TODO: Set rtol to value that makes sense
 
     return idx
 
