@@ -359,11 +359,11 @@ class Train:
             if ('localisation', 0) in estimation_dict or ('uncertainty', 0) in estimation_dict:
                 self.logger.log_bin_cues(bin_stim, epoch)
 
-            if ('localisation', 0) in estimation_dict:
-                self.logger.log_plot_arrows(epoch,
-                                            listener_pos,
-                                            self.prop.spk_pos, 
-                                            estimation_dict,
-                                            target_pos=getattr(self.perceptual_models['localisation'], 'target_pos', None))
+            # if ('localisation', 0) in estimation_dict:
+            #     self.logger.log_plot_arrows(epoch,
+            #                                 listener_pos,
+            #                                 self.prop.spk_pos, 
+            #                                 estimation_dict,
+            #                                 target_pos=getattr(self.perceptual_models['localisation'], 'target_pos', None))
         
 
