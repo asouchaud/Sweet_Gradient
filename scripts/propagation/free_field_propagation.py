@@ -89,7 +89,7 @@ class SingleSourceBinauralFreeFieldPropagation(nn.Module):
     def forward(self, stim, source_filter, listener_indices):
         """
         stim: (batch, 1, stim_len)
-        source_filter: (batch, 1, filter_len)
+        source_filter: (1, 1, filter_len)
         Returns: (batch, n_listeners, 2, T) — 2 = L/R ear.
         """
         n_stim = len(stim)
