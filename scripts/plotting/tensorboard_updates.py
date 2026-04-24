@@ -3,8 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
 
-from scripts.setup.setup import load_gtfb
-
 from scripts.plotting.graph_plot import plot_time
 from scripts.plotting.graph_plot import plot_freq
 from scripts.plotting.graph_plot import plot_arrows
@@ -12,6 +10,7 @@ from scripts.plotting.graph_plot import plot_bin_cues
 
 class TensorboardLogger:
     def __init__(self, log_dir="runs/train", h_log_interval=50, fs = 48000, device='cuda', dtype=torch.float32):
+        from scripts.setup.setup import load_gtfb
         self.fs = fs
         self.writer = SummaryWriter(log_dir=log_dir)
         self.h_log_interval = h_log_interval
