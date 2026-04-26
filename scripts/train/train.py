@@ -352,7 +352,7 @@ class Train:
         }
         bin_stim_out = np.mean(np.concatenate(bin_stim_list, axis=0), axis=0)
 
-        return estimation_dict, bin_stim_out
+        return spk_filters.squeeze(0).detach().cpu().numpy(), estimation_dict, bin_stim_out
 
     # def evaluate(self, eval_lstn_pos, eval_stimulus_data_loader, loss_dict=None):
 

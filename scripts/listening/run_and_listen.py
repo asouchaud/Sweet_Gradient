@@ -321,12 +321,11 @@ def main():
     print(f"Optimisation finished in {time.time() - start_time:.2f} seconds.")
 
     eval_lstn_pos, eval_perceptual_dict, eval_stimulus_data_loader, eval_stimulus_dataset = build_eval_objects(env)
-    estimation_dict, _ = trainer.evaluate(
+    est_filters, estimation_dict, _ = trainer.evaluate(
         eval_lstn_pos=eval_lstn_pos,
         eval_stimulus_data_loader=eval_stimulus_data_loader,
         loss_dict=eval_perceptual_dict,
     )
-    est_filters = trainer.nn(torch.ones(1, 1, device=env.device, dtype=env.dtype)).squeeze()
     est_filters = to_numpy(est_filters)
     peak = np.max(np.abs(est_filters))
     if peak > 0:
