@@ -114,3 +114,8 @@ def set_target(lstn_pos, target):
         raise ValueError("Target must be int, float or torch.Tensor")
     
     return target_tensor
+
+def to_numpy(x):
+    if isinstance(x, torch.Tensor):
+        return x.detach().cpu().numpy()
+    return np.asarray(x)
