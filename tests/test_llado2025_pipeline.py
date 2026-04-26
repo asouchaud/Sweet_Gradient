@@ -5,6 +5,7 @@ import torch
 import numpy as np 
 from pathlib import Path
 
+from scripts.helpers.miscelaneous import get_hrirs_for_template
 from scripts.helpers.template_comparison import itd_ild_template_distance
 from scripts.perceptual_models.llado2025.llado2025 import llado2025
 
@@ -85,3 +86,72 @@ def test_llado2025_output_shape() -> None:
     estimated = model(bin_stim)
 
     assert estimated.shape == (batch_size, n_listeners)
+
+def test_llado2025_returns_corresponding_template_angle_with_template_hrirs() -> None:
+    # If the model is given a stimulus whose cues exactly match one of the template entries, it should
+    # return the corresponding template azimuth.
+    repo_root = Path(__file__).resolve().parent.parent
+    sofa_path = str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
+
+    model = make_model()
+    hrirs = get_hrirs_for_template(sofa_path=sofa_path, device=model.device, dtype=model.dtype).unsqueeze(0)
+    bin_stim = hrirs
+    n_listeners = hrirs.shape[1]
+
+    estimated = model(bin_stim)
+
+    assert estimated.shape == (1, n_listeners)
+    assert torch.allclose(estimated, torch.linspace(-90, 90, 37, device = model.device, dtype = model.dtype).view(1, n_listeners), atol=1e-6)
+
+
+def test_llado2025_returns_corresponding_template_angle_with_scaled_hrirs() -> None:
+    # If the model is given a stimulus whose cues exactly match one of the template entries, it should
+    # return the corresponding template azimuth.
+    repo_root = Path(__file__).resolve().parent.parent
+    sofa_path = str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
+
+    model = make_model()
+    hrirs = get_hrirs_for_template(sofa_path=sofa_path, device=model.device, dtype=model.dtype).unsqueeze(0)
+    bin_stim = hrirs * 5  # Scale the HRIRs slightly, which should not change the estimated angles much.
+    n_listeners = hrirs.shape[1]
+
+    estimated = model(bin_stim)
+
+    assert estimated.shape == (1, n_listeners)
+    assert torch.allclose(estimated, torch.linspace(-90, 90, 37, device = model.device, dtype = model.dtype).view(1, n_listeners), atol=1e-6)
+    
+
+def test_llado2025_returns_corresponding_template_angle_with_delayed_hrirs() -> None:
+    # If the model is given a stimulus whose cues exactly match one of the template entries, it should
+    # return the corresponding template azimuth.
+    repo_root = Path(__file__).resolve().parent.parent
+    sofa_path = str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
+
+    model = make_model()
+    hrirs = get_hrirs_for_template(sofa_path=sofa_path, device=model.device, dtype=model.dtype).unsqueeze(0)
+    bin_stim = torch.roll(hrirs, shifts=42, dims=-1)  # Delay the HRIRs slightly, which should not change the estimated angles.
+    n_listeners = hrirs.shape[1]
+
+    estimated = model(bin_stim)
+
+    assert estimated.shape == (1, n_listeners)
+    assert torch.allclose(estimated, torch.linspace(-90, 90, 37, device = model.device, dtype = model.dtype).view(1, n_listeners), atol=1e-6)
+    
+
+def test_llado2025_returns_corresponding_template_angle_with_truncated_zeros_in_hrirs() -> None:
+
+    # If the model is given a stimulus whose cues exactly match one of the template entries, it should
+    # return the corresponding template azimuth.
+    repo_root = Path(__file__).resolve().parent.parent
+    sofa_path = str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
+
+    model = make_model()
+    hrirs = get_hrirs_for_template(sofa_path=sofa_path, device=model.device, dtype=model.dtype).unsqueeze(0)
+    bin_stim = hrirs[:,:,:,:-100]  # Truncate the last 100 samples, which are all zeros, which should not change the estimated angles.
+    n_listeners = hrirs.shape[1]
+
+    estimated = model(bin_stim)
+
+    assert estimated.shape == (1, n_listeners)
+    assert torch.allclose(estimated, torch.linspace(-90, 90, 37, device = model.device, dtype = model.dtype).view(1, n_listeners), atol=1e-6)
+    
