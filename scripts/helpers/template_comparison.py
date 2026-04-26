@@ -32,8 +32,8 @@ def itd_ild_template_distance(target,template):
     distance_ild = torch.pow(torch.abs(target_ild_normalized - template_ild_normalized) +1e-8, p)
 
     # Weighted Sum of ILD and ITD Distances per Frequency Band
-    # distance_combined = torch.pow(distance_itd * (1 - weighting_function_itd_ild) + distance_ild * weighting_function_itd_ild, 1)
-    distance_combined = distance_itd + distance_ild
+    distance_combined = torch.pow(distance_itd * (1 - weighting_function_itd_ild) + distance_ild * weighting_function_itd_ild, 1)
+    # distance_combined = distance_itd + distance_ild
     
     # Turn Function into Probability Distribution
     distance_likelihood_f = torch.softmax(-distance_combined, dim=2)    
