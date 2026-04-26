@@ -6,6 +6,7 @@ import numpy as np
 from pathlib import Path
 
 from scripts.helpers.miscelaneous import get_hrirs_for_template
+from scripts.helpers.dsp import causal_conv1d
 from scripts.helpers.template_comparison import itd_ild_template_distance
 from scripts.perceptual_models.llado2025.llado2025 import llado2025
 
@@ -155,3 +156,39 @@ def test_llado2025_returns_corresponding_template_angle_with_truncated_zeros_in_
     assert estimated.shape == (1, n_listeners)
     assert torch.allclose(estimated, torch.linspace(-90, 90, 37, device = model.device, dtype = model.dtype).view(1, n_listeners), atol=1e-6)
     
+
+def test_llado2025_returns_corresponding_template_angle_with_scaled_and_delayed_hrirs() -> None:
+    # If the model is given a stimulus whose cues exactly match one of the template entries, it should
+    # return the corresponding template azimuth.
+    repo_root = Path(__file__).resolve().parent.parent
+    sofa_path = str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
+
+    model = make_model()
+    hrirs = get_hrirs_for_template(sofa_path=sofa_path, device=model.device, dtype=model.dtype).unsqueeze(0)
+    bin_stim = torch.roll(hrirs * 5, shifts=42, dims=-1)  # Scale and delay the HRIRs slightly, which should not change the estimated angles.
+    n_listeners = hrirs.shape[1]
+
+    estimated = model(bin_stim)
+
+    assert estimated.shape == (1, n_listeners)
+    assert torch.allclose(estimated, torch.linspace(-90, 90, 37, device = model.device, dtype = model.dtype).view(1, n_listeners), atol=1e-6)
+
+
+def test_llado2025_returns_corresponding_template_angle_with_hrirs_convoluted_with_noise() -> None:
+    # If the model is given a stimulus whose cues exactly match one of the template entries, it should
+    # return the corresponding template azimuth.
+    repo_root = Path(__file__).resolve().parent.parent
+    sofa_path = str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
+
+    model = make_model()
+    hrirs = get_hrirs_for_template(sofa_path=sofa_path, device=model.device, dtype=model.dtype).unsqueeze(0)
+    n_lstn = hrirs.shape[1]
+    n_samples = hrirs.shape[-1]
+    bin_stim = causal_conv1d(hrirs.view(2*n_lstn,1,n_samples), torch.randn(1, 1, 100, device=model.device, dtype=model.dtype)).view(1, n_lstn, 2, n_samples)  # Convolve the HRIRs with noise.
+
+    estimated = model(bin_stim)
+
+    assert estimated.shape == (1, n_lstn)
+    assert torch.allclose(estimated, 
+                          torch.linspace(-90, 90, 37, device = model.device, dtype = model.dtype).view(1, n_lstn), 
+                          atol=5) # atol = 5 degrees, which is a very loose threshold, but the noise should make the estimates quite inaccurate. The point of this test is just to check that the model doesn't break when given noisy stimuli.
