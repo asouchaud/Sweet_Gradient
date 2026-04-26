@@ -109,11 +109,11 @@ class spectral_matching(nn.Module):
         # Normalise FFTs
         # First find the max abs of the log max FFTs along the frequency dimension for both ears,
         # then find it over the ears and normalise the listners compared to that
-        norm_X = torch.max(torch.max(torch.abs(log_X), dim = -1, keepdim=True).values, dim = -2, keepdim=True).values # TODO: Is this an in-place operation and therefore destroys the computational graph
-        norm_Y = torch.max(torch.max(torch.abs(log_Y), dim = -1, keepdim=True).values, dim = -2, keepdim=True).values
+        # norm_X = torch.max(torch.max(torch.abs(log_X), dim = -1, keepdim=True).values, dim = -2, keepdim=True).values # TODO: Is this an in-place operation and therefore destroys the computational graph
+        # norm_Y = torch.max(torch.max(torch.abs(log_Y), dim = -1, keepdim=True).values, dim = -2, keepdim=True).values
         
-        log_X = log_X / norm_X.clamp(min=self.eps)
-        log_Y = log_Y / norm_Y.clamp(min=self.eps)
+        # log_X = log_X / norm_X.clamp(min=self.eps)
+        # log_Y = log_Y / norm_Y.clamp(min=self.eps)
 
         # LSD over frequency bins
         lsd_freq = torch.sqrt(torch.mean((log_X - log_Y) ** 2, dim=-1))  # [a, b]
