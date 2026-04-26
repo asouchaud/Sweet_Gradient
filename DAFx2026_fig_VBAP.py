@@ -25,7 +25,9 @@ import matplotlib.colors as colors
 # Import project modules
 from scripts.optimisation.custom_modules import MultiSourceFIR
 from scripts.plotting.results_plot import plot_results
-from scripts.setup.setup import load_gtfb, load_hrirs, load_stim, set_seed
+from scripts.setup.setup import set_seed, build_eval_objects
+from scripts.datasets.stimulus_dataset import get_stim_loader
+from scripts.datasets.listener_dataset import get_listener_loader
 from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagation
 from scripts.perceptual_models.llado2025.llado2025 import llado2025
 from scripts.perceptual_models.desena2020.desena2020 import desena2020
@@ -43,7 +45,10 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
         epochs=200,
         n_samples=21,
         target_pos=[d, float(np.tan(np.deg2rad(target_angle)) * d)],
-        selected_stim="noise",
+        selected_stim="white_noise",
+        listener_batch_size=1,
+        stimulus_batch_size=1,
+        n_stimulus=1,
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
         sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
         lr=0.01,
@@ -72,18 +77,28 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
     set_seed(seed=env.seed)
 
 ## Load data
-    gtfb = load_gtfb(fs=env.fs, device=env.device, dtype=env.dtype)  # Load Gamma Tone Filter Bank
-    stim = load_stim(fs=env.fs, device=env.device, dtype=env.dtype, selected_stim=env.selected_stim)  # Load stimulus
-    hrirs = load_hrirs(dtype=env.dtype, device=env.device, sofa_path=env.sofa_path, idx_path=env.sofa_idx_path) # Load HRIRs using specific location from SOFA file
+    env.lstn_pos = torch.tensor(env.lstn_pos, device=env.device, dtype=env.dtype)
+    env.spk_pos = torch.tensor(env.spk_pos, device=env.device, dtype=env.dtype)
+    training_stimulus_data_loader, stimulus_dataset = get_stim_loader(
+        env.fs,
+        env.stimulus_batch_size,
+        env.n_stimulus,
+        stimulus_type=env.selected_stim,
+        device=env.device,
+        dtype=env.dtype,
+    )
+    training_listener_data_loader, _ = get_listener_loader(
+        env.lstn_pos, env.listener_batch_size, symmetric=False
+    )
 
 ## Initialize model
     # Initialize sound propagation module
-    stereo_prop = BinauralFreeFieldPropagation(stim=stim, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, fs=env.fs, sofa_file_path=env.sofa_path) # Load stereo anechoic propagation module
+    stereo_prop = BinauralFreeFieldPropagation(fs=env.fs, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, sofa_file_path=env.sofa_path, device=env.device, dtype=env.dtype) # Load stereo anechoic propagation module
 
     # Initiate perceptual models
-    loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, hrirs=hrirs, fs=env.fs, gtfb=gtfb).to(device=env.device, dtype=env.dtype) # Llado et al. 2025 model
-    col_model = spectral_matching(loss = F.l1_loss, target = 0, stim=stim, hrirs=hrirs, target_pos=env.target_pos, fs=env.fs).to(device=env.device, dtype=env.dtype) # Spectral Matching model
-    unc_model = desena2020(loss = F.l1_loss, target = 0, hrirs=hrirs, fs=env.fs, gtfb=gtfb).to(device=env.device, dtype=env.dtype) # De Sena et al. 2020 model
+    loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, device=env.device, dtype=env.dtype) # Llado et al. 2025 model
+    col_model = spectral_matching(loss = F.l1_loss, target = 0, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, device=env.device, dtype=env.dtype) # Spectral Matching model
+    unc_model = desena2020(loss = F.l1_loss, target = 0, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, device=env.device, dtype=env.dtype) # De Sena et al. 2020 model
     regularisation = second_moment_regularisation(n_samples=env.n_samples, device=env.device, dtype=env.dtype)
     loss_dict = loss_dict_builder(loc_model, col_model, unc_model, regularisation, env.device, env.dtype)
 
@@ -102,12 +117,14 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
     nn_optimiser = torch.optim.Adam(nn_model.parameters(), lr=env.lr)
 
 ## Initliase saving folder and logger
-    saver_obj = saver(loss_dict, env.lstn_pos)
+    saver_obj = saver()
     logger = saver_obj if env.log else None
 
 ## Training loop
     # Train the neural network
     trainer = Train(n_epoch=env.epochs,
+                    stim_loader=training_stimulus_data_loader,
+                    lstn_loader=training_listener_data_loader,
                     nn=nn_model,
                     prop=stereo_prop,
                     loss_dict=loss_dict,
@@ -120,12 +137,16 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
 
 ## Print and Plot results
     # Evaluate final neural network FIRs
-    eval_perceptual_dict = {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1.0, device=env.device, dtype=env.dtype),
-            "uncertainty": ListenerBasedLoss(model=unc_model, weight=1, device=env.device, dtype=env.dtype),
-            "colouration": ListenerBasedLoss(model=col_model, weight=1, device=env.device, dtype=env.dtype)
-        }
-    est_filters, estimation_dict, bin_stim = trainer.evaluate(loss_dict=eval_perceptual_dict)
+    eval_lstn_pos, eval_perceptual_dict, eval_stimulus_data_loader, eval_stimulus_dataset = build_eval_objects(
+        env,
+        eval_lstn_pos=torch.tensor([[0.0, 0.0], [0.0, 0.5], [0.0, -0.5]], device=env.device, dtype=env.dtype),
+        n_eval_stim=1,
+    )
+    est_filters, estimation_dict, bin_stim = trainer.evaluate(
+        eval_lstn_pos=eval_lstn_pos,
+        eval_stimulus_data_loader=eval_stimulus_data_loader,
+        loss_dict=eval_perceptual_dict,
+    )
     # Normalise filters to prevent clipping 
     est_filters /= np.max(np.abs(est_filters)) / 0.9 # TODO: move this to a more appropriate place at the end of the training loop
 
@@ -137,20 +158,19 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
         estimation_dict=estimation_dict,
         est_filters=est_filters,
         fs=env.fs,
-        lstn_pos=env.lstn_pos,
-        spk_pos=env.spk_pos,
-        trainer=trainer,
         env=env,
     )
+    bin_stim_for_plot = np.expand_dims(bin_stim, axis=0)
     plots = plot_results(
         estimation_dict=estimation_dict,
         est_filters=est_filters,
-        bin_stim=bin_stim,
-        prop_model=stereo_prop,
-        loss_dict=loss_dict,
+        bin_stim=bin_stim_for_plot,
+        lstn_pos=eval_lstn_pos,
+        spk_pos=env.spk_pos,
+        loss_dict=eval_perceptual_dict,
         target_pos=env.target_pos,
-        stim=stim,
         fs=env.fs,
+        stim=eval_stimulus_dataset.data,
         device=env.device,
         dtype=env.dtype,
         show=False,
@@ -174,7 +194,6 @@ def VBAP_loc(vbap_icld):
     device_str = "cuda" if torch.cuda.is_available() else "cpu"
     device = torch.device(device_str)
     sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
-    sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv")
 
     lstn_pos = [[0.0, 0.0]] 
     base_angle_rad = np.deg2rad(30.0)
@@ -184,15 +203,16 @@ def VBAP_loc(vbap_icld):
         [speaker_distance * np.cos(base_angle_rad), -speaker_distance * np.sin(base_angle_rad)],
     ]
 
-    gtfb = load_gtfb(fs=fs, device=device, dtype=dtype)  # Load Gamma Tone Filter Bank
-    stim = load_stim(fs=fs, device=device, dtype=dtype, selected_stim='impulse')  # Load stimulus
-    hrirs = load_hrirs(dtype=dtype, device=device, sofa_path=sofa_path, idx_path=sofa_idx_path) # Load HRIRs using specific location from SOFA file
-
-    stereo_prop = BinauralFreeFieldPropagation(stim=stim, lstn_pos=lstn_pos, spk_pos=spk_pos, fs=fs, sofa_file_path=sofa_path, apply_distance_attenuation=True)
-    loc_model = llado2025(loss = F.mse_loss, target_pos=[0,0], hrirs=hrirs, fs=fs, gtfb=gtfb).to(device=device, dtype=dtype) # Llado et al. 2025 model
+    lstn_pos = torch.tensor(lstn_pos, device=device, dtype=dtype)
+    spk_pos = torch.tensor(spk_pos, device=device, dtype=dtype)
+    reference_stim = torch.zeros(1, 1, int(0.01 * fs), device=device, dtype=dtype)
+    reference_stim[0, 0, 0] = 1.0
+    stereo_prop = BinauralFreeFieldPropagation(fs=fs, lstn_pos=lstn_pos, spk_pos=spk_pos, sofa_file_path=sofa_path, apply_distance_attenuation=True, device=device, dtype=dtype)
+    loc_model = llado2025(loss = F.mse_loss, target_pos=[0,0], fs=fs, sofa_path=sofa_path, lstn_pos=lstn_pos, spk_pos=spk_pos, device=device, dtype=dtype) # Llado et al. 2025 model
 
     vbap_angle = torch.zeros(len(vbap_icld), device = device, dtype= dtype)
     vbap_icld = torch.tensor(vbap_icld, device=device, dtype=dtype)
+    listener_idx = torch.arange(lstn_pos.shape[0], device=device)
     for i in range(len(vbap_icld)):
 
         right_gains = torch.sqrt(1/(1+ 10**(vbap_icld[i]/10)))
@@ -202,14 +222,13 @@ def VBAP_loc(vbap_icld):
         filts[0,0,0] = left_gains
         filts[0,1,0] = right_gains
 
-        bin_stim = stereo_prop(filts)
-
-        vbap_angle[i] = loc_model(bin_stim)
+        bin_stim = stereo_prop(reference_stim, filts, listener_idx)
+        vbap_angle[i] = loc_model(bin_stim).squeeze()
 
     return(vbap_angle.detach().cpu().numpy())
 
 
-def DAFx2026_fig6_plots(run_folders):
+def DAFx2026_fig6_plots(run_folders, show=False):
 
     repo_root = Path(__file__).resolve().parent
     fs = 48000
@@ -279,7 +298,8 @@ def DAFx2026_fig6_plots(run_folders):
     # plt.subplots_adjust(bottom=0.25)
     plt.tight_layout(rect=[0, 0.16, 1, 1])  # leave space for legend
     plt.savefig("DAFx2026_fig6.pdf", format = "pdf")
-    plt.show()
+    if show:
+        plt.show()
 
     plt.figure(figsize=(6, 6))
     for i in range(7):
@@ -306,7 +326,8 @@ def DAFx2026_fig6_plots(run_folders):
         print(f"VBAP Energy Ratio: {10*np.log10(np.sum(vbap_filts[0,0]**2)/np.sum(vbap_filts[0,1]**2)):.2f} dB")
         print(f"Estimated Energy Ratio: {10*np.log10(np.sum(filt[i+1,0]**2)/np.sum(filt[i+1,1]**2)):.2f} dB")
 
-    plt.show()
+    if show:
+        plt.show()
     
 
 if __name__ == "__main__":
@@ -317,8 +338,8 @@ if __name__ == "__main__":
         run_dir, run_lstn_pos, run_spk_pos = run_experiment(
             loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype, angle=angle: {
                 "localisation": ListenerBasedLoss(model=loc_model, weight=1e-0, device=device, dtype=dtype),
-                "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-1),
-                "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-1),
+                "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-2),
+                "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-2),
             },
             run_label=f"loc_{int(angle)}",
             target_angle=angle
