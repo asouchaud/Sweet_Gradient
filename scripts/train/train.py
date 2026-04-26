@@ -194,9 +194,9 @@ class Train:
             if loss_cfg.model is not None
         }
 
-        logger, saver = loggers[0], loggers[1]
 
-        if logger is not None:
+        if loggers is not None:
+            logger, saver = loggers[0], loggers[1]
             if saver is not None:
                 self.logger = TensorboardLogger(logger.run_dir / 'tensorboard' / saver.file_name[:-4], device = self.device, dtype = self.dtype)
             else: 
