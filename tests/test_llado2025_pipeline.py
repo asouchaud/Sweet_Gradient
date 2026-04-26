@@ -9,6 +9,7 @@ from scripts.helpers.miscelaneous import get_hrirs_for_template
 from scripts.helpers.dsp import causal_conv1d
 from scripts.helpers.template_comparison import itd_ild_template_distance
 from scripts.perceptual_models.llado2025.llado2025 import llado2025
+from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagation
 
 def make_model() -> llado2025:
     
@@ -192,3 +193,71 @@ def test_llado2025_returns_corresponding_template_angle_with_hrirs_convoluted_wi
     assert torch.allclose(estimated, 
                           torch.linspace(-90, 90, 37, device = model.device, dtype = model.dtype).view(1, n_lstn), 
                           atol=5) # atol = 5 degrees, which is a very loose threshold, but the noise should make the estimates quite inaccurate. The point of this test is just to check that the model doesn't break when given noisy stimuli.
+    
+
+def test_llado2025_returns_0_azimuth_for_stereo_setup_with_same_stimulus()->None:
+
+    repo_root = Path(__file__).resolve().parent.parent
+    sofa_path = str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
+
+    fs = 48000
+    lstn_pos = torch.tensor([[0.0, 0.0]], dtype=torch.float64)
+    lstn_idx = torch.tensor([0], dtype=torch.long)
+    spk_pos = torch.tensor([[1.732, 1.0], [1.732, -1.0]], dtype=torch.float64)  # Two speakers at the same position, which should produce a stimulus with cues corresponding to 0 degrees azimuth.
+
+    propagation = BinauralFreeFieldPropagation(
+        fs=fs,
+        lstn_pos=lstn_pos,
+        spk_pos=spk_pos,
+        sofa_file_path=sofa_path,
+        device='cpu',
+        dtype=torch.float64
+    )
+
+    model = make_model()
+
+    stim = torch.randn(1, 1, 1000, dtype=torch.float64)  # Random stimulus
+    spk_filters = torch.ones(1,2,1, dtype=torch.float64)  # Identity filters for both speakers
+
+    bin_stim = propagation(stim, spk_filters, lstn_idx)
+
+    estimated = model(bin_stim)
+
+    assert estimated.shape == (1, 1)
+    assert estimated.item() == pytest.approx(0.0, abs=1e-6)
+
+
+def test_llado2025_returns_loudspeaker_azimuth_for_stereo_setup_with_only_one_loudspeaker_on()->None:
+
+    repo_root = Path(__file__).resolve().parent.parent
+    sofa_path = str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
+
+    fs = 48000
+    lstn_pos = torch.tensor([[0.0, 0.0]], dtype=torch.float64)
+    lstn_idx = torch.tensor([0], dtype=torch.long)
+    spk_pos = torch.tensor([[1.732, 1.0], [1.732, -1.0]], dtype=torch.float64)  # Two speakers at the same position, which should produce a stimulus with cues corresponding to 0 degrees azimuth.
+
+    propagation = BinauralFreeFieldPropagation(
+        fs=fs,
+        lstn_pos=lstn_pos,
+        spk_pos=spk_pos,
+        sofa_file_path=sofa_path,
+        device='cpu',
+        dtype=torch.float64
+    )
+
+    model = make_model()
+
+    stim = torch.zeros(1, 1, 1000, dtype=torch.float64)  # Random stimulus
+    stim[0, 0, 0] = 1.0  # Impulse at the beginning of the stimulus
+    spk_filters = torch.zeros(1,2,1, dtype=torch.float64)  # Zero filters for both speakers
+    spk_filters[0,0,0] = 1.0  # Identity filter for the first speaker only
+
+    bin_stim = propagation(stim, spk_filters, lstn_idx)
+
+    estimated = model(bin_stim)
+
+    assert torch.allclose(propagation.sources[0].hrirs, bin_stim[0,:,:,:256]), "The HRIRs for the first source should be the same as the first 256 samples of the binaural stimulus, since the stimulus is an impulse and the filter is an identity filter."
+    assert estimated.shape == (1, 1)
+    assert estimated.item() == pytest.approx(30.0, abs=3), "The estimated azimuth should be approximately 30 degrees."
+     # The estimated azimuth should be approximately 30 degrees, which is the azimuth of the first speaker. We use a loose threshold of 3 degrees because the model is not perfect and there may be some small numerical differences in the HRIRs that could affect the estimate. The point of this test is just to check that the model gives a reasonable estimate when only one speaker is on, and that it doesn't break when given a stimulus with very simple cues.
