@@ -52,22 +52,22 @@ def plot_results(estimation_dict, est_filters, bin_stim, lstn_pos, spk_pos, loss
     color_l_plot = None
     color_r_plot = None
     col_model = perceptual_models.get("colouration")
-    if col_model is not None:
+    # if col_model is not None:
         
-        col_reference = compute_reference_bin(stim, 
-                                              col_model.reference_hrirs, 
-                                              listener_indices=torch.arange(lstn_pos.shape[0], device=device)).view(stim.shape[0], 
-                                                                                                                    col_model.reference_hrirs.shape[0], 
-                                                                                                                    2, 
-                                                                                                                    -1)
+    #     col_reference = compute_reference_bin(stim, 
+    #                                           col_model.reference_hrirs, 
+    #                                           listener_indices=torch.arange(lstn_pos.shape[0], device=device)).view(stim.shape[0], 
+    #                                                                                                                 col_model.reference_hrirs.shape[0], 
+    #                                                                                                                 2, 
+    #                                                                                                                 -1)
         
     
-        color_l_plot, color_r_plot = plot_color(
-            bin_stim,
-            col_reference,
-            lstn_pos,
-            show=False,
-        )
+    #     color_l_plot, color_r_plot = plot_color(
+    #         bin_stim,
+    #         col_reference,
+    #         lstn_pos,
+    #         show=False,
+    #     )
 
     if show:
         plt.show()
