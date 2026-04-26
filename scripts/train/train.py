@@ -308,7 +308,6 @@ class Train:
             #     epoch=epoch
             # )
 
-
     def evaluate(self, eval_lstn_pos, eval_stimulus_data_loader, loss_dict=None):
 
         self.prop = BinauralFreeFieldPropagation(
@@ -334,7 +333,8 @@ class Train:
 
                 spk_filters = self.nn(torch.ones(1, 1, device=self.device, dtype=self.dtype))
                 bin_stim = self.prop(stimulus, spk_filters, listener_idx)
-                bin_stim_list.append(bin_stim.squeeze().detach().cpu().numpy())
+                bin_stim_list.append(bin_stim.detach().cpu().numpy())
+
                 for key, loss_cfg in active_loss_dict.items():
                     _, estimation = loss_cfg.compute_loss(
                         bin_stim=bin_stim,
@@ -342,13 +342,58 @@ class Train:
                         stim=stimulus,
                         listener_indices=listener_idx
                     )
-                    estimation_dict[key] = estimation.squeeze().detach().cpu().numpy()
+                    # estimation shape: n_stimulus_in_batch x n_listeners
+                    estimation_dict[key].append(estimation.detach().cpu().numpy())  # ← append, not overwrite
 
-        # Average across all stimuli
-        estimation_dict = {key: np.mean(np.stack(vals, axis=0), axis=0) for key, vals in estimation_dict.items()}
-        bin_stim_out = np.mean(np.stack(bin_stim_list, axis=0), axis=0)
+        # Concatenate across batches along stimulus axis (axis=0), then average over stimulus
+        estimation_dict = {
+            key: np.mean(np.concatenate(vals, axis=0), axis=0)  # ← concatenate then average over stimulus
+            for key, vals in estimation_dict.items()
+        }
+        bin_stim_out = np.mean(np.concatenate(bin_stim_list, axis=0), axis=0)
 
-        return spk_filters.squeeze(0).detach().cpu().numpy(), estimation_dict, bin_stim_out
+        return estimation_dict, bin_stim_out
+
+    # def evaluate(self, eval_lstn_pos, eval_stimulus_data_loader, loss_dict=None):
+
+    #     self.prop = BinauralFreeFieldPropagation(
+    #         fs=self.prop.fs,
+    #         lstn_pos=eval_lstn_pos,
+    #         spk_pos=self.prop.spk_pos,
+    #         sofa_file_path=self.prop.sources[0].sofa_file_path,
+    #         apply_distance_attenuation=self.prop.apply_distance_attenuation,
+    #         device=self.device,
+    #         dtype=self.dtype
+    #     )
+
+    #     active_loss_dict = loss_dict if loss_dict is not None else self.loss_dict
+
+    #     estimation_dict = {key: [] for key in active_loss_dict}
+    #     bin_stim_list = []
+
+    #     # Use all listener indices at once
+    #     listener_idx = torch.arange(len(eval_lstn_pos), device=self.device)
+
+    #     with torch.no_grad():
+    #         for stimulus in eval_stimulus_data_loader:
+
+    #             spk_filters = self.nn(torch.ones(1, 1, device=self.device, dtype=self.dtype))
+    #             bin_stim = self.prop(stimulus, spk_filters, listener_idx)
+    #             bin_stim_list.append(bin_stim.squeeze().detach().cpu().numpy())
+    #             for key, loss_cfg in active_loss_dict.items():
+    #                 _, estimation = loss_cfg.compute_loss(
+    #                     bin_stim=bin_stim,
+    #                     spk_filters=spk_filters,
+    #                     stim=stimulus,
+    #                     listener_indices=listener_idx
+    #                 )
+    #                 estimation_dict[key] = estimation.squeeze().detach().cpu().numpy()
+
+    #     # Average across all stimuli
+    #     estimation_dict = {key: np.mean(np.stack(vals, axis=0), axis=0) for key, vals in estimation_dict.items()}
+    #     bin_stim_out = np.mean(np.stack(bin_stim_list, axis=0), axis=0)
+
+    #     return spk_filters.squeeze(0).detach().cpu().numpy(), estimation_dict, bin_stim_out
 
         
     def _log_tensorboard(self, full_loss, weighted_loss, estimation_dict, bin_stim, spk_filters, listener_pos, epoch):
