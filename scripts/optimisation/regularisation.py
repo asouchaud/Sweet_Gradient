@@ -25,6 +25,9 @@ class first_moment_regularisation:
         """
         Initialize the regularisation with a weight.
         """
+
+        self.multi_flag = False
+
         self.eps = eps
         self.n_samples = n_samples
         self.reg_idx = ((torch.arange(n_samples, device=device, dtype=dtype))).view(1,1,-1)
@@ -58,11 +61,17 @@ class second_moment_regularisation:
         Initialize the regularisation with a weight.
 
         """
+        
+        self.multi_flag = False
         self.eps = eps
         self.n_samples = n_samples
+        self.device = device
+        self.dtype = dtype
         self.reg_idx = ((torch.arange(n_samples, device=device, dtype=dtype))).view(1,1,-1)
 
         self.loss_norm = self.compute_loss(torch.randn(1,1,self.n_samples, device=device, dtype=dtype))
+        if (not torch.isfinite(self.loss_norm)) or (self.loss_norm <= self.eps):
+            self.loss_norm = torch.tensor(1.0, device=device, dtype=dtype)
 
     def compute_loss(self, filter: torch.Tensor) -> torch.Tensor:
         """
@@ -83,3 +92,30 @@ class second_moment_regularisation:
         return(sig.squeeze())
     
 
+class source_flatness:
+    
+    def __init__(self, n_samples: int, device='cuda', dtype=torch.float32, eps = 1e-8):
+        self.multi_flag = True
+        self.eps = eps
+        self.n_samples = n_samples
+        self.reg_idx = ((torch.arange(n_samples, device=device, dtype=dtype))).view(1,1,-1)
+        self.loss_norm = self.compute_loss(torch.randn(1,1,self.n_samples, device=device, dtype=dtype))
+
+    def _compute_flatness(self, filters: torch.Tensor) -> torch.Tensor:
+
+        # filters shape: [batch_size, n_filters, n_samples]
+        # Compute per-filter spectra, combine filters in the frequency domain, then compute flatness.
+        spectra = torch.fft.rfft(filters, dim=-1)
+        combined_spectrum = torch.sum(spectra, dim=1)
+        magnitude = torch.abs(combined_spectrum) + self.eps
+
+        geometric_mean = torch.exp(torch.mean(torch.log(magnitude), dim=-1))
+        arithmetic_mean = torch.mean(magnitude, dim=-1)
+        flatness = geometric_mean / arithmetic_mean
+        flatness = torch.clamp(flatness, 0.0, 1.0)
+
+        return flatness.squeeze()
+
+    
+    def compute_loss(self, filters: torch.Tensor) -> torch.Tensor:
+        return 1 - self._compute_flatness(filters)

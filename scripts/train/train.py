@@ -115,8 +115,10 @@ class ListenerBasedLoss:
         else:
             model_estimation = self.model(bin_stim)
 
-        target = self.model.target[listener_indices]  # [y]
+        target_indices = torch.as_tensor(listener_indices, device=self.model.target.device, dtype=torch.long)
+        target = self.model.target[target_indices]  # [y]
         target = target.unsqueeze(0).expand(model_estimation.shape[0], -1)  # [x, y]
+        target = target.to(device=model_estimation.device, dtype=model_estimation.dtype)
 
 
         selected_listener_weights = self._select_listener_weights(
@@ -139,7 +141,17 @@ class SourceBasedLoss:
     def __init__(self, regulariser, source_idx, weight):
         self.model = None
         self.regulariser = regulariser
-        self.source_idx = source_idx
+        if isinstance(source_idx, int):
+            source_indices = [source_idx]
+        elif torch.is_tensor(source_idx):
+            source_indices = source_idx.detach().cpu().tolist()
+        else:
+            source_indices = list(source_idx)
+
+        if len(source_indices) == 0:
+            raise ValueError("source_idx must contain at least one source index.")
+
+        self.source_indices = tuple(int(idx) for idx in source_indices)
         self.weight = weight
 
     def batch_scale(self, listener_indices, n_listeners):
@@ -165,7 +177,12 @@ class SourceBasedLoss:
             loss: Scalar tensor for the selected source filter.
             estimation: None (source-based losses do not produce perceptual estimates).
         """
-        source_filter = spk_filters[:, self.source_idx:self.source_idx + 1, :]
+        source_indices = torch.as_tensor(
+            self.source_indices,
+            device=spk_filters.device,
+            dtype=torch.long,
+        ).view(-1)
+        source_filter = spk_filters.index_select(1, source_indices)
         loss = self.regulariser.compute_loss(source_filter) / self.regulariser.loss_norm
         return loss, None
 
@@ -342,12 +359,19 @@ class Train:
                         stim=stimulus,
                         listener_indices=listener_idx
                     )
+                    # Source-based losses may return no perceptual estimation.
+                    if estimation is None:
+                        continue
                     # estimation shape: n_stimulus_in_batch x n_listeners
                     estimation_dict[key].append(estimation.detach().cpu().numpy())  # ← append, not overwrite
 
         # Concatenate across batches along stimulus axis (axis=0), then average over stimulus
         estimation_dict = {
-            key: np.mean(np.concatenate(vals, axis=0), axis=0)  # ← concatenate then average over stimulus
+            key: (
+                np.mean(np.concatenate(vals, axis=0), axis=0)  # ← concatenate then average over stimulus
+                if len(vals) > 0
+                else None
+            )
             for key, vals in estimation_dict.items()
         }
         bin_stim_out = np.mean(np.concatenate(bin_stim_list, axis=0), axis=0)
