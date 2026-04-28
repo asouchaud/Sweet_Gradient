@@ -14,14 +14,17 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
 # Import project modules
+from scripts.datasets.stimulus_dataset import get_stim_loader
+from scripts.datasets.listener_dataset import get_listener_loader
 from scripts.optimisation.custom_modules import MultiSourceFIR
 from scripts.plotting.results_plot import plot_pair_directivity_polar, plot_results, plot_arrows_with_directivity
-from scripts.setup.setup import load_gtfb, load_hrirs, load_stim, set_seed
+from scripts.setup.setup import set_seed, build_eval_objects
 from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagation
 from scripts.perceptual_models.llado2025.llado2025 import llado2025
 from scripts.perceptual_models.desena2020.desena2020 import desena2020
 from scripts.perceptual_models.spectral_matching.spectral_matching import spectral_matching
-from scripts.optimisation.regularisation import second_moment_regularisation
+from scripts.perceptual_models.ipd.ipd import interaural_phase_difference_matching
+from scripts.optimisation.regularisation import second_moment_regularisation, source_flatness
 from scripts.train.train import ListenerBasedLoss, SourceBasedLoss, Train
 from scripts.saving.save_results import saver
 
@@ -46,11 +49,10 @@ if __name__ == "__main__":
         epochs=200,
         n_samples=41,
         num_lstn_pos=51,
-        listener_batch_size=None, 
+        listener_batch_size=51, 
         symmetric_listener_sampling=True,
         selected_stim="impulse",
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
-        sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
         lr=0.05,
         seed=46,
         log=1,
@@ -73,6 +75,8 @@ if __name__ == "__main__":
     env.dtype = torch.float32
     env.device_str = "cuda" if torch.cuda.is_available() else "cpu"
     env.device = torch.device(env.device_str)
+    env.stimulus_batch_size = 1
+    env.n_filter_taps = env.n_samples
 
     env.target_pos=[float(env.speaker_distance * np.cos(np.deg2rad(env.array_centre_angles_deg[0]))), 0.0]
     # env.target_pos=[10.5, 0.0]
@@ -85,7 +89,7 @@ if __name__ == "__main__":
     set_seed(seed=env.seed)
 
     # Loudspkeaker and listener positions
-    env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-1.25, 1.25, env.num_lstn_pos)]  # 10 listener positions
+    env.lstn_pos = torch.tensor([[0.0, float(y)] for y in np.linspace(-1.25, 1.25, env.num_lstn_pos)], device=env.device, dtype=env.dtype)  # 10 listener positions
 
     relative_offsets = (np.arange(env.speakers_per_array, dtype=float) - (env.speakers_per_array - 1) / 2.0) * env.speaker_spacing_m
     upper_angle_deg, lower_angle_deg = env.array_centre_angles_deg
@@ -108,7 +112,7 @@ if __name__ == "__main__":
     # upper uses +offset, lower uses -offset for each corresponding index.
     upper_array = [[float(upper_centre[0]), float(upper_centre[1] + off)] for off in relative_offsets]
     lower_array = [[float(lower_centre[0]), float(lower_centre[1] - off)] for off in relative_offsets]
-    env.spk_pos = upper_array + lower_array
+    env.spk_pos = torch.tensor(upper_array + lower_array, device=env.device, dtype=env.dtype)
     env.n_sources = len(env.spk_pos)
 
     listener_weights = build_listener_position_weights(
@@ -125,32 +129,27 @@ if __name__ == "__main__":
     env.listener_weights = listener_weights.tolist()
 
 ## Load data
-    gtfb = load_gtfb(fs=env.fs, device=env.device, dtype=env.dtype)  # Load Gamma Tone Filter Bank
-    stim = load_stim(fs=env.fs, device=env.device, dtype=env.dtype, selected_stim=env.selected_stim)  # Load stimulus
-    hrirs = load_hrirs(dtype=env.dtype, device=env.device, sofa_path=env.sofa_path, idx_path=env.sofa_idx_path) # Load HRIRs using specific location from SOFA file
+    training_stimulus_data_loader, stimulus_dataset = get_stim_loader(env.fs, env.stimulus_batch_size, 1, stimulus_type=env.selected_stim, device=env.device, dtype=env.dtype) # Get stimulus dataloader
+    training_listener_data_loader, _ = get_listener_loader(env.lstn_pos, env.listener_batch_size, env.symmetric_listener_sampling) # Get listener dataloader
 
 ## Initialize model
     # Initialize sound propagation module
-    stereo_prop = BinauralFreeFieldPropagation(
-        stim=stim, 
-        lstn_pos=env.lstn_pos, 
-        spk_pos=env.spk_pos, 
-        fs=env.fs, 
-        sofa_file_path=env.sofa_path, 
-        apply_distance_attenuation=env.apply_distance_attenuation) # Load stereo anechoic propagation module
+    stereo_prop = BinauralFreeFieldPropagation(fs=env.fs, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, sofa_file_path=env.sofa_path, device=env.device, dtype=env.dtype) # Load stereo anechoic propagation module
 
     # Initiate perceptual models
-    loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, hrirs=hrirs, fs=env.fs, gtfb=gtfb, lstn_pos_conf=env.lstn_pos).to(device=env.device, dtype=env.dtype) # Llado et al. 2025 model
-    col_model = spectral_matching(loss = F.l1_loss, target = 0, stim=stim, hrirs=hrirs, target_pos=env.target_pos, fs=env.fs, lstn_pos_conf=env.lstn_pos).to(device=env.device, dtype=env.dtype) # Spectral Matching model
-    unc_model = desena2020(loss = F.l1_loss, target = 0, hrirs=hrirs, fs=env.fs, gtfb=gtfb).to(device=env.device, dtype=env.dtype) # De Sena et al. 2020 model
+    loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, device=env.device, dtype=env.dtype) # Llado et al. 2025 model
+    col_model = spectral_matching(loss = F.l1_loss, target = 0, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, device=env.device, dtype=env.dtype) # Spectral Matching model
+    unc_model = desena2020(loss = F.l1_loss, target = 0, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, device=env.device, dtype=env.dtype) # De Sena et al. 2020 model
+    ipd_model = interaural_phase_difference_matching(loss = F.l1_loss, target = 0, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, device=env.device, dtype=env.dtype) # Interaural Phase Difference model
     regularisation = second_moment_regularisation(n_samples=env.n_samples, device=env.device, dtype=env.dtype)
 
     env.loc_weight = 1.0
     env.unc_weight = 1.0e1
     env.col_weight = 1e-01
     env.reg_weight = 1.0e-2
+    env.flatness_weight = 1.0e-2
 
-    listener_loss_kwargs = dict(device=env.device, dtype=env.dtype, listener_weights=listener_weights)
+    listener_loss_kwargs = dict(device=env.device, dtype=env.dtype, listener_weights=listener_weights) if listener_weights is not None else dict(device=env.device, dtype=env.dtype)
 
     loss_dict = {
         "localisation": ListenerBasedLoss(model=loc_model, weight=env.loc_weight, **listener_loss_kwargs),
@@ -160,6 +159,16 @@ if __name__ == "__main__":
         # "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=env.reg_weight),
         # "regularisation_source_2": SourceBasedLoss(regulariser=regularisation, source_idx=2, weight=env.reg_weight),
         # "regularisation_source_3": SourceBasedLoss(regulariser=regularisation, source_idx=3, weight=env.reg_weight),
+        "flatness_pair_0_2": SourceBasedLoss(
+            regulariser=source_flatness(n_samples=env.n_samples, device=env.device, dtype=env.dtype),
+            source_idx=(0, 2),
+            weight=env.flatness_weight,
+        ),
+        "flatness_pair_1_3": SourceBasedLoss(
+            regulariser=source_flatness(n_samples=env.n_samples, device=env.device, dtype=env.dtype),
+            source_idx=(1, 3),
+            weight=env.flatness_weight,
+        ),
     }
 
     # Initialise neural network
@@ -172,7 +181,7 @@ if __name__ == "__main__":
     with torch.no_grad():
         for branch in nn_model.branches:
             branch.weight.fill_(0.0)
-            branch.weight[centre_tap_idx, 0] = 1.0
+            branch.weight[centre_tap_idx] = 1.0
 
     # Tie mirrored loudspeakers between the two arrays to preserve symmetry.
     for local_idx in range(env.speakers_per_array):
@@ -181,20 +190,19 @@ if __name__ == "__main__":
     nn_optimiser = torch.optim.Adam(nn_model.parameters(), lr=env.lr)
     
 ## Initliase saving folder and logger
-    saver_obj = saver(loss_dict, env.lstn_pos)
+    saver_obj = saver()
     logger = saver_obj if env.log else None
 
 ## Training loop
     # Train the neural network
     trainer = Train(n_epoch=env.epochs,
+                    stim_loader = training_stimulus_data_loader,
+                    lstn_loader = training_listener_data_loader,
                     nn=nn_model,
                     prop=stereo_prop,
                     loss_dict=loss_dict,
                     optimiser=nn_optimiser,
-                    loggers = [logger, None], 
-                    scheduler=None,
-                    listener_batch_size=env.listener_batch_size,
-                    symmetric_listener_sampling=env.symmetric_listener_sampling) # Initialize training class
+                    loggers = [logger, None]) # Initialize training class
     time_train_start = time.time()
     trainer.train()
     env.time_train_seconds = time.time() - time_train_start
@@ -202,7 +210,8 @@ if __name__ == "__main__":
 
 ## Print and Plot results
     # Evaluate final neural network FIRs
-    est_filters, estimation_dict, bin_stim = trainer.evaluate()
+    eval_lstn_pos, eval_perceptual_dict, eval_stimulus_data_loader, eval_stimulus_dataset = build_eval_objects(env, eval_lstn_pos=env.lstn_pos)
+    est_filters, estimation_dict, bin_stim = trainer.evaluate(eval_lstn_pos=eval_lstn_pos, eval_stimulus_data_loader=eval_stimulus_data_loader, loss_dict=eval_perceptual_dict)
     # Normalise filters to prevent clipping 
     est_filters /= np.max(np.abs(est_filters)) / 0.9 # TODO: move this to a more appropriate place at the end of the training loop
     est_filters = est_filters * 1.41
@@ -215,27 +224,25 @@ if __name__ == "__main__":
         estimation_dict=estimation_dict,
         est_filters=est_filters,
         fs=env.fs,
-        lstn_pos=env.lstn_pos,
-        spk_pos=env.spk_pos,
-        trainer=trainer,
         env=env,
     )
     plots = plot_results(
         estimation_dict=estimation_dict,
         est_filters=est_filters,
         bin_stim=bin_stim,
-        prop_model=stereo_prop,
-        loss_dict=loss_dict,
+        lstn_pos=eval_lstn_pos,
+        spk_pos=env.spk_pos,
+        loss_dict=eval_perceptual_dict,
         target_pos=env.target_pos,
-        stim=stim,
         fs=env.fs,
+        stim = eval_stimulus_dataset.data,
         device=env.device,
         dtype=env.dtype,
         show=False,
     )
 
     fig_listener_weights, ax_listener_weights = plt.subplots(figsize=(6, 3))
-    lstn_y = np.asarray([pos[1] for pos in env.lstn_pos], dtype=float)
+    lstn_y = env.lstn_pos[:, 1].detach().cpu().numpy().astype(float, copy=False)
     ax_listener_weights.plot(lstn_y, listener_weights, linewidth=2)
     ax_listener_weights.set_xlabel("Listener position y (m)")
     ax_listener_weights.set_ylabel("Listener weight")
@@ -252,7 +259,7 @@ if __name__ == "__main__":
     left_array_indices = tuple(range(env.speakers_per_array))
     plots["directivity_plot"] = plot_pair_directivity_polar(
         est_filters=est_filters,
-        spk_pos=env.spk_pos,
+        spk_pos=env.spk_pos.detach().cpu().numpy(),
         fs=env.fs,
         group_indices=right_array_indices,
         radius=env.directivity_radius_m,
@@ -265,9 +272,9 @@ if __name__ == "__main__":
 
     plots["arrows_and_directivity"] = plot_arrows_with_directivity(
         est_filters = est_filters,
-        spk_pos = torch.tensor(env.spk_pos),
-        lstn_pos = torch.tensor(env.lstn_pos),
-        loc = torch.tensor(estimation_dict["localisation"]),
+        spk_pos = env.spk_pos,
+        lstn_pos = env.lstn_pos,
+        loc = torch.as_tensor(estimation_dict["localisation"], device=env.device, dtype=env.dtype),
         fs = env.fs,
         group_idx = [left_array_indices, right_array_indices],
         unc=None,
@@ -300,23 +307,24 @@ if __name__ == "__main__":
     )
     spk_pos_centre = np.stack([upper_centre, lower_centre], axis=0)
     stereo_prop_centre = BinauralFreeFieldPropagation(
-        stim=stim,
+        fs=env.fs,
         lstn_pos=env.lstn_pos,
         spk_pos=[upper_centre.tolist(), lower_centre.tolist()],
-        fs=env.fs,
         sofa_file_path=env.sofa_path,
-        apply_distance_attenuation=env.apply_distance_attenuation,
-    ).to(device=env.device, dtype=env.dtype)
+        device=env.device,
+        dtype=env.dtype,
+    )
     loc_model.eval()
     with torch.no_grad():
+        centre_stimulus = eval_stimulus_dataset.data[0:1].to(device=env.device, dtype=env.dtype)
         h_centre = torch.as_tensor(est_filters_centre, device=env.device, dtype=env.dtype).unsqueeze(0)
-        bin_stim_centre = stereo_prop_centre(h_centre)
+        bin_stim_centre = stereo_prop_centre(centre_stimulus, h_centre)
         loc_centre = loc_model(bin_stim_centre).squeeze(0)
 
     plots["arrows_and_directivity_centre"] = plot_arrows_with_directivity(
         est_filters=est_filters_centre,
         spk_pos=torch.as_tensor(spk_pos_centre, device=env.device, dtype=env.dtype),
-        lstn_pos=torch.tensor(env.lstn_pos, device=env.device, dtype=env.dtype),
+        lstn_pos=env.lstn_pos,
         loc=loc_centre,
         fs=env.fs,
         group_idx=[(0,), (1,)],
