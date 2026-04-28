@@ -51,3 +51,11 @@ def test_second_moment_regularisation_is_zero_for_impulse_and_positive_for_sprea
     # The mean is therefore (1 + 3) / 2 = 2, and the variance is
     # ((1-2)^2 + (3-2)^2) / 2 = (1 + 1) / 2 = 1.
     assert reg.compute_loss(spread).item() == pytest.approx(1.0, abs=1e-6)
+
+
+def test_second_moment_regularisation_single_tap_has_finite_loss_norm() -> None:
+    # With a single filter tap, the second moment is always 0, so the normalisation
+    # factor should be safely clamped to avoid divide-by-zero in training.
+    reg = second_moment_regularisation(n_samples=1, device="cpu", dtype=torch.float32)
+    assert torch.isfinite(reg.loss_norm)
+    assert float(reg.loss_norm) == pytest.approx(1.0, abs=1e-6)
