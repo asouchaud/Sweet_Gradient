@@ -11,7 +11,7 @@ class StaticStimulusDataset(Dataset):
 
     Args:
         fs:             Sampling frequency (Hz).
-        num_samples:    Number of stimuli to generate.
+        n_stimulus:    Number of stimuli to generate.
         stimulus_type:  One of ``'white_noise'``, ``'impulse'``, or
                         ``'distributed_impulse'``.
         device:         Torch device string (e.g. ``'cpu'``, ``'cuda'``).
@@ -23,7 +23,7 @@ class StaticStimulusDataset(Dataset):
     def __init__(
         self,
         fs: int,
-        num_samples: int,
+        n_stimulus: int,
         stimulus_type: str = "white_noise",
         device: str = "cpu",
         dtype: torch.dtype = torch.float64,
@@ -35,7 +35,7 @@ class StaticStimulusDataset(Dataset):
             )
 
         self.fs            = fs
-        self.num_samples   = num_samples
+        self.n_stimulus   = n_stimulus
         self.stimulus_type = stimulus_type
         self.device        = device
         self.dtype         = dtype
@@ -48,7 +48,7 @@ class StaticStimulusDataset(Dataset):
     # ------------------------------------------------------------------
 
     def __len__(self) -> int:
-        return self.num_samples
+        return self.n_stimulus
 
     def __getitem__(self, idx: int) -> torch.Tensor:
         return self.data[idx]
@@ -72,29 +72,29 @@ class StaticStimulusDataset(Dataset):
 
     def _white_noise(self) -> torch.Tensor:
         return torch.randn(
-            self.num_samples, 1, self.signal_length,
+            self.n_stimulus, 1, self.signal_length,
             device=self.device, dtype=self.dtype,
         )
 
     def _impulse(self) -> torch.Tensor:
         # Override length and sample count — all stimuli are identical.
         self.signal_length = int(_IMPULSE_DURATION * self.fs)
-        self.num_samples   = 1
-        data = self._tensor(self.num_samples, 1, self.signal_length)
+        self.n_stimulus   = 1
+        data = self._tensor(self.n_stimulus, 1, self.signal_length)
         data[:, 0, 0] = 1.0
         return data
 
     def _distributed_impulse(self) -> torch.Tensor:
-        data      = self._tensor(self.num_samples, 1, self.signal_length)
-        positions = torch.arange(self.num_samples) % self.signal_length
-        data[torch.arange(self.num_samples), 0, positions] = 1.0
+        data      = self._tensor(self.n_stimulus, 1, self.signal_length)
+        positions = torch.arange(self.n_stimulus) % self.signal_length
+        data[torch.arange(self.n_stimulus), 0, positions] = 1.0
         return data
 
 
 def get_stim_loader(
     fs: int,
     batch_size: int,
-    num_samples: int,
+    n_stimulus: int,
     stimulus_type: str = "white_noise",
     shuffle: bool = True,
     device: str = "cpu",
@@ -107,7 +107,7 @@ def get_stim_loader(
     """
     dataset = StaticStimulusDataset(
         fs=fs,
-        num_samples=num_samples,
+        n_stimulus=n_stimulus,
         stimulus_type=stimulus_type,
         device=device,
         dtype=dtype,
