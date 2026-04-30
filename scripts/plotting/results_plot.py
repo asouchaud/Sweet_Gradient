@@ -87,11 +87,12 @@ def plot_stereo_results(estimation_dict, est_filters, bin_stim, stereo_prop, los
         estimation_dict=estimation_dict,
         est_filters=est_filters,
         bin_stim=bin_stim,
-        prop_model=stereo_prop,
+        lstn_pos=stereo_prop.lstn_pos,
+        spk_pos=stereo_prop.spk_pos,
         loss_dict=loss_dict,
         target_pos=target_pos,
-        stim=stim,
         fs=fs,
+        stim=stim,
         device=device,
         dtype=dtype,
         show=show,
@@ -259,6 +260,12 @@ def _db_at_nearest_angle_deg(sample_angles_deg, levels_db, target_angle_deg):
     return float(levels_db[nearest_idx])
 
 
+def _to_numpy_float(x):
+    if torch.is_tensor(x):
+        return x.detach().cpu().numpy().astype(float, copy=False)
+    return np.asarray(x, dtype=float)
+
+
 def plot_arrows_with_directivity(
     est_filters,
     spk_pos,
@@ -325,7 +332,7 @@ def plot_arrows_with_directivity(
 
     target_pos_np = None
     if target_pos is not None:
-        target_pos_np = np.asarray(target_pos, dtype=float).reshape(-1)
+        target_pos_np = _to_numpy_float(target_pos).reshape(-1)
         if target_pos_np.size != 2:
             raise ValueError("target_pos must be a 2D position.")
         ax.scatter(
@@ -375,7 +382,7 @@ def plot_arrows_with_directivity(
 
         group_indices = np.asarray(g, dtype=int).reshape(-1)
 
-        filters = np.atleast_2d(np.asarray(est_filters, dtype=float))
+        filters = np.atleast_2d(_to_numpy_float(est_filters))
         h_group = filters[group_indices]
         p_group = spk_pos[group_indices]
 

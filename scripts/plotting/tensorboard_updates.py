@@ -19,7 +19,8 @@ class TensorboardLogger:
 
     def log_losses(self, loss_dict, full_loss, epoch):
         for key, value in loss_dict.items():
-            self.writer.add_scalar(f"loss/{key}", value.item(), global_step=epoch)
+            scalar_value = value.item() if torch.is_tensor(value) else float(value)
+            self.writer.add_scalar(f"loss/{key}", scalar_value, global_step=epoch)
         self.writer.add_scalar("loss/total", full_loss.item(), global_step=epoch)
 
 
@@ -42,11 +43,31 @@ class TensorboardLogger:
         fig_freq = plot_freq(h_full, self.fs, show=False)
         self.writer.add_figure("h_full (Frequency Domain)", fig_freq, global_step=epoch)
         plt.close(fig_freq)
+
+    def log_spk_filters(self, spk_filters, epoch):
+        """Backwards-compatible alias used by training code."""
+        self.log_h_full(spk_filters, epoch)
     
 
     def log_bin_cues(self, bin_stim, epoch):
         if epoch % self.h_log_interval != 0:
             return
+
+        # Support either a tensor/array directly or a dict of per-listener batch lists.
+        if isinstance(bin_stim, dict):
+            listener_means = []
+            for listener_idx in sorted(bin_stim.keys()):
+                listener_batches = bin_stim[listener_idx]
+                if len(listener_batches) == 0:
+                    continue
+                stacked = torch.cat(listener_batches, dim=0)  # [n_stim, 2, n_samples]
+                listener_means.append(stacked.mean(dim=0, keepdim=True))  # [1, 2, n_samples]
+
+            if len(listener_means) == 0:
+                return
+
+            # [1, n_listeners, 2, n_samples]
+            bin_stim = torch.cat(listener_means, dim=0).unsqueeze(0)
 
         fig_bin_cues = plot_bin_cues(bin_stim, self.fs, gtfb=self.gtfb, show=False)
         self.writer.add_figure("Binaural Cues", fig_bin_cues, global_step=epoch)
@@ -54,8 +75,13 @@ class TensorboardLogger:
 
 
     def log_plot_arrows(self, lstn_pos, spk_pos, loc, unc = None, col=None, epoch=None, target_pos = None):
-        if epoch % self.h_log_interval != 0:
+        if epoch is None or epoch % self.h_log_interval != 0:
             return
+
+        if not torch.is_tensor(lstn_pos):
+            lstn_pos = torch.as_tensor(lstn_pos, dtype=loc.dtype, device=loc.device)
+        if not torch.is_tensor(spk_pos):
+            spk_pos = torch.as_tensor(spk_pos, dtype=loc.dtype, device=loc.device)
         
         fig_arrows = plot_arrows(lstn_pos, spk_pos, loc, unc, col, target_pos, show=False)
 
