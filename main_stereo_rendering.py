@@ -41,21 +41,23 @@ def run_experiment(loss_dict_builder, run_label):
     d = 100
     fs = 48000
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
-        epochs=10,
-        num_lstn_pos=1,
-        listener_batch_size=1,  # 5 mirrored pairs plus the centre listener
+        epochs=200,
+        num_lstn_pos=9,
+        listener_batch_size=3,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=False,
-        selected_stim="impulse",
-        stimulus_batch_size = 1,
-        n_stimulus = 1,
-        n_filter_taps=128,
-        target_pos=[d, float(np.tan(np.deg2rad(15.0)) * d)],
+        selected_stim="white_noise",
+        stimulus_batch_size = 4,
+        n_stimulus = 16,
+        n_filter_taps=32,
+        target_pos=[d, float(np.tan(np.deg2rad(0.0)) * d)],
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
-        lr=0.1,
+        lr=0.01,
         seed=46,
         log=1,
         fs=fs,
     )
+    # Backwards-compatible alias for helpers that still expect `n_samples`.
+    env.n_samples = env.n_filter_taps
     env.dtype = torch.float64
     env.device_str = "cpu"
     env.device = torch.device(env.device_str)
@@ -67,9 +69,9 @@ def run_experiment(loss_dict_builder, run_label):
     print(f"Using device: {env.device}")
 
     # Loudspkeaker and listener positions
-    # env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)] 
-    # env.lstn_pos = torch.tensor(env.lstn_pos, device = env.device, dtype = env.dtype)
-    env.lstn_pos = torch.tensor([[0.0, 0.0]], device = env.device, dtype = env.dtype)
+    env.lstn_pos = torch.tensor([[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)], 
+                                device = env.device, 
+                                dtype = env.dtype)
     base_angle_rad = np.deg2rad(30.0)
     env.speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
     env.spk_pos = [
@@ -96,13 +98,7 @@ def run_experiment(loss_dict_builder, run_label):
     unc_model = desena2020(loss = F.l1_loss, target = 0, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, device=env.device, dtype=env.dtype) # De Sena et al. 2020 model
     ipd_model = interaural_phase_difference_matching(loss = F.l1_loss, target = 0, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, device=env.device, dtype=env.dtype) # Interaural Phase Difference model
     regularisation = second_moment_regularisation(n_samples=env.n_filter_taps, device=env.device, dtype=env.dtype)
-    # loss_dict = loss_dict_builder(loc_model, col_model, unc_model, regularisation, env.device, env.dtype)
-    loss_dict = {"localisation": ListenerBasedLoss(loc_model, 1, env.device, env.dtype),
-                 # "colouration": ListenerBasedLoss(col_model, 1, env.device, env.dtype),
-                  #"ipd": ListenerBasedLoss(ipd_model, 1e-1, env.device, env.dtype),
-                 #"regularisation_l": SourceBasedLoss(regularisation, 0, 1),
-                 #"regularisation_r": SourceBasedLoss(regularisation, 1, 1)
-                }
+    loss_dict = loss_dict_builder(loc_model, col_model, unc_model, regularisation, env.device, env.dtype)
 
     # Initialise neural network
     nn_model = MultiSourceFIR(
@@ -110,10 +106,11 @@ def run_experiment(loss_dict_builder, run_label):
         n_sources=env.n_sources,
     ).to(device=env.device, dtype=env.dtype)
     # Initialise FIR filter weights
+    centre_tap_idx = env.n_filter_taps // 2
     with torch.no_grad():
         for i, branch in enumerate(nn_model.branches):
             branch.weight.fill_(0.0)
-            branch.weight[0, 0] = 1.0
+            branch.weight[centre_tap_idx] = 1.0
         # nn_model.branches[0].weight[0, 0] = 1.0
 
     nn_optimiser = torch.optim.Adam(nn_model.parameters(), lr=env.lr)
@@ -134,6 +131,17 @@ def run_experiment(loss_dict_builder, run_label):
                     loggers = [logger, None]
                     ) # Initialize training class
     
+
+    print("Evaluating perceptual attributes and loss before training (initialised filters)...")
+    _, initial_estimation_dict, _ = trainer.evaluate(
+        eval_lstn_pos=env.lstn_pos,
+        eval_stimulus_data_loader=training_stimulus_data_loader,
+        loss_dict=loss_dict,
+    )
+    for key, value in initial_estimation_dict.items():
+        print(f"Initial estimated {key}: {value}")
+
+## TRAINING LOOP
     time_train_start = time.time()
     trainer.train()
     env.time_train_seconds = time.time() - time_train_start
@@ -156,6 +164,7 @@ def run_experiment(loss_dict_builder, run_label):
         est_filters=est_filters,
         fs=env.fs,
         env=env,
+        loss_dict=loss_dict,
     )
     plots = plot_results(
         estimation_dict=estimation_dict,
