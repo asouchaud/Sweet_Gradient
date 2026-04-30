@@ -350,7 +350,7 @@ class saver():
         )
 
 
-    def save_results(self, estimation_dict, est_filters, fs, env=None):
+    def save_results(self, estimation_dict, est_filters, fs, env=None, loss_dict=None):
         # =========================
         # Save results (clean layout)
         # Subfolders
@@ -380,6 +380,15 @@ class saver():
             "date": self.now.strftime("%Y-%m-%d %H:%M:%S"),
             "entrypoint_file": Path(sys.argv[0]).name,
         }
+        if loss_dict is not None:
+            training_loss_attributes = list(loss_dict.keys())
+            training_loss_weights = {
+                key: _to_json_safe(getattr(loss_cfg, "weight", None))
+                for key, loss_cfg in loss_dict.items()
+            }
+
+            config["training_loss_attributes"] = _to_json_safe(training_loss_attributes)
+            config["training_loss_weights"] = _to_json_safe(training_loss_weights)
         env_dict = _coerce_env_to_dict(env)
         if env_dict is not None:
             config["main"] = _to_json_safe(env_dict)
