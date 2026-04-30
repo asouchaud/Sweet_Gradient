@@ -470,6 +470,9 @@ if __name__ == "__main__":
     )
 
     CTC_filts = Compute_CTC_filters(target_angle=env.target_angle)
+    ctc_artifacts_dir = saver_obj.run_dir / "artifacts"
+    ctc_artifacts_dir.mkdir(parents=True, exist_ok=True)
+    np.save(ctc_artifacts_dir / "true_ctc_filters.npy", CTC_filts)
     
     fig7_plot = DAFx2026_fig7_plots(saver_obj.run_dir, saver_obj_col_only.run_dir, CTC_filts=CTC_filts, trainer=trainer, col_model=col_model)
     plot_folder = saver_obj.get_plot_folder()
