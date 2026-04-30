@@ -315,15 +315,15 @@ class Train:
             # Estimate filters after last update for logging
             spk_filters = self.nn(unit_input)
 
-            # self._log_tensorboard(
-            #     full_loss=full_loss,
-            #     weighted_loss=avg_loss,
-            #     estimation_dict=avg_est,
-            #     bin_stim=accum_bin_stim,
-            #     spk_filters=spk_filters,
-            #     listener_pos=self.lstn_loader.dataset,
-            #     epoch=epoch
-            # )
+            self._log_tensorboard(
+                full_loss=full_loss,
+                weighted_loss=avg_loss,
+                estimation_dict=avg_est,
+                bin_stim=accum_bin_stim,
+                spk_filters=spk_filters,
+                listener_pos=self.lstn_loader.dataset,
+                epoch=epoch
+            )
 
     def evaluate(self, eval_lstn_pos, eval_stimulus_data_loader, loss_dict=None):
 
@@ -425,14 +425,41 @@ class Train:
             self.logger.log_losses(weighted_loss, full_loss, epoch)
             self.logger.log_spk_filters(spk_filters, epoch)
 
-            if ('localisation', 0) in estimation_dict or ('uncertainty', 0) in estimation_dict:
+            has_binaural_cue_model = any(
+                loss_name in {"localisation", "uncertainty"}
+                for (_, loss_name) in estimation_dict.keys()
+            )
+            if has_binaural_cue_model:
                 self.logger.log_bin_cues(bin_stim, epoch)
 
-            # if ('localisation', 0) in estimation_dict:
-            #     self.logger.log_plot_arrows(epoch,
-            #                                 listener_pos,
-            #                                 self.prop.spk_pos, 
-            #                                 estimation_dict,
-            #                                 target_pos=getattr(self.perceptual_models['localisation'], 'target_pos', None))
+            loss_names = {loss_name for (_, loss_name) in estimation_dict.keys()}
+            if "localisation" in loss_names:
+                n_listeners = len(self.lstn_loader.dataset)
+
+                def _listener_metric(metric_name):
+                    values = []
+                    for lstn_idx in range(n_listeners):
+                        value = estimation_dict.get((lstn_idx, metric_name), None)
+                        if value is None:
+                            values.append(np.nan)
+                        elif torch.is_tensor(value):
+                            values.append(float(value.detach().cpu().item()))
+                        else:
+                            values.append(float(value))
+                    return torch.tensor(values, device=self.device, dtype=self.dtype)
+
+                loc = _listener_metric("localisation")
+                unc = _listener_metric("uncertainty") if "uncertainty" in loss_names else None
+                col = _listener_metric("colouration") if "colouration" in loss_names else None
+
+                self.logger.log_plot_arrows(
+                    lstn_pos=self.prop.lstn_pos,
+                    spk_pos=self.prop.spk_pos,
+                    loc=loc,
+                    unc=unc,
+                    col=col,
+                    epoch=epoch,
+                    target_pos=getattr(self.perceptual_models.get("localisation", None), "target_pos", None),
+                )
         
 
