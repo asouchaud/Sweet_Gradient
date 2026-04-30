@@ -34,6 +34,7 @@ def estimate_interauralcues(bin_stim,fs,gtfb, tau_IACC=0.01):
     L_signal = bin_stim.shape[-1]
     device = bin_stim.device
     dtype = bin_stim.dtype
+    gtfb = gtfb.to(device=device, dtype=dtype)
 
     ## Peripheral Processing
     bin_stim_reshaped = bin_stim.view(N_signals, 2, L_signal)
