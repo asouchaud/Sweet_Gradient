@@ -2,6 +2,8 @@ import pygame
 import argparse
 import numpy as np
 from pathlib import Path
+from scipy import signal
+from scipy.io import wavfile
 try:
     import sounddevice as sd
 except ImportError:
@@ -146,7 +148,7 @@ def _prepare_signal_for_device(signal, max_device_channels, allow_downmix):
     return _downmix_to_channels(signal, max_device_channels), True
 
 
-def _prepare_audio_for_sounddevice(signal, target_peak=0.01):
+def _prepare_audio_for_sounddevice(signal, target_peak=0.05):
     """Validate and normalise audio to safe float32 range for sounddevice."""
     audio = np.asarray(signal)
     if audio.ndim != 2:
@@ -352,6 +354,18 @@ def main():
     elif args.stimulus == "white_noise":
         stimulus = np.random.randn(48000)
         stimulus /= np.max(np.abs(stimulus)) / 0.9
+    elif args.stimulus == "finger_snaps":
+        wav_path = Path(__file__).resolve().parents[2] / "data" / "stimulus" / "finger snaps.wav"
+        src_fs, stimulus = wavfile.read(wav_path)
+        stimulus = np.asarray(stimulus, dtype=np.float64)
+        if stimulus.ndim > 1:
+            stimulus = np.mean(stimulus, axis=1)
+        if src_fs != args.fs:
+            target_len = int(round(len(stimulus) * args.fs / src_fs))
+            stimulus = signal.resample(stimulus, target_len)
+        peak = np.max(np.abs(stimulus))
+        if peak > 0:
+            stimulus /= peak / 0.9
     else:
         print("Selected stimulus not available, using white noise")
         stimulus = np.random.randn(48000)
