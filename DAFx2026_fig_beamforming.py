@@ -63,7 +63,7 @@ if __name__ == "__main__":
         speakers_per_array=2,
         speaker_distance=2.5,  # Distance from each array centre to the reference-system center (0, 0)
         array_centre_angles_deg=[30.0, -30.0],
-        speaker_spacing_m=0.10,  # Adjacent spacing within each array (global y-axis)
+        speaker_spacing_m=0.145,  # Adjacent spacing within each array (global y-axis)
         apply_distance_attenuation=True,
         listener_weight_y_pos_lo=0.20,
         listener_weight_y_pos_hi=1.25,
@@ -73,12 +73,13 @@ if __name__ == "__main__":
         listener_weight_w_low=0.0,
     )
     env.dtype = torch.float32
-    env.device_str = "cuda" if torch.cuda.is_available() else "cpu"
+    env.device_str = "cpu"
     env.device = torch.device(env.device_str)
     env.stimulus_batch_size = 1
     env.n_filter_taps = env.n_samples
 
-    env.target_pos=[float(env.speaker_distance * np.cos(np.deg2rad(env.array_centre_angles_deg[0]))), 0.0]
+    d = 2
+    env.target_pos=torch.tensor([d, float(np.tan(np.deg2rad(0.0)) * d)], device=env.device, dtype=env.dtype)
     # env.target_pos=[10.5, 0.0]
     print(env.target_pos)
 
@@ -108,10 +109,15 @@ if __name__ == "__main__":
         dtype=float,
     )
 
-    # Build two arrays mirrored around the x-axis:
-    # upper uses +offset, lower uses -offset for each corresponding index.
-    upper_array = [[float(upper_centre[0]), float(upper_centre[1] + off)] for off in relative_offsets]
-    lower_array = [[float(lower_centre[0]), float(lower_centre[1] - off)] for off in relative_offsets]
+    # Build each array along the local tangent so its look direction points to (0, 0).
+    def build_array_positions(array_centre, offsets, invert_offsets=False):
+        look_dir = -array_centre / np.linalg.norm(array_centre)  # from array centre to listener at origin
+        tangent_dir = np.array([-look_dir[1], look_dir[0]], dtype=float)  # 90-degree rotation
+        signed_offsets = -offsets if invert_offsets else offsets
+        return [(array_centre + off * tangent_dir).astype(float).tolist() for off in signed_offsets]
+
+    upper_array = build_array_positions(upper_centre, relative_offsets, invert_offsets=False)
+    lower_array = build_array_positions(lower_centre, relative_offsets, invert_offsets=True)
     env.spk_pos = torch.tensor(upper_array + lower_array, device=env.device, dtype=env.dtype)
     env.n_sources = len(env.spk_pos)
 
@@ -147,7 +153,7 @@ if __name__ == "__main__":
     env.unc_weight = 1.0e1
     env.col_weight = 1e-01
     env.reg_weight = 1.0e-2
-    env.flatness_weight = 1.0e-2
+    env.flatness_weight = 1.0e-4
 
     listener_loss_kwargs = dict(device=env.device, dtype=env.dtype, listener_weights=listener_weights) if listener_weights is not None else dict(device=env.device, dtype=env.dtype)
 
@@ -159,15 +165,15 @@ if __name__ == "__main__":
         # "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=env.reg_weight),
         # "regularisation_source_2": SourceBasedLoss(regulariser=regularisation, source_idx=2, weight=env.reg_weight),
         # "regularisation_source_3": SourceBasedLoss(regulariser=regularisation, source_idx=3, weight=env.reg_weight),
-        "flatness_pair_0_2": SourceBasedLoss(
-            regulariser=source_flatness(n_samples=env.n_samples, device=env.device, dtype=env.dtype),
-            source_idx=(0, 2),
-            weight=env.flatness_weight,
+        "flatness_pair_0_1": SourceBasedLoss(
+           regulariser=source_flatness(n_samples=env.n_samples, device=env.device, dtype=env.dtype),
+           source_idx=(0, 1),
+           weight=env.flatness_weight,
         ),
-        "flatness_pair_1_3": SourceBasedLoss(
-            regulariser=source_flatness(n_samples=env.n_samples, device=env.device, dtype=env.dtype),
-            source_idx=(1, 3),
-            weight=env.flatness_weight,
+        "flatness_pair_2_3": SourceBasedLoss(
+           regulariser=source_flatness(n_samples=env.n_samples, device=env.device, dtype=env.dtype),
+           source_idx=(2, 3),
+           weight=env.flatness_weight,
         ),
     }
 
