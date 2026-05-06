@@ -32,6 +32,12 @@ def parse_args():
         action="store_true",
         help="Before interactive playback, play a short test tone one channel at a time.",
     )
+    parser.add_argument(
+        "--filters-file",
+        type=str,
+        default="est_filters.npy",
+        help="Path to the estimated filters .npy file.",
+    )
    
     return parser.parse_args()
 
@@ -148,6 +154,15 @@ def _prepare_signal_for_device(signal, max_device_channels, allow_downmix):
     return _downmix_to_channels(signal, max_device_channels), True
 
 
+def _remap_four_channel_output(signal):
+    """Map filter channels to device channels for 4-channel playback."""
+    if signal.shape[1] != 4:
+        return signal
+    # Filter -> device mapping: 0->2, 1->0, 2->3, 3->1.
+    # Device channel order therefore becomes: [filter1, filter3, filter0, filter2].
+    return signal[:, [1, 3, 0, 2]]
+
+
 def _prepare_audio_for_sounddevice(signal, target_peak=0.05):
     """Validate and normalise audio to safe float32 range for sounddevice."""
     audio = np.asarray(signal)
@@ -242,6 +257,7 @@ def play_loudspeaker_output(
     signal, was_downmixed = _prepare_signal_for_device(
         signal, max_device_channels=max_device_channels, allow_downmix=allow_downmix
     )
+    signal = _remap_four_channel_output(signal)
     signal = _prepare_audio_for_sounddevice(signal)
     n_channels = int(signal.shape[1])
 
@@ -253,6 +269,8 @@ def play_loudspeaker_output(
         print(
             f"Downmixed to {n_channels} channels for device {device_idx} ('{device_info['name']}')."
         )
+    if n_channels == 4:
+        print("Applied 4-channel routing: filter 0->dev2, 1->dev0, 2->dev3, 3->dev1.")
     if channel_test:
         keep_running = run_channel_test(
             n_channels=n_channels, fs=fs, device_idx=device_idx, screen=screen, font=font
@@ -352,8 +370,10 @@ def main():
     elif args.stimulus == "sine":
         stimulus = np.sin(2 * np.pi * 440 * np.arange(48000) / args.fs)
     elif args.stimulus == "white_noise":
-        stimulus = np.random.randn(48000)
-        stimulus /= np.max(np.abs(stimulus)) / 0.9
+        stimulus = np.random.randn(int(args.fs * 0.1))
+        stimulus = np.concatenate([stimulus, np.zeros(int(args.fs * 0.4))])
+        stimulus /= (np.max(np.abs(stimulus)) / 0.9)
+   
     elif args.stimulus == "finger_snaps":
         wav_path = Path(__file__).resolve().parents[2] / "data" / "stimulus" / "finger snaps.wav"
         src_fs, stimulus = wavfile.read(wav_path)
@@ -372,7 +392,7 @@ def main():
         stimulus /= np.max(np.abs(stimulus)) / 0.9
 
     # Load estimated filters
-    filters_path = Path(args.path) / "artifacts" / "est_filters.npy"
+    filters_path = Path(args.path) / "artifacts" / args.filters_file
     filters = np.load(filters_path)
     
     speaker_signals = render_loudspeaker_output(stimulus, filters)
