@@ -78,7 +78,7 @@ if __name__ == "__main__":
     env.stimulus_batch_size = 1
     env.n_filter_taps = env.n_samples
 
-    d = 2
+    d = 1
     env.target_pos=torch.tensor([d, float(np.tan(np.deg2rad(0.0)) * d)], device=env.device, dtype=env.dtype)
     # env.target_pos=[10.5, 0.0]
     print(env.target_pos)
@@ -109,16 +109,20 @@ if __name__ == "__main__":
         dtype=float,
     )
 
-    # Build each array along the local tangent so its look direction points to (0, 0).
+    # Place the speakers along a line on the y-axis, comment out the "turning" code.
     def build_array_positions(array_centre, offsets, invert_offsets=False):
-        look_dir = -array_centre / np.linalg.norm(array_centre)  # from array centre to listener at origin
-        tangent_dir = np.array([-look_dir[1], look_dir[0]], dtype=float)  # 90-degree rotation
-        signed_offsets = -offsets if invert_offsets else offsets
-        return [(array_centre + off * tangent_dir).astype(float).tolist() for off in signed_offsets]
+       # look_dir = -array_centre / np.linalg.norm(array_centre)  # from array centre to listener at origin
+       # tangent_dir = np.array([-look_dir[1], look_dir[0]], dtype=float)  # 90-degree rotation
+       signed_offsets = -offsets if invert_offsets else offsets
+       # return [(array_centre + off * tangent_dir).astype(float).tolist() for off in signed_offsets]
+       # No turning; speakers are placed along the global y-axis direction
+       return [(array_centre[0], array_centre[1] + off) for off in signed_offsets]
 
     upper_array = build_array_positions(upper_centre, relative_offsets, invert_offsets=False)
     lower_array = build_array_positions(lower_centre, relative_offsets, invert_offsets=True)
     env.spk_pos = torch.tensor(upper_array + lower_array, device=env.device, dtype=env.dtype)
+
+
     env.n_sources = len(env.spk_pos)
 
     listener_weights = build_listener_position_weights(
@@ -165,16 +169,28 @@ if __name__ == "__main__":
         # "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=env.reg_weight),
         # "regularisation_source_2": SourceBasedLoss(regulariser=regularisation, source_idx=2, weight=env.reg_weight),
         # "regularisation_source_3": SourceBasedLoss(regulariser=regularisation, source_idx=3, weight=env.reg_weight),
-        "flatness_pair_0_1": SourceBasedLoss(
-           regulariser=source_flatness(n_samples=env.n_samples, device=env.device, dtype=env.dtype),
-           source_idx=(0, 1),
-           weight=env.flatness_weight,
-        ),
-        "flatness_pair_2_3": SourceBasedLoss(
-           regulariser=source_flatness(n_samples=env.n_samples, device=env.device, dtype=env.dtype),
-           source_idx=(2, 3),
-           weight=env.flatness_weight,
-        ),
+        # "flatness_pair_0_1": SourceBasedLoss(
+        #    regulariser=source_flatness(n_samples=env.n_samples, 
+        #                                 device=env.device, 
+        #                                 dtype=env.dtype,
+        #                                 spk_pos=env.spk_pos[[0, 1]],
+        #                                 steer_point=[0.0, 0.0],
+        #                                 fs = env.fs,
+        #                                 ),
+        #    source_idx=(0, 1),
+        #    weight=env.flatness_weight,
+        # ),
+        # "flatness_pair_2_3": SourceBasedLoss(
+        #    regulariser=source_flatness(n_samples=env.n_samples, 
+        #                                device=env.device, 
+        #                                dtype=env.dtype,
+        #                                spk_pos=env.spk_pos[[2, 3]],
+        #                                steer_point=[0.0, 0.0],
+        #                                fs = env.fs,
+        #                                ),
+        #    source_idx=(2, 3),
+        #    weight=env.flatness_weight,
+        # )
     }
 
     # Initialise neural network
