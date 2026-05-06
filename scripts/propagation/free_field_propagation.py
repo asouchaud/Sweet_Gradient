@@ -38,8 +38,6 @@ class SingleSourceBinauralFreeFieldPropagation(nn.Module):
         # Angle from listener to source (degrees, 0–360)
         source_angle = calculate_source_angle_2D(source_vec)
 
-        # assert 360 >= source_angle >= 0 #TODO: Make this work
-
         # SOFA index per listener
         src_idx = sofa_find(source_angle, self.sofaile)
 

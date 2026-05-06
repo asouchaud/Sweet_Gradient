@@ -44,14 +44,14 @@ def run_experiment(loss_dict_builder, run_label):
         epochs=200,
         num_lstn_pos=9,
         listener_batch_size=3,  # 5 mirrored pairs plus the centre listener
-        symmetric_listener_sampling=False,
+        symmetric_listener_sampling=True,
         selected_stim="white_noise",
         stimulus_batch_size = 4,
         n_stimulus = 16,
         n_filter_taps=32,
         target_pos=[d, float(np.tan(np.deg2rad(0.0)) * d)],
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
-        lr=0.01,
+        lr=0.005,
         seed=46,
         log=1,
         fs=fs,
@@ -191,6 +191,7 @@ if __name__ == "__main__":
     run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "localisation": ListenerBasedLoss(model=loc_model, weight=1.0e0, device=device, dtype=dtype),
+            "colouration": ListenerBasedLoss(model=col_model, weight=1.0e-3, device=device, dtype=dtype),
         },
         run_label="localisation_only",
     )
