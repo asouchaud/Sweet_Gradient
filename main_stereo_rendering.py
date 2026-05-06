@@ -1,6 +1,11 @@
 # Enable MPS fallback for PyTorch on macOS
 import os
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+_cpu_count = os.cpu_count() or 1
+os.environ.setdefault('OMP_NUM_THREADS', str(_cpu_count))
+os.environ.setdefault('MKL_NUM_THREADS', str(_cpu_count))
+os.environ.setdefault('OPENBLAS_NUM_THREADS', str(_cpu_count))
+os.environ.setdefault('NUMEXPR_NUM_THREADS', str(_cpu_count))
 
 # Import interface libraries
 from pathlib import Path
@@ -61,6 +66,13 @@ def run_experiment(loss_dict_builder, run_label):
     env.dtype = torch.float64
     env.device_str = "cpu"
     env.device = torch.device(env.device_str)
+    env.num_threads = _cpu_count
+    env.num_interop_threads = min(8, _cpu_count)
+
+    # Maximize CPU-side parallelism for PyTorch ops.
+    torch.set_num_threads(env.num_threads)
+    torch.set_num_interop_threads(env.num_interop_threads)
+    torch.backends.mkldnn.enabled = True
 
     assert isinstance(env.listener_batch_size, int), "listener_batch_size must be set to positive integer"
     assert env.listener_batch_size > 0 , "listener_batch_size must be set to positive integer"
