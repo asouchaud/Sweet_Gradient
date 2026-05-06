@@ -140,19 +140,37 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
     filts_torch = torch.tensor(filts_normed, device=trainer.device, dtype=trainer.dtype).unsqueeze(0)
     filts_col_only_torch = torch.tensor(filts_col_only_normed, device=trainer.device, dtype=trainer.dtype).unsqueeze(0)
     
+    # trainer.evaluate(...) rebinds trainer.prop to evaluation listeners.
+    # Build a local propagation object so plotting uses the same listener set
+    # as col_model/reference_hrirs and avoids listener index mismatch.
+    plot_prop = BinauralFreeFieldPropagation(
+        fs=trainer.prop.fs,
+        lstn_pos=col_model.lstn_pos,
+        spk_pos=trainer.prop.spk_pos,
+        sofa_file_path=trainer.prop.sources[0].sofa_file_path,
+        apply_distance_attenuation=trainer.prop.apply_distance_attenuation,
+        device=trainer.device,
+        dtype=trainer.dtype,
+    )
+    if plot_prop.n_listeners != col_model.reference_hrirs.shape[0]:
+        raise ValueError("Mismatch between plotting propagation listeners and reference_hrirs.")
     eval_listener_idx = torch.arange(col_model.reference_hrirs.shape[0], device=trainer.device)
     reference_stim = torch.zeros(1, 1, int(0.01 * env.fs), device=trainer.device, dtype=trainer.dtype)
     reference_stim[0, 0, 0] = 1.0
-    bin_stim_ctc = trainer.prop(reference_stim, ctc_filts_torch, eval_listener_idx).cpu().numpy()[0].squeeze()
-    bin_stim_filts = trainer.prop(reference_stim, filts_torch, eval_listener_idx).cpu().numpy()[0].squeeze()
-    bin_stim_filts_col_only = trainer.prop(reference_stim, filts_col_only_torch, eval_listener_idx).cpu().numpy()[0].squeeze()
+    bin_stim_ctc = plot_prop(reference_stim, ctc_filts_torch, eval_listener_idx).cpu().numpy()[0]
+    bin_stim_filts = plot_prop(reference_stim, filts_torch, eval_listener_idx).cpu().numpy()[0]
+    bin_stim_filts_col_only = plot_prop(reference_stim, filts_col_only_torch, eval_listener_idx).cpu().numpy()[0]
+    centre_listener_idx = int(len(eval_listener_idx) // 2)
+    bin_stim_ctc = bin_stim_ctc[centre_listener_idx]
+    bin_stim_filts = bin_stim_filts[centre_listener_idx]
+    bin_stim_filts_col_only = bin_stim_filts_col_only[centre_listener_idx]
     
     ref = compute_reference_bin(
         reference_stim=reference_stim,
         reference_hrirs=col_model.reference_hrirs,
         listener_indices=eval_listener_idx,
-    ).cpu().numpy()
-    N_ref =  ref.shape[-1]
+    ).cpu().numpy()[centre_listener_idx]
+    N_ref = ref.shape[-1]
 
     bin_stim_ctc_normed = bin_stim_ctc / np.sqrt(np.mean(bin_stim_ctc**2))
     bin_stim_filts_normed = bin_stim_filts / np.sqrt(np.mean(bin_stim_filts**2))
@@ -197,8 +215,8 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
 
     freqs_ref = np.fft.rfftfreq(N_ref, d = 1/48000)
 
-    ref_f_smooth_left = smooth_third_octave(freqs_ref, ref_f[0,0])
-    ref_f_smooth_right = smooth_third_octave(freqs_ref, ref_f[0,1])
+    ref_f_smooth_left = smooth_third_octave(freqs_ref, ref_f[0])
+    ref_f_smooth_right = smooth_third_octave(freqs_ref, ref_f[1])
     bin_stim_ctc_f_smooth_left = smooth_third_octave(freqs_ref, bin_stim_ctc_f[0])
     bin_stim_ctc_f_smooth_right = smooth_third_octave(freqs_ref, bin_stim_ctc_f[1])
     bin_stim_filts_f_smooth_left = smooth_third_octave(freqs_ref, bin_stim_filts_f[0])
@@ -276,7 +294,7 @@ if __name__ == "__main__":
         target_angle = 45.0,
         target_distance = 100,
         epochs=500,
-        listener_batch_size=1,  # 5 mirrored pairs plus the centre listener
+        listener_batch_size=3,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=True,
         n_samples=256,
         selected_stim="impulse",
@@ -298,7 +316,8 @@ if __name__ == "__main__":
 
     # Loudspkeaker and listener positions
     # env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)] 
-    env.lstn_pos = [[0.0, 0.0]] # Only the centre listener position is used for this experiment
+    env.lstn_pos = [[0.0, float(i)] for i in np.arange(-0.06,0.07,0.03)] # Only the centre listener position is used for this experiment
+    # env.lstn_pos = [[0.0, 0.0]] # Only the centre listener position is used for this experiment
     base_angle_rad = np.deg2rad(30.0)
     env.speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
     env.spk_pos = [
@@ -322,7 +341,7 @@ if __name__ == "__main__":
 
 ## Initialize model
     # Initialize sound propagation module
-    stereo_prop = BinauralFreeFieldPropagation(fs=env.fs, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, sofa_file_path=env.sofa_path, device=env.device, dtype=env.dtype) # Load stereo anechoic propagation module
+    stereo_prop = BinauralFreeFieldPropagation(fs=env.fs, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, sofa_file_path=env.sofa_path, device=env.device, dtype=env.dtype, apply_distance_attenuation=True) # Load stereo anechoic propagation module
 
     # Initiate perceptual models
     loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, device=env.device, dtype=env.dtype) # Llado et al. 2025 model
@@ -384,7 +403,7 @@ if __name__ == "__main__":
     # Evaluate final neural network FIRs
     eval_lstn_pos, eval_perceptual_dict, eval_stimulus_data_loader, eval_stimulus_dataset = build_eval_objects(
         env,
-        eval_lstn_pos=torch.tensor([[0.0 , 0.0], [0.0, 0.5], [0.0, -0.5]], device=env.device, dtype=env.dtype),
+        eval_lstn_pos=env.lstn_pos
     )
     eval_perceptual_dict["ipd"] = ListenerBasedLoss(model=interaural_phase_difference_matching(loss = F.l1_loss, target = 0, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=eval_lstn_pos, device=env.device, dtype=env.dtype), weight=1, device=env.device, dtype=env.dtype)
     est_filters, estimation_dict, bin_stim = trainer.evaluate(eval_lstn_pos=eval_lstn_pos, eval_stimulus_data_loader=eval_stimulus_data_loader, loss_dict=eval_perceptual_dict)
