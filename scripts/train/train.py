@@ -92,16 +92,16 @@ class ListenerBasedLoss:
         Args:
             bin_stim: Tensor shaped (batch, n_listeners, 2, n_samples), propagated binaural signals, 
             and 2 is the number of ears.
-            h_full: Tensor shaped (batch, n_sources, n_samples), source filters (unused here).
+            spk_filters: Tensor shaped (batch, n_sources, n_samples), source filters (unused here).
             listener_indices: Optional listener subset used for listener mini-batching.
 
         Why include an unused input:
             Train uses one generic loop over `loss_dict` and always calls
-            `compute_loss(bin_stim=..., h_full=..., listener_indices=...)` regardless of loss type.
+            `compute_loss(bin_stim=..., spk_filters=..., listener_indices=...)` regardless of loss type.
             Keeping the same method signature across ListenerBasedLoss and
             SourceBasedLoss is intentional polymorphism: it avoids branching
             logic in Train and makes it easy to add new loss classes later.
-            For listener-based losses, `h_full` is accepted for API consistency.
+            For listener-based losses, `spk_filters` is accepted for API consistency.
 
         Returns:
             loss: Scalar tensor.
@@ -134,7 +134,7 @@ class ListenerBasedLoss:
         return loss, model_estimation
 
 
-# Source-based losses regularise individual source filters directly from h_full.
+# Source-based losses regularise individual source filters directly from spk_filters.
 # They do not expose a perceptual model, so Train treats them as optimization-only
 # objectives (no perceptual estimation output needed for evaluate/plotting).
 class SourceBasedLoss:
@@ -164,7 +164,7 @@ class SourceBasedLoss:
         Args:
             bin_stim: Tensor shaped (batch, n_listeners, 2, n_samples), propagated binaural signals, 
             and 2 is the number of ears (unused here).
-            h_full: Tensor shaped (batch, n_sources, n_samples), source filters.
+            spk_filters: Tensor shaped (batch, n_sources, n_samples), source filters.
             listener_indices: Optional listener subset used for listener mini-batching (unused here).
 
         Why include an unused input:
@@ -187,7 +187,21 @@ class SourceBasedLoss:
         return loss, None
 
 class Train:
-    def __init__(self, n_epoch, stim_loader, lstn_loader, nn, prop, loss_dict, optimiser, loggers=None, scheduler=None, alpha = 1):
+    def __init__(
+        self,
+        n_epoch,
+        stim_loader,
+        lstn_loader,
+        nn,
+        prop,
+        loss_dict,
+        optimiser,
+        logger=None,
+        saver=None,
+        loggers=None,
+        scheduler=None,
+        alpha=1,
+    ):
 
         self.n_epoch = n_epoch
         self.stim_loader = stim_loader
@@ -212,14 +226,7 @@ class Train:
         }
 
 
-        if loggers is not None:
-            logger, saver = loggers[0], loggers[1]
-            if saver is not None:
-                self.logger = TensorboardLogger(logger.run_dir / 'tensorboard' / saver.file_name[:-4], device = self.device, dtype = self.dtype)
-            else: 
-                self.logger = TensorboardLogger(logger.run_dir / 'tensorboard', device = self.device, dtype = self.dtype)
-        else:
-            self.logger = None
+        self.logger = self._build_tensorboard_logger(logger=logger, saver=saver, loggers=loggers)
 
         # self.scheduler = scheduler
         # self.h_history = []
@@ -270,15 +277,15 @@ class Train:
                     for key, loss_cfg in self.loss_dict.items():
                         # Compute loss and model estimation for the current batch and listener subset
                         loss, estimation = loss_cfg.compute_loss(bin_stim=bin_stim, spk_filters=spk_filters, stim=stimulus, listener_indices=listener_idx)
-                        weigthed_loss = loss * loss_cfg.weight
+                        weighted_loss = loss * loss_cfg.weight
                         
                         # Accumulate weighted loss for backpropagation
-                        batch_full_loss += weigthed_loss
+                        batch_full_loss += weighted_loss
                         
                         ## Store estimations for logging and plotting at the end of the epoch
                         for i, idx in enumerate(listener_idx):
                             accum_est[(idx.item(), key)].append(estimation[:,i].detach().cpu()) if isinstance(loss_cfg, ListenerBasedLoss) else None
-                        accum_loss[key].append(weigthed_loss.detach().cpu().item())
+                        accum_loss[key].append(weighted_loss.detach().cpu().item())
 
                     # Backpropagate total loss for the current batch and listener subset
                     self.optimiser.zero_grad()
@@ -289,16 +296,7 @@ class Train:
                     self.optimiser.step()
                     #     time_epoch = time.time() - time_epoch_start
             
-            # Print progress
-            print(
-                f"\rEpoch: {epoch+1:<4d} ¦¦ "
-                f"Loss: {full_loss.item():<10.5f} ¦¦ ",
-                # f"LR: {current_lr:.6f} ¦¦ "
-                # f"Time: {time_epoch:.3f} seconds¦¦",
-                end="",
-                flush=True
-            )
-            print()
+            self._print_epoch_progress(epoch, full_loss)
 
             ## Average estimations across stimulus batches for each listener and loss type for logging and plotting
             avg_est = {
@@ -378,46 +376,6 @@ class Train:
 
         return spk_filters.squeeze(0).detach().cpu().numpy(), estimation_dict, bin_stim_out
 
-    # def evaluate(self, eval_lstn_pos, eval_stimulus_data_loader, loss_dict=None):
-
-    #     self.prop = BinauralFreeFieldPropagation(
-    #         fs=self.prop.fs,
-    #         lstn_pos=eval_lstn_pos,
-    #         spk_pos=self.prop.spk_pos,
-    #         sofa_file_path=self.prop.sources[0].sofa_file_path,
-    #         apply_distance_attenuation=self.prop.apply_distance_attenuation,
-    #         device=self.device,
-    #         dtype=self.dtype
-    #     )
-
-    #     active_loss_dict = loss_dict if loss_dict is not None else self.loss_dict
-
-    #     estimation_dict = {key: [] for key in active_loss_dict}
-    #     bin_stim_list = []
-
-    #     # Use all listener indices at once
-    #     listener_idx = torch.arange(len(eval_lstn_pos), device=self.device)
-
-    #     with torch.no_grad():
-    #         for stimulus in eval_stimulus_data_loader:
-
-    #             spk_filters = self.nn(torch.ones(1, 1, device=self.device, dtype=self.dtype))
-    #             bin_stim = self.prop(stimulus, spk_filters, listener_idx)
-    #             bin_stim_list.append(bin_stim.squeeze().detach().cpu().numpy())
-    #             for key, loss_cfg in active_loss_dict.items():
-    #                 _, estimation = loss_cfg.compute_loss(
-    #                     bin_stim=bin_stim,
-    #                     spk_filters=spk_filters,
-    #                     stim=stimulus,
-    #                     listener_indices=listener_idx
-    #                 )
-    #                 estimation_dict[key] = estimation.squeeze().detach().cpu().numpy()
-
-    #     # Average across all stimuli
-    #     estimation_dict = {key: np.mean(np.stack(vals, axis=0), axis=0) for key, vals in estimation_dict.items()}
-    #     bin_stim_out = np.mean(np.stack(bin_stim_list, axis=0), axis=0)
-
-    #     return spk_filters.squeeze(0).detach().cpu().numpy(), estimation_dict, bin_stim_out
 
         
     def _log_tensorboard(self, full_loss, weighted_loss, estimation_dict, bin_stim, spk_filters, listener_pos, epoch):
@@ -432,34 +390,69 @@ class Train:
             if has_binaural_cue_model:
                 self.logger.log_bin_cues(bin_stim, epoch)
 
-            loss_names = {loss_name for (_, loss_name) in estimation_dict.keys()}
-            if "localisation" in loss_names:
-                n_listeners = len(self.lstn_loader.dataset)
+            self._log_arrow_plot(estimation_dict, epoch)
 
-                def _listener_metric(metric_name):
-                    values = []
-                    for lstn_idx in range(n_listeners):
-                        value = estimation_dict.get((lstn_idx, metric_name), None)
-                        if value is None:
-                            values.append(np.nan)
-                        elif torch.is_tensor(value):
-                            values.append(float(value.detach().cpu().item()))
-                        else:
-                            values.append(float(value))
-                    return torch.tensor(values, device=self.device, dtype=self.dtype)
+    def _build_tensorboard_logger(self, logger=None, saver=None, loggers=None):
+        run_logger = logger
 
-                loc = _listener_metric("localisation")
-                unc = _listener_metric("uncertainty") if "uncertainty" in loss_names else None
-                col = _listener_metric("colouration") if "colouration" in loss_names else None
+        # Backwards-compatible fallback: legacy positional logger container.
+        if run_logger is None and loggers is not None:
+            if isinstance(loggers, (list, tuple)):
+                if len(loggers) > 0:
+                    run_logger = loggers[0]
+                if saver is None and len(loggers) > 1:
+                    saver = loggers[1]
+            else:
+                run_logger = loggers
 
-                self.logger.log_plot_arrows(
-                    lstn_pos=self.prop.lstn_pos,
-                    spk_pos=self.prop.spk_pos,
-                    loc=loc,
-                    unc=unc,
-                    col=col,
-                    epoch=epoch,
-                    target_pos=getattr(self.perceptual_models.get("localisation", None), "target_pos", None),
-                )
+        if run_logger is None or not hasattr(run_logger, "run_dir"):
+            return None
+
+        log_dir = run_logger.run_dir / "tensorboard"
+        if saver is not None and hasattr(saver, "file_name"):
+            log_dir = log_dir / saver.file_name[:-4]
+
+        return TensorboardLogger(log_dir, device=self.device, dtype=self.dtype)
+
+    def _print_epoch_progress(self, epoch, full_loss):
+        print(
+            f"\rEpoch: {epoch+1:<4d} ¦¦ "
+            f"Loss: {full_loss.item():<10.5f} ¦¦ ",
+            end="",
+            flush=True,
+        )
+        print()
+
+    def _extract_listener_metric(self, estimation_dict, metric_name):
+        n_listeners = len(self.lstn_loader.dataset)
+        values = []
+        for lstn_idx in range(n_listeners):
+            value = estimation_dict.get((lstn_idx, metric_name), None)
+            if value is None:
+                values.append(np.nan)
+            elif torch.is_tensor(value):
+                values.append(float(value.detach().cpu().item()))
+            else:
+                values.append(float(value))
+        return torch.tensor(values, device=self.device, dtype=self.dtype)
+
+    def _log_arrow_plot(self, estimation_dict, epoch):
+        loss_names = {loss_name for (_, loss_name) in estimation_dict.keys()}
+        if "localisation" not in loss_names:
+            return
+
+        loc = self._extract_listener_metric(estimation_dict, "localisation")
+        unc = self._extract_listener_metric(estimation_dict, "uncertainty") if "uncertainty" in loss_names else None
+        col = self._extract_listener_metric(estimation_dict, "colouration") if "colouration" in loss_names else None
+
+        self.logger.log_plot_arrows(
+            lstn_pos=self.prop.lstn_pos,
+            spk_pos=self.prop.spk_pos,
+            loc=loc,
+            unc=unc,
+            col=col,
+            epoch=epoch,
+            target_pos=getattr(self.perceptual_models.get("localisation", None), "target_pos", None),
+        )
         
 

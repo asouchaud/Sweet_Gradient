@@ -70,7 +70,7 @@ def make_trainer(
         prop=DummyPropagation(lstn_pos),
         loss_dict={},
         optimiser=optimiser,
-        loggers=[None, None],
+        logger=None,
         scheduler=None,
         listener_batch_size=listener_batch_size,
         symmetric_listener_sampling=symmetric_listener_sampling,

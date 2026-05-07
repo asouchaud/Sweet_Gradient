@@ -149,7 +149,7 @@ def run_experiment(
         prop=stereo_prop,
         loss_dict=loss_dict,
         optimiser=nn_optimiser,
-        loggers=None,
+        logger=None,
     )
 
     start = time.time()

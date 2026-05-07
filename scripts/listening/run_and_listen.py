@@ -7,7 +7,6 @@ from pathlib import Path
 from types import SimpleNamespace
 import numpy as np
 import torch
-import sounddevice as sd
 from scripts.datasets.stimulus_dataset import get_stim_loader
 from scripts.datasets.listener_dataset import get_listener_loader
 from scripts.optimisation.custom_modules import MultiSourceFIR
@@ -23,11 +22,6 @@ from scripts.train.train import ListenerBasedLoss, Train
 # filepath: scripts/listening/run_and_listen.py
 
 import torch.nn.functional as F
-
-try:
-    HAS_SOUNDEVICE = True
-except ImportError:
-    HAS_SOUNDEVICE = False
 
 
 
@@ -313,7 +307,7 @@ def main():
         prop=stereo_prop,
         loss_dict=loss_dict,
         optimiser=nn_optimiser,
-        loggers=None,
+        logger=None,
     )
 
     start_time = time.time()

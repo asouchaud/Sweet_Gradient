@@ -11,10 +11,8 @@ from types import SimpleNamespace
 
 # Import computational libraries
 import numpy as np
-import scipy.signal
 import torch
 import torch.nn.functional as F
-from sklearn.metrics import r2_score
 
 # Import Plotting libraries
 import matplotlib.pyplot as plt
@@ -393,7 +391,7 @@ if __name__ == "__main__":
                     prop=stereo_prop,
                     loss_dict=loss_dict,
                     optimiser=nn_optimiser,
-                    loggers = [logger, None]) # Initialize training class
+                    logger=logger) # Initialize training class
     time_train_start = time.time()
     trainer.train()
     env.time_train_seconds = time.time() - time_train_start
@@ -472,7 +470,7 @@ if __name__ == "__main__":
                     prop=stereo_prop,
                     loss_dict=loss_dict_col_only,
                     optimiser=nn_optimiser_col_only,
-                    loggers = [logger_col_only, None])
+                    logger=logger_col_only)
     time_train_start = time.time()
     trainer_col_only.train()
     env.time_train_seconds_col_only = time.time() - time_train_start

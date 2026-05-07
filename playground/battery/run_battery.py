@@ -40,7 +40,7 @@ from scripts.plotting.graph_plot import plot_time
 from scripts.plotting.graph_plot import plot_freq
 from scripts.plotting.graph_plot import plot_color
 
-def select_regularistion(reg: str, n_samples: int, device='cuda', dtype=torch.float32):
+def select_regularisation(reg: str, n_samples: int, device='cuda', dtype=torch.float32):
     if reg == 0:
         return None
     if reg == 1:
@@ -48,6 +48,10 @@ def select_regularistion(reg: str, n_samples: int, device='cuda', dtype=torch.fl
     if reg == 2:
         return second_moment_regularisation(n_samples=n_samples, device=device, dtype=dtype)
     return None
+
+
+# Backwards-compatible alias for older imports.
+select_regularistion = select_regularisation
 
 
 def run_battery(args):
@@ -74,13 +78,14 @@ def run_battery(args):
     full_dict = [{'localisation': llado2025}, {'uncertainty': desena2020}, {'colouration': spectral_matching}]
     dict_subsets = get_all_subsets(full_dict)
 
-    ## QUICK FIX TO GO FASTER
-    dict_idx = [0,3,4,6]
+    # Reduced subset selection for faster battery runs.
+    active_subset_indices = [0, 3, 4, 6]
     
     for lstn_pos_conf_idx in range(n_lstn_pos_conf):
         for ta_idx in range(n_ta):
-            for dict_sub_idx in range(4): # 7 different initialisation and regularisation combinations  ## CHANGE THIS BACK TO DICT_SUB_IDX
-                print(f"Running battery for target angle {target_angle[ta_idx].item()} deg, listener position configuration {lstn_pos_conf_idx}, current run {dict_idx[dict_sub_idx]+1}/7") ## CHANGE THIS BACK TO DICT_SUB_IDX
+            for dict_sub_idx in range(len(active_subset_indices)):
+                current_subset_idx = active_subset_indices[dict_sub_idx]
+                print(f"Running battery for target angle {target_angle[ta_idx].item()} deg, listener position configuration {lstn_pos_conf_idx}, current run {current_subset_idx + 1}/7")
                 
                 # Initialize sound propagation module
                 stereo_prop = BinauralFreeFieldPropagation(stim=stim,
@@ -91,9 +96,9 @@ def run_battery(args):
                 
                 # Initialize model
                 if args.near_field:
-                    perceptual_dict = init_perc_model(dict_subsets[dict_idx[dict_sub_idx]], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb, lstn_pos_conf[lstn_pos_conf_idx]) ## CHANGE THIS BACK TO DICT_SUB_IDX
+                    perceptual_dict = init_perc_model(dict_subsets[current_subset_idx], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb, lstn_pos_conf[lstn_pos_conf_idx])
                 else:
-                    perceptual_dict = init_perc_model(dict_subsets[dict_idx[dict_sub_idx]], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb) ## CHANGE THIS BACK TO DICT_SUB_IDX
+                    perceptual_dict = init_perc_model(dict_subsets[current_subset_idx], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb)
                 base_weights = {
                     "localisation": 1.0,
                     "uncertainty": 1.0e1,
@@ -108,7 +113,7 @@ def run_battery(args):
                     )
                     for key, model in perceptual_dict.items()
                 }
-                regularisation = select_regularistion(args.reg, n_samples=args.n_samples, device=device, dtype=dtype)
+                regularisation = select_regularisation(args.reg, n_samples=args.n_samples, device=device, dtype=dtype)
                 if regularisation is not None:
                     for source_idx in range(len(spk_pos)):
                         reg_key = f"regularisation_source_{source_idx}"
@@ -131,7 +136,7 @@ def run_battery(args):
                                   nf_idx=args.near_field,
                                   angle=target_angle[ta_idx], 
                                   lstn_len=len(lstn_pos_conf[lstn_pos_conf_idx]),
-                                  curr_idx=dict_idx[dict_sub_idx]) ## CHANGE THIS BACK TO DICT_SUB_IDX
+                                  curr_idx=current_subset_idx)
                 logger = saver_obj if args.log else None
 
                 # Train the neural network
@@ -140,16 +145,17 @@ def run_battery(args):
                     prop=stereo_prop,
                     loss_dict=loss_dict,
                     optimiser=nn_optimiser,
-                    loggers=[logger, saver_obj],
+                    logger=logger,
+                    saver=saver_obj,
                     scheduler=nn_scheduler) # Initialize training class
     
                 trainer.train()
 
                 # Evaluate 
                 if args.near_field:
-                    full_perceptual_dict = init_perc_model(dict_subsets[-1], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb, lstn_pos_conf[lstn_pos_conf_idx]) ## CHANGE THIS BACK TO DICT_SUB_IDX
+                    full_perceptual_dict = init_perc_model(dict_subsets[-1], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb, lstn_pos_conf[lstn_pos_conf_idx])
                 else:
-                    full_perceptual_dict = init_perc_model(dict_subsets[-1], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb) ## CHANGE THIS BACK TO DICT_SUB_IDX
+                    full_perceptual_dict = init_perc_model(dict_subsets[-1], device, dtype, fs, stim, hrirs, target_angle[ta_idx], gtfb)
                 
                 est_filters, estimation_dict, bin_stim = trainer.evaluate(full_perceptual_dict)
 

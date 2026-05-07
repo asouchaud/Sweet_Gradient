@@ -224,7 +224,7 @@ if __name__ == "__main__":
                     prop=stereo_prop,
                     loss_dict=loss_dict,
                     optimiser=nn_optimiser,
-                    loggers = [logger, None]) # Initialize training class
+                    logger=logger) # Initialize training class
     time_train_start = time.time()
     trainer.train()
     env.time_train_seconds = time.time() - time_train_start

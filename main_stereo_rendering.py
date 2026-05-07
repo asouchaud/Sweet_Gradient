@@ -47,16 +47,16 @@ def run_experiment(loss_dict_builder, run_label):
     fs = 48000
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
         epochs=200,
-        num_lstn_pos=9,
-        listener_batch_size=3,  # 5 mirrored pairs plus the centre listener
-        symmetric_listener_sampling=True,
-        selected_stim="white_noise",
+        num_lstn_pos=35,
+        listener_batch_size=5,  # 5 mirrored pairs plus the centre listener
+        symmetric_listener_sampling=False,
+        selected_stim="impulse",
         stimulus_batch_size = 4,
         n_stimulus = 16,
         n_filter_taps=32,
         target_pos=[d, float(np.tan(np.deg2rad(0.0)) * d)],
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
-        lr=0.005,
+        lr=0.001,
         seed=46,
         log=1,
         fs=fs,
@@ -129,7 +129,7 @@ def run_experiment(loss_dict_builder, run_label):
 
 ## Initliase saving folder and logger
     saver_obj = saver()
-    logger = saver_obj if env.log else None
+    logger = saver() if env.log else None
 
 ## Training loop
     # Train the neural network
@@ -140,7 +140,7 @@ def run_experiment(loss_dict_builder, run_label):
                     prop=stereo_prop,
                     loss_dict=loss_dict,
                     optimiser=nn_optimiser,
-                    loggers = [logger, None]
+                    logger=logger
                     ) # Initialize training class
     
 
@@ -161,8 +161,8 @@ def run_experiment(loss_dict_builder, run_label):
 
 ## Print and Plot results
     # Evaluate final neural network FIRs
-    eval_lstn_pos, eval_perceptual_dict, eval_stimulus_data_loader, eval_stimulus_dataset = build_eval_objects(env)
-    est_filters, estimation_dict, bin_stim = trainer.evaluate(eval_lstn_pos=eval_lstn_pos, eval_stimulus_data_loader=eval_stimulus_data_loader, loss_dict=eval_perceptual_dict)
+    eval_lstn_pos, eval_perceptual_dict, eval_stimulus_data_loader, eval_stimulus_dataset = build_eval_objects(env, eval_lstn_pos=env.lstn_pos)
+    est_filters, estimation_dict, bin_stim = trainer.evaluate(eval_lstn_pos=env.lstn_pos, eval_stimulus_data_loader=eval_stimulus_data_loader, loss_dict=eval_perceptual_dict)
     
     # Normalise filters to prevent clipping 
     est_filters /= np.max(np.abs(est_filters)) / 0.9 # TODO: move this to a more appropriate place at the end of the training loop
@@ -182,7 +182,7 @@ def run_experiment(loss_dict_builder, run_label):
         estimation_dict=estimation_dict,
         est_filters=est_filters,
         bin_stim=bin_stim,
-        lstn_pos=eval_lstn_pos,
+        lstn_pos=env.lstn_pos,
         spk_pos=env.spk_pos,
         loss_dict=eval_perceptual_dict,
         target_pos=env.target_pos,
@@ -203,7 +203,7 @@ if __name__ == "__main__":
     run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "localisation": ListenerBasedLoss(model=loc_model, weight=1.0e0, device=device, dtype=dtype),
-            "colouration": ListenerBasedLoss(model=col_model, weight=1.0e-3, device=device, dtype=dtype),
+             "colouration": ListenerBasedLoss(model=col_model, weight=1.0e-3, device=device, dtype=dtype),
         },
         run_label="localisation_only",
     )

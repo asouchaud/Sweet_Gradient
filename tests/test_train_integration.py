@@ -66,7 +66,7 @@ def test_train_moves_estimate_towards_target() -> None:
             ),
         },
         optimiser=optimiser,
-        loggers=[None, None],
+        logger=None,
         scheduler=None,
     )
 
