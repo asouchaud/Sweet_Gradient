@@ -455,11 +455,27 @@ def plot_bin_cues(bin_stim, fs, gtfb, show = True):
 
             if i % cols == cols-1:
                 fig_bin_cues.colorbar(sc, ax=ax, label='Gammatone filter bank index')
-            ax.set_title(f'Listener {i+1}')
+            ax.text(
+                0.03,
+                0.95,
+                f"L{i+1}",
+                transform=ax.transAxes,
+                ha='left',
+                va='top',
+                fontsize=9,
+                fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.20', facecolor='white', alpha=0.75, edgecolor='none'),
+            )
             if i % cols == 0:
                 ax.set_ylabel('ILD [dB]')
+                ax.tick_params(axis='y', which='both', left=True, labelleft=True)
+            else:
+                ax.tick_params(axis='y', which='both', left=False, labelleft=False)
             if i // cols == rows-1:
                 ax.set_xlabel('ITD [ms]')
+                ax.tick_params(axis='x', which='both', bottom=True, labelbottom=True)
+            else:
+                ax.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
             ax.set_ylim(-20, 20)
             ax.set_xlim(-1.5, 1.5)
             ax.grid(True)
