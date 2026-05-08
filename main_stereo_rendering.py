@@ -24,6 +24,8 @@ from scripts.datasets.listener_dataset import get_listener_loader
 from scripts.optimisation.custom_modules import MultiSourceFIR
 
 from scripts.plotting.results_plot import plot_results
+from scripts.plotting.itd_ild_animation import save_itd_ild_evolution_animation
+from scripts.plotting.combined_distance_animation import save_combined_distance_evolution_animation
 
 from scripts.setup.setup import set_seed, build_eval_objects
 
@@ -53,10 +55,10 @@ def run_experiment(loss_dict_builder, run_label):
         selected_stim="impulse",
         stimulus_batch_size = 4,
         n_stimulus = 16,
-        n_filter_taps=32,
-        target_pos=[d, float(np.tan(np.deg2rad(0.0)) * d)],
+        n_filter_taps=1,
+        target_pos=[d, float(np.tan(np.deg2rad(15.0)) * d)],
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
-        lr=0.001,
+        lr=0.1,
         seed=46,
         log=1,
         fs=fs,
@@ -81,9 +83,10 @@ def run_experiment(loss_dict_builder, run_label):
     print(f"Using device: {env.device}")
 
     # Loudspkeaker and listener positions
-    env.lstn_pos = torch.tensor([[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)], 
-                                device = env.device, 
-                                dtype = env.dtype)
+    # env.lstn_pos = torch.tensor([[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)], 
+    #                             device = env.device, 
+    #                             dtype = env.dtype)
+    env.lstn_pos = torch.tensor([[0.0, 0.0]], device = env.device, dtype = env.dtype)
     base_angle_rad = np.deg2rad(30.0)
     env.speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
     env.spk_pos = [
@@ -177,7 +180,21 @@ def run_experiment(loss_dict_builder, run_label):
         fs=env.fs,
         env=env,
         loss_dict=loss_dict,
+        localisation_tracking=trainer.localisation_tracking,
     )
+
+    if trainer.localisation_tracking is not None:
+        save_itd_ild_evolution_animation(
+            localisation_tracking=trainer.localisation_tracking,
+            output_path=saver_obj.run_dir / "plots" / "itd_ild_evolution.gif",
+            fps=10,
+        )
+        save_combined_distance_evolution_animation(
+            localisation_tracking=trainer.localisation_tracking,
+            output_path=saver_obj.run_dir / "plots" / "combined_distance_evolution.gif",
+            fps=10,
+        )
+
     plots = plot_results(
         estimation_dict=estimation_dict,
         est_filters=est_filters,
@@ -203,7 +220,9 @@ if __name__ == "__main__":
     run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "localisation": ListenerBasedLoss(model=loc_model, weight=1.0e0, device=device, dtype=dtype),
-             "colouration": ListenerBasedLoss(model=col_model, weight=1.0e-3, device=device, dtype=dtype),
+            # "colouration": ListenerBasedLoss(model=col_model, weight=1.0e-3, device=device, dtype=dtype),
+            # "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1.0e-3),
+            # "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1.0e-3),
         },
         run_label="localisation_only",
     )

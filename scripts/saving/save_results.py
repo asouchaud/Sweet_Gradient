@@ -350,7 +350,7 @@ class saver():
         )
 
 
-    def save_results(self, estimation_dict, est_filters, fs, env=None, loss_dict=None):
+    def save_results(self, estimation_dict, est_filters, fs, env=None, loss_dict=None, localisation_tracking=None):
         # =========================
         # Save results (clean layout)
         # Subfolders
@@ -373,6 +373,15 @@ class saver():
         for key, value in estimation_dict.items():
             np.save(artifacts_dir / f"{key}.npy",
                     np.asarray(value))
+
+        if localisation_tracking is not None:
+            np.save(artifacts_dir / "localisation_itd_over_epochs.npy", np.asarray(localisation_tracking["itd"]))
+            np.save(artifacts_dir / "localisation_ild_over_epochs.npy", np.asarray(localisation_tracking["ild"]))
+            np.save(artifacts_dir / "localisation_distance_combined_over_epochs.npy", np.asarray(localisation_tracking["distance_combined"]))
+            np.save(artifacts_dir / "localisation_epoch_indices.npy", np.asarray(localisation_tracking["epoch"]))
+            np.save(artifacts_dir / "localisation_target_itd.npy", np.asarray(localisation_tracking["target_itd"]))
+            np.save(artifacts_dir / "localisation_target_ild.npy", np.asarray(localisation_tracking["target_ild"]))
+            np.save(artifacts_dir / "localisation_template_azimuths.npy", np.asarray(localisation_tracking["template_azimuths"]))
 
         # ---------- Config (static experiment definition) ----------
         config = {
@@ -409,6 +418,17 @@ class saver():
             results["est_filters"] = np.asarray(est_filters).tolist()
         except Exception:
             results["est_filters"] = str(est_filters)
+
+        if localisation_tracking is not None:
+            results["localisation_tracking"] = {
+                "epoch": np.asarray(localisation_tracking["epoch"]).tolist(),
+                "itd": np.asarray(localisation_tracking["itd"]).tolist(),
+                "ild": np.asarray(localisation_tracking["ild"]).tolist(),
+                "distance_combined": np.asarray(localisation_tracking["distance_combined"]).tolist(),
+                "target_itd": np.asarray(localisation_tracking["target_itd"]).tolist(),
+                "target_ild": np.asarray(localisation_tracking["target_ild"]).tolist(),
+                "template_azimuths": np.asarray(localisation_tracking["template_azimuths"]).tolist(),
+            }
 
         with open(self.run_dir / "results.json", "w") as f:
             json.dump(results, f, indent=4)
@@ -451,7 +471,7 @@ class saver():
             extra_plots = {}
 
         plot_folder = self.run_dir / "plots"
-        plot_folder.mkdir(parents=True)
+        plot_folder.mkdir(parents=True, exist_ok=True)
 
         if time_plot is not None:
             time_plot.savefig(plot_folder / "time_filters.pdf")
