@@ -4,6 +4,7 @@ import numpy as np
 
 from scripts.helpers.dsp import hilbert_transform
 from scripts.helpers.dsp import softmax_st
+from scripts.helpers.template_comparison import USED_BAND_SLICE
 
 from scripts.helpers.dsp import causal_conv1d
 
@@ -59,9 +60,16 @@ def estimate_interauralcues(bin_stim,fs,gtfb, tau_IACC=0.01):
     rectified_left = torch.cat([rectified_left_LF, rectified_left_HF], dim = 1) # rectified_left/right.shape = (N_signals, N_banks, rect_sig_len)
     rectified_right = torch.cat([rectified_right_LF, rectified_right_HF], dim = 1)
 
+    ### Test mode: keep only selected critical bands after full peripheral processing.
+    rectified_left = rectified_left[:, USED_BAND_SLICE, :]
+    rectified_right = rectified_right[:, USED_BAND_SLICE, :]
+    gtfbout_left = gtfbout_left[:, USED_BAND_SLICE, :]
+    gtfbout_right = gtfbout_right[:, USED_BAND_SLICE, :]
+    N_banks = rectified_left.shape[1]
+
     # Format for Torch Conv1d (left_sig shape: 1, N_signals*N_banks, signal_len ¦right_sig shape: N_signals*N_banks, 1, signal_len)
-    sig_left = rectified_left.view(1,N_signals*N_banks,-1) # Reshaping done for F.conv1d 
-    sig_right = rectified_right.view(N_signals*N_banks,1,-1)
+    sig_left = rectified_left.reshape(1, N_signals * N_banks, -1) # Reshaping done for F.conv1d 
+    sig_right = rectified_right.reshape(N_signals * N_banks, 1, -1)
 
     # Estimate Interaural Cross-Correlation (iaccFuncts shape before reshaping: 1, N_signals*N_banks, padding)
     iaccFuncts = F.conv1d(sig_left, sig_right, padding=int(maxLag), groups=N_signals * N_banks)
@@ -74,8 +82,8 @@ def estimate_interauralcues(bin_stim,fs,gtfb, tau_IACC=0.01):
            20 * torch.log10(torch.sqrt(torch.sum(gtfbout_left ** 2, dim=-1) + 1e-12)))
     
     # Format for desena2020_distance_torch
-    itd = itd.view(batch_size, N_lstn_pos, N_banks)
-    ild = ild.view(batch_size, N_lstn_pos, N_banks)
+    itd = itd.reshape(batch_size, N_lstn_pos, N_banks)
+    ild = ild.reshape(batch_size, N_lstn_pos, N_banks)
 
     ## Return
     interauralcues = {

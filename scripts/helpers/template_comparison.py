@@ -1,5 +1,7 @@
 import torch
 
+USED_BAND_SLICE = slice(None)
+
 def itd_ild_template_distance(target,template):
 
     target_itd = target['itd'].unsqueeze(2)
@@ -12,7 +14,7 @@ def itd_ild_template_distance(target,template):
     template_ild = template['ild'].to(dtype=dtype, device=device).unsqueeze(0).unsqueeze(0)
 
     # Linear Weighting Over Frequency Bands
-    weighting_function_itd_ild = torch.linspace(0, 1, 24, device=device, dtype=dtype)
+    weighting_function_itd_ild = torch.linspace(0, 1, 24, device=device, dtype=dtype)[USED_BAND_SLICE]
 
     ## Normalize Template and Target
     max_per_entry_itd = torch.max(torch.abs(template_itd), dim=2, keepdim=True).values # ABS SHOULD BE THERE, TESTING

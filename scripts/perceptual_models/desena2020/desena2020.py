@@ -6,7 +6,7 @@ from scripts.helpers.miscelaneous import get_hrirs_for_template, load_gtfb, set_
 
 from scripts.helpers.peripheral_processing import estimate_interauralcues
 
-from scripts.helpers.template_comparison import itd_ild_template_distance
+from scripts.helpers.template_comparison import itd_ild_template_distance, USED_BAND_SLICE
 
 from scripts.helpers.dsp import rms
 
@@ -101,10 +101,12 @@ class desena2020(nn.Module):
         49.2861519859267, 46.9451007372847, 46.2399898195513, 46.6506947407588,
         48.2807108683239, 51.3531651995338, 55.7893247423705, 59.9041927864145,
         62.6548923203973, 62.8950513166133, 60.1353379120974, 60.1353379120974], 
-        dtype=dtype, device=device).view(1,-1)
+        dtype=dtype, device=device).view(1, -1)[:, USED_BAND_SLICE]
 
-        spl_cfs_0 = spl_cfs - spl_cfs[0,9]
-        signal_dB_0 = signal_dB - signal_dB[:,9].unsqueeze(1)
+        selected_band_indices = list(range(24))[USED_BAND_SLICE]
+        ref_band_idx = selected_band_indices.index(9) if 9 in selected_band_indices else 0
+        spl_cfs_0 = spl_cfs - spl_cfs[0, ref_band_idx]
+        signal_dB_0 = signal_dB - signal_dB[:, ref_band_idx].unsqueeze(1)
 
         dB_diff = signal_dB_0 - spl_cfs_0
 
