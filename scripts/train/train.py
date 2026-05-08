@@ -3,6 +3,11 @@ import numpy as np
 import time
 
 from scripts.plotting.tensorboard_updates import TensorboardLogger
+from scripts.helpers.localisation_tracking import (
+    init_localisation_cue_tracking,
+    update_localisation_cue_tracking,
+    finalize_localisation_cue_tracking,
+)
 
 from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagation
 
@@ -224,6 +229,8 @@ class Train:
             for key, loss_cfg in self.loss_dict.items()
             if loss_cfg.model is not None
         }
+        self.localisation_model = self.perceptual_models.get("localisation", None)
+        self.localisation_tracking = init_localisation_cue_tracking(self.localisation_model)
 
 
         self.logger = self._build_tensorboard_logger(logger=logger, saver=saver, loggers=loggers)
@@ -313,6 +320,17 @@ class Train:
             # Estimate filters after last update for logging
             spk_filters = self.nn(unit_input)
 
+            if self.localisation_model is not None:
+                update_localisation_cue_tracking(
+                    tracking=self.localisation_tracking,
+                    epoch=epoch,
+                    accum_bin_stim=accum_bin_stim,
+                    fs=self.localisation_model.fs,
+                    gtfb=self.localisation_model.gtfb,
+                    tau_iacc=self.localisation_model.tau_IACC,
+                    localisation_model=self.localisation_model,
+                )
+
             self._log_tensorboard(
                 full_loss=full_loss,
                 weighted_loss=avg_loss,
@@ -322,6 +340,8 @@ class Train:
                 listener_pos=self.lstn_loader.dataset,
                 epoch=epoch
             )
+
+        self.localisation_tracking = finalize_localisation_cue_tracking(self.localisation_tracking)
 
     def evaluate(self, eval_lstn_pos, eval_stimulus_data_loader, loss_dict=None):
 
