@@ -14,7 +14,19 @@ def parse_args():
         description="Run optimisation and render estimated loudspeaker signals for listening."
     )
     parser.add_argument("--path", type=str)
-    parser.add_argument("--stimulus", type=str, default="white_noise")
+    parser.add_argument(
+        "--stimulus",
+        type=str,
+        default="white_noise",
+        choices=[
+            "impulse",
+            "sine",
+            "white_noise",
+            "finger_snaps",
+            "male_speech",
+            "female_speech",
+        ],
+    )
     parser.add_argument("--fs", type=int, default=48000)
     parser.add_argument(
         "--output-device",
@@ -363,7 +375,20 @@ def play_loudspeaker_output(
 
 def main():
     args = parse_args()
-        
+
+    def _load_and_prepare_wav(wav_path):
+        src_fs, loaded = wavfile.read(wav_path)
+        loaded = np.asarray(loaded, dtype=np.float64)
+        if loaded.ndim > 1:
+            loaded = np.mean(loaded, axis=1)
+        if src_fs != args.fs:
+            target_len = int(round(len(loaded) * args.fs / src_fs))
+            loaded = signal.resample(loaded, target_len)
+        peak = np.max(np.abs(loaded))
+        if peak > 0:
+            loaded /= peak / 0.9
+        return loaded
+
     if args.stimulus == "impulse":
         stimulus = np.zeros(48000)
         stimulus[0] = 1.0
@@ -376,16 +401,13 @@ def main():
    
     elif args.stimulus == "finger_snaps":
         wav_path = Path(__file__).resolve().parents[2] / "data" / "stimulus" / "finger snaps.wav"
-        src_fs, stimulus = wavfile.read(wav_path)
-        stimulus = np.asarray(stimulus, dtype=np.float64)
-        if stimulus.ndim > 1:
-            stimulus = np.mean(stimulus, axis=1)
-        if src_fs != args.fs:
-            target_len = int(round(len(stimulus) * args.fs / src_fs))
-            stimulus = signal.resample(stimulus, target_len)
-        peak = np.max(np.abs(stimulus))
-        if peak > 0:
-            stimulus /= peak / 0.9
+        stimulus = _load_and_prepare_wav(wav_path)
+    elif args.stimulus == "male_speech":
+        wav_path = Path(__file__).resolve().parents[2] / "data" / "stimulus" / "EBU_MaleSpeech.wav"
+        stimulus = _load_and_prepare_wav(wav_path)
+    elif args.stimulus == "female_speech":
+        wav_path = Path(__file__).resolve().parents[2] / "data" / "stimulus" / "EBU_FemaleSpeech.wav"
+        stimulus = _load_and_prepare_wav(wav_path)
     else:
         print("Selected stimulus not available, using white noise")
         stimulus = np.random.randn(48000)

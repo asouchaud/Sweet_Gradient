@@ -26,6 +26,7 @@ from scripts.optimisation.custom_modules import MultiSourceFIR
 from scripts.plotting.results_plot import plot_results
 from scripts.plotting.itd_ild_animation import save_itd_ild_evolution_animation
 from scripts.plotting.combined_distance_animation import save_combined_distance_evolution_animation
+from scripts.plotting.localisation_grad_plot import plot_localisation_gradient_norms, plot_localisation_gradient_band_contributions, plot_localisation_cue_dominance
 
 from scripts.setup.setup import set_seed, build_eval_objects
 
@@ -53,8 +54,8 @@ def run_experiment(loss_dict_builder, run_label):
         listener_batch_size=1,  # 5 mirrored pairs plus the centre listener
         symmetric_listener_sampling=False,
         selected_stim="impulse",
-        stimulus_batch_size = 1,
-        n_stimulus = 1,
+        stimulus_batch_size = 4,
+        n_stimulus = 16,
         n_filter_taps=32,
         target_pos=[d, float(np.tan(np.deg2rad(15.0)) * d)],
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
@@ -108,7 +109,7 @@ def run_experiment(loss_dict_builder, run_label):
     stereo_prop = BinauralFreeFieldPropagation(fs=env.fs, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, sofa_file_path=env.sofa_path, device=env.device, dtype=env.dtype) # Load stereo anechoic propagation module
 
     # Initiate perceptual models
-    loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, device=env.device, dtype=env.dtype) # Llado et al. 2025 model
+    loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, device=env.device, dtype=env.dtype, balance_interaural_cue_grads=False) # Llado et al. 2025 model
     col_model = spectral_matching(loss = F.l1_loss, target = 0, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, device=env.device, dtype=env.dtype) # Spectral Matching model
     unc_model = desena2020(loss = F.l1_loss, target = 0, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, device=env.device, dtype=env.dtype) # De Sena et al. 2020 model
     ipd_model = interaural_phase_difference_matching(loss = F.l1_loss, target = 0, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, device=env.device, dtype=env.dtype) # Interaural Phase Difference model
@@ -164,8 +165,8 @@ def run_experiment(loss_dict_builder, run_label):
 
 ## Print and Plot results
     # Evaluate final neural network FIRs
-    # eval_lstn_pos, eval_perceptual_dict, eval_stimulus_data_loader, eval_stimulus_dataset = build_eval_objects(env, eval_lstn_pos=env.lstn_pos)
-    est_filters, estimation_dict, bin_stim = trainer.evaluate(eval_lstn_pos=env.lstn_pos, eval_stimulus_data_loader=training_stimulus_data_loader, loss_dict=loss_dict)
+    eval_lstn_pos, eval_perceptual_dict, eval_stimulus_data_loader, eval_stimulus_dataset = build_eval_objects(env, eval_lstn_pos=env.lstn_pos)
+    est_filters, estimation_dict, bin_stim = trainer.evaluate(eval_lstn_pos=env.lstn_pos, eval_stimulus_data_loader=eval_stimulus_data_loader, loss_dict=eval_perceptual_dict)
     
     # Normalise filters to prevent clipping 
     est_filters /= np.max(np.abs(est_filters)) / 0.9 # TODO: move this to a more appropriate place at the end of the training loop
@@ -181,6 +182,7 @@ def run_experiment(loss_dict_builder, run_label):
         env=env,
         loss_dict=loss_dict,
         localisation_tracking=trainer.localisation_tracking,
+        localisation_grad_tracking=trainer.localisation_grad_tracking,
     )
 
     if trainer.localisation_tracking is not None:
@@ -195,21 +197,24 @@ def run_experiment(loss_dict_builder, run_label):
             fps=10,
         )
 
-    # plots = plot_results(
-    #     estimation_dict=estimation_dict,
-    #     est_filters=est_filters,
-    #     bin_stim=bin_stim,
-    #     lstn_pos=env.lstn_pos,
-    #     spk_pos=env.spk_pos,
-    #     loss_dict=eval_perceptual_dict,
-    #     target_pos=env.target_pos,
-    #     fs=env.fs,
-    #     stim = eval_stimulus_dataset.data,
-    #     device=env.device,
-    #     dtype=env.dtype,
-    #     show=True,
-    # )
-    # saver_obj.save_plots(plots)
+    plots = plot_results(
+        estimation_dict=estimation_dict,
+        est_filters=est_filters,
+        bin_stim=bin_stim,
+        lstn_pos=env.lstn_pos,
+        spk_pos=env.spk_pos,
+        loss_dict=eval_perceptual_dict,
+        target_pos=env.target_pos,
+        fs=env.fs,
+        stim = eval_stimulus_dataset.data,
+        device=env.device,
+        dtype=env.dtype,
+        show=True,
+    )
+    plots["localisation_grad_norms"] = plot_localisation_gradient_norms(trainer.localisation_grad_tracking)
+    plots["localisation_grad_band_contributions"] = plot_localisation_gradient_band_contributions(trainer.localisation_grad_tracking)
+    plots["localisation_cue_dominance"] = plot_localisation_cue_dominance(trainer.localisation_grad_tracking)
+    saver_obj.save_plots(plots)
 
     # Save per-epoch source FIR evolution as videos (one per source)
     # saver_obj.save_filter_video(trainer.h_history, source_index=0, fs=env.fs)
@@ -220,10 +225,9 @@ if __name__ == "__main__":
     run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "localisation": ListenerBasedLoss(model=loc_model, weight=1.0e0, device=device, dtype=dtype),
-            "colouration": ListenerBasedLoss(model=col_model, weight=1.0e-3, device=device, dtype=dtype),
-            "uncertainty": ListenerBasedLoss(model=unc_model, weight=1.0e-3, device=device, dtype=dtype),
-            # "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1.0e-3),
-            # "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1.0e-3),
+            # "colouration": ListenerBasedLoss(model=col_model, weight=1.0e-1, device=device, dtype=dtype),
+            # "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1.0e-5),
+            # "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1.0e-5),
         },
         run_label="localisation_only",
     )

@@ -231,6 +231,15 @@ class Train:
         }
         self.localisation_model = self.perceptual_models.get("localisation", None)
         self.localisation_tracking = init_localisation_cue_tracking(self.localisation_model)
+        self.localisation_grad_tracking = {
+            "epoch": [],
+            "itd_grad_norm": [],
+            "ild_grad_norm": [],
+            "itd_grad_band_norm": [],
+            "ild_grad_band_norm": [],
+            "itd_grad_band_share": [],
+            "ild_grad_band_share": [],
+        }
 
 
         self.logger = self._build_tensorboard_logger(logger=logger, saver=saver, loggers=loggers)
@@ -258,6 +267,7 @@ class Train:
                     key: []
                     for key in self.loss_dict
             }
+            accum_localisation_grad_norm = {"itd": [], "ild": [], "itd_band": [], "ild_band": []}
 
             # For storing binaural stimulus for each listener across batches for logging and plotting at the end of the epoch
             accum_bin_stim = {
@@ -297,6 +307,19 @@ class Train:
                     # Backpropagate total loss for the current batch and listener subset
                     self.optimiser.zero_grad()
                     batch_full_loss.backward()
+                    if self.localisation_model is not None and hasattr(self.localisation_model, "latest_interauralcues"):
+                        itd_grad = self.localisation_model.latest_interauralcues["itd"].grad
+                        ild_grad = self.localisation_model.latest_interauralcues["ild"].grad
+                        if itd_grad is not None:
+                            accum_localisation_grad_norm["itd"].append(torch.norm(itd_grad).detach().cpu().item())
+                            accum_localisation_grad_norm["itd_band"].append(
+                                torch.linalg.vector_norm(itd_grad, dim=(0, 1)).detach().cpu().numpy()
+                            )
+                        if ild_grad is not None:
+                            accum_localisation_grad_norm["ild"].append(torch.norm(ild_grad).detach().cpu().item())
+                            accum_localisation_grad_norm["ild_band"].append(
+                                torch.linalg.vector_norm(ild_grad, dim=(0, 1)).detach().cpu().numpy()
+                            )
                     full_loss = full_loss + batch_full_loss.detach()
 
                     # Update filters
@@ -319,6 +342,27 @@ class Train:
 
             # Estimate filters after last update for logging
             spk_filters = self.nn(unit_input)
+            mean_itd_grad_norm = float(np.mean(accum_localisation_grad_norm["itd"])) if len(accum_localisation_grad_norm["itd"]) > 0 else np.nan
+            mean_ild_grad_norm = float(np.mean(accum_localisation_grad_norm["ild"])) if len(accum_localisation_grad_norm["ild"]) > 0 else np.nan
+            mean_itd_grad_band_norm = (
+                np.mean(np.stack(accum_localisation_grad_norm["itd_band"], axis=0), axis=0)
+                if len(accum_localisation_grad_norm["itd_band"]) > 0
+                else np.array([])
+            )
+            mean_ild_grad_band_norm = (
+                np.mean(np.stack(accum_localisation_grad_norm["ild_band"], axis=0), axis=0)
+                if len(accum_localisation_grad_norm["ild_band"]) > 0
+                else np.array([])
+            )
+            mean_itd_grad_band_share = mean_itd_grad_band_norm / (np.sum(mean_itd_grad_band_norm) + 1e-12) if mean_itd_grad_band_norm.size > 0 else np.array([])
+            mean_ild_grad_band_share = mean_ild_grad_band_norm / (np.sum(mean_ild_grad_band_norm) + 1e-12) if mean_ild_grad_band_norm.size > 0 else np.array([])
+            self.localisation_grad_tracking["epoch"].append(epoch)
+            self.localisation_grad_tracking["itd_grad_norm"].append(mean_itd_grad_norm)
+            self.localisation_grad_tracking["ild_grad_norm"].append(mean_ild_grad_norm)
+            self.localisation_grad_tracking["itd_grad_band_norm"].append(mean_itd_grad_band_norm.tolist())
+            self.localisation_grad_tracking["ild_grad_band_norm"].append(mean_ild_grad_band_norm.tolist())
+            self.localisation_grad_tracking["itd_grad_band_share"].append(mean_itd_grad_band_share.tolist())
+            self.localisation_grad_tracking["ild_grad_band_share"].append(mean_ild_grad_band_share.tolist())
 
             if self.localisation_model is not None:
                 update_localisation_cue_tracking(

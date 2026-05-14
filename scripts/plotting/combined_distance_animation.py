@@ -11,6 +11,7 @@ def save_combined_distance_evolution_animation(localisation_tracking, output_pat
 
     distance_combined = np.asarray(localisation_tracking.get("distance_combined"))
     template_azimuths = np.asarray(localisation_tracking.get("template_azimuths"))
+    target_azimuths = np.asarray(localisation_tracking.get("target_azimuths"))
 
     if distance_combined.size == 0:
         return None
@@ -22,6 +23,14 @@ def save_combined_distance_evolution_animation(localisation_tracking, output_pat
     n_epochs, n_listeners, n_azimuths, _n_bands = distance_combined.shape
     if template_azimuths.ndim != 1 or template_azimuths.shape[0] != n_azimuths:
         raise ValueError("template_azimuths must be 1D and match distance_combined azimuth dimension.")
+    if target_azimuths.size == 0:
+        target_azimuths = None
+    else:
+        target_azimuths = np.squeeze(target_azimuths)
+        if target_azimuths.ndim == 0:
+            target_azimuths = np.full((n_listeners,), float(target_azimuths), dtype=np.float64)
+        elif target_azimuths.ndim != 1 or target_azimuths.shape[0] != n_listeners:
+            target_azimuths = None
 
     cols = int(np.ceil(np.sqrt(n_listeners)))
     rows = int(np.ceil(n_listeners / cols))
@@ -33,6 +42,7 @@ def save_combined_distance_evolution_animation(localisation_tracking, output_pat
     axes_flat = axes.flatten()
 
     images = []
+    target_lines = []
     for listener_idx in range(n_listeners):
         ax = axes_flat[listener_idx]
         im = ax.imshow(
@@ -52,6 +62,15 @@ def save_combined_distance_evolution_animation(localisation_tracking, output_pat
         ax.yaxis.label.set_fontsize(9)
         ax.tick_params(axis="both", labelsize=8)
         images.append(im)
+        if target_azimuths is not None:
+            target_line = ax.axvline(
+                target_azimuths[listener_idx],
+                color="cyan",
+                linestyle="--",
+                linewidth=1.4,
+                alpha=0.95,
+            )
+            target_lines.append(target_line)
 
     for i in range(n_listeners, len(axes_flat)):
         axes_flat[i].set_visible(False)

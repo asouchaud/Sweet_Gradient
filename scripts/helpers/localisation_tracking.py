@@ -17,6 +17,7 @@ def init_localisation_cue_tracking(localisation_model):
         "distance_combined": [],
         "target_itd": target_itd,
         "target_ild": target_ild,
+        "target_azimuths": localisation_model.target.detach().cpu().numpy(),
         "template_azimuths": localisation_model.template["azimuths"].squeeze(-1).detach().cpu().numpy(),
     }
 
@@ -58,6 +59,7 @@ def finalize_localisation_cue_tracking(tracking):
         "distance_combined": np.asarray(tracking["distance_combined"], dtype=np.float64),
         "target_itd": np.asarray(tracking["target_itd"], dtype=np.float64),
         "target_ild": np.asarray(tracking["target_ild"], dtype=np.float64),
+        "target_azimuths": np.asarray(tracking["target_azimuths"], dtype=np.float64),
         "template_azimuths": np.asarray(tracking["template_azimuths"], dtype=np.float64),
     }
 

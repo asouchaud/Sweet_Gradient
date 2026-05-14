@@ -33,16 +33,23 @@ def save_itd_ild_evolution_animation(localisation_tracking, output_path, fps=10)
     norm = plt.Normalize(vmin=0, vmax=max(n_bands - 1, 1))
     band_colors = cmap(norm(band_idx))
 
-    path_lines = []
+    trail_lines = []
     current_points = []
     target_points = []
+    trail_length = 10
+    trail_alpha_min = 0.10
+    trail_alpha_max = 0.45
     for listener_idx in range(n_listeners):
-        listener_path_lines = []
+        listener_trail_lines = []
         listener_current_points = []
         listener_target_points = []
         for band in range(n_bands):
             color = band_colors[band]
-            (line,) = ax.plot([], [], color=color, linewidth=1.0, alpha=0.7)
+            band_trail_lines = []
+            for trail_step in range(trail_length):
+                alpha = trail_alpha_max - (trail_alpha_max - trail_alpha_min) * (trail_step / max(trail_length - 1, 1))
+                (trail_line,) = ax.plot([], [], color=color, linewidth=1.0, alpha=alpha)
+                band_trail_lines.append(trail_line)
             (point,) = ax.plot([], [], marker="o", color=color, markersize=4, linestyle="None")
             (target,) = ax.plot(
                 [target_itd_ms[listener_idx, band]],
@@ -52,10 +59,10 @@ def save_itd_ild_evolution_animation(localisation_tracking, output_path, fps=10)
                 markersize=6,
                 linestyle="None",
             )
-            listener_path_lines.append(line)
+            listener_trail_lines.append(band_trail_lines)
             listener_current_points.append(point)
             listener_target_points.append(target)
-        path_lines.append(listener_path_lines)
+        trail_lines.append(listener_trail_lines)
         current_points.append(listener_current_points)
         target_points.append(listener_target_points)
 
@@ -75,15 +82,18 @@ def save_itd_ild_evolution_animation(localisation_tracking, output_path, fps=10)
             for band in range(n_bands):
                 x_hist = itd_ms[: frame_idx + 1, listener_idx, band]
                 y_hist = ild[: frame_idx + 1, listener_idx, band]
-                path_lines[listener_idx][band].set_data(x_hist, y_hist)
+                for trail_step, trail_line in enumerate(trail_lines[listener_idx][band]):
+                    hist_idx = frame_idx - trail_step
+                    if hist_idx > 0:
+                        trail_line.set_data(
+                            [itd_ms[hist_idx - 1, listener_idx, band], itd_ms[hist_idx, listener_idx, band]],
+                            [ild[hist_idx - 1, listener_idx, band], ild[hist_idx, listener_idx, band]],
+                        )
+                    else:
+                        trail_line.set_data([], [])
+                    artists.append(trail_line)
                 current_points[listener_idx][band].set_data([x_hist[-1]], [y_hist[-1]])
-                artists.extend(
-                    (
-                        path_lines[listener_idx][band],
-                        current_points[listener_idx][band],
-                        target_points[listener_idx][band],
-                    )
-                )
+                artists.extend((current_points[listener_idx][band], target_points[listener_idx][band]))
         ax.set_title(f"ITD/ILD evolution over epochs (epoch {frame_idx + 1}/{n_epochs})")
         return tuple(artists)
 

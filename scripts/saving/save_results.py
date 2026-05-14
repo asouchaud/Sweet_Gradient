@@ -350,7 +350,7 @@ class saver():
         )
 
 
-    def save_results(self, estimation_dict, est_filters, fs, env=None, loss_dict=None, localisation_tracking=None):
+    def save_results(self, estimation_dict, est_filters, fs, env=None, loss_dict=None, localisation_tracking=None, localisation_grad_tracking=None):
         # =========================
         # Save results (clean layout)
         # Subfolders
@@ -382,6 +382,14 @@ class saver():
             np.save(artifacts_dir / "localisation_target_itd.npy", np.asarray(localisation_tracking["target_itd"]))
             np.save(artifacts_dir / "localisation_target_ild.npy", np.asarray(localisation_tracking["target_ild"]))
             np.save(artifacts_dir / "localisation_template_azimuths.npy", np.asarray(localisation_tracking["template_azimuths"]))
+        if localisation_grad_tracking is not None:
+            np.save(artifacts_dir / "localisation_grad_epoch_indices.npy", np.asarray(localisation_grad_tracking["epoch"]))
+            np.save(artifacts_dir / "localisation_itd_grad_norm_over_epochs.npy", np.asarray(localisation_grad_tracking["itd_grad_norm"]))
+            np.save(artifacts_dir / "localisation_ild_grad_norm_over_epochs.npy", np.asarray(localisation_grad_tracking["ild_grad_norm"]))
+            np.save(artifacts_dir / "localisation_itd_grad_band_norm_over_epochs.npy", np.asarray(localisation_grad_tracking["itd_grad_band_norm"]))
+            np.save(artifacts_dir / "localisation_ild_grad_band_norm_over_epochs.npy", np.asarray(localisation_grad_tracking["ild_grad_band_norm"]))
+            np.save(artifacts_dir / "localisation_itd_grad_band_share_over_epochs.npy", np.asarray(localisation_grad_tracking["itd_grad_band_share"]))
+            np.save(artifacts_dir / "localisation_ild_grad_band_share_over_epochs.npy", np.asarray(localisation_grad_tracking["ild_grad_band_share"]))
 
         # ---------- Config (static experiment definition) ----------
         config = {
@@ -428,6 +436,16 @@ class saver():
                 "target_itd": np.asarray(localisation_tracking["target_itd"]).tolist(),
                 "target_ild": np.asarray(localisation_tracking["target_ild"]).tolist(),
                 "template_azimuths": np.asarray(localisation_tracking["template_azimuths"]).tolist(),
+            }
+        if localisation_grad_tracking is not None:
+            results["localisation_grad_tracking"] = {
+                "epoch": np.asarray(localisation_grad_tracking["epoch"]).tolist(),
+                "itd_grad_norm": np.asarray(localisation_grad_tracking["itd_grad_norm"]).tolist(),
+                "ild_grad_norm": np.asarray(localisation_grad_tracking["ild_grad_norm"]).tolist(),
+                "itd_grad_band_norm": np.asarray(localisation_grad_tracking["itd_grad_band_norm"]).tolist(),
+                "ild_grad_band_norm": np.asarray(localisation_grad_tracking["ild_grad_band_norm"]).tolist(),
+                "itd_grad_band_share": np.asarray(localisation_grad_tracking["itd_grad_band_share"]).tolist(),
+                "ild_grad_band_share": np.asarray(localisation_grad_tracking["ild_grad_band_share"]).tolist(),
             }
 
         with open(self.run_dir / "results.json", "w") as f:
