@@ -28,7 +28,7 @@ def make_model() -> llado2025:
     dummy_fs = 48000
     dummy_lstn_pos = torch.tensor([[0.0, 0.0]], dtype=torch.float64)
     dummy_sofa_path = str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
-    llado2025_model = llado2025(dummy_loss, dummy_target, dummy_fs, dummy_sofa_path, dummy_lstn_pos)
+    llado2025_model = llado2025(dummy_loss, dummy_target, dummy_fs, dummy_sofa_path, dummy_lstn_pos, balance_interaural_cue_grads=False)
 
     return(llado2025_model)
 
