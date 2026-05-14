@@ -11,10 +11,24 @@ from scripts.helpers.miscelaneous import load_gtfb
 from scripts.helpers.peripheral_processing import estimate_interauralcues
 
 from scripts.helpers.template_comparison import itd_ild_template_distance
+from scripts.helpers.interaural_cue_grad_balance import InterauralCueGradBalance
 
 
 class llado2025(nn.Module):
-    def __init__(self, loss, target_pos, fs, sofa_path, lstn_pos, spk_pos = None, tau_IACC=0.01, tau_L=1, device = 'cpu', dtype = torch.float64):
+    def __init__(
+        self,
+        loss,
+        target_pos,
+        fs,
+        sofa_path,
+        lstn_pos,
+        spk_pos=None,
+        tau_IACC=0.01,
+        tau_L=1,
+        balance_interaural_cue_grads=True,
+        device="cpu",
+        dtype=torch.float64,
+    ):
         super(llado2025, self).__init__()
         
         self.name = "llado2025"
@@ -40,6 +54,7 @@ class llado2025(nn.Module):
         self.target_pos, self.target = self._set_target(target_pos)
         self.loss = loss
         self.loss_norm = self._set_norm()
+        self.balance_interaural_cue_grads = balance_interaural_cue_grads
     
 
     def forward(self, bin_stim):
@@ -48,6 +63,13 @@ class llado2025(nn.Module):
         
         # Estimate Interaural Cues
         interauralcues = estimate_interauralcues(bin_stim, self.fs, self.gtfb, self.tau_IACC)
+        if self.balance_interaural_cue_grads and torch.is_grad_enabled():
+            itd_b, ild_b = InterauralCueGradBalance.apply(interauralcues["itd"], interauralcues["ild"])
+            interauralcues = {**interauralcues, "itd": itd_b, "ild": ild_b}
+        if torch.is_grad_enabled():
+            interauralcues["itd"].retain_grad()
+            interauralcues["ild"].retain_grad()
+        self.latest_interauralcues = interauralcues
 
         # Calculate Distance
         distance = itd_ild_template_distance(interauralcues, self.template)

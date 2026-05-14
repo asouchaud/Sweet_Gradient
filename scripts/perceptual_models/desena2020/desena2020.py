@@ -7,12 +7,24 @@ from scripts.helpers.miscelaneous import get_hrirs_for_template, load_gtfb, set_
 from scripts.helpers.peripheral_processing import estimate_interauralcues
 
 from scripts.helpers.template_comparison import itd_ild_template_distance, USED_BAND_SLICE
+from scripts.helpers.interaural_cue_grad_balance import InterauralCueGradBalance
 
 from scripts.helpers.dsp import rms
 
 
 class desena2020(nn.Module):
-    def __init__(self, loss, target, fs, sofa_path, lstn_pos, tau_IACC=0.01, device = 'cpu', dtype = torch.float64):
+    def __init__(
+        self,
+        loss,
+        target,
+        fs,
+        sofa_path,
+        lstn_pos,
+        tau_IACC=0.01,
+        balance_interaural_cue_grads=True,
+        device="cpu",
+        dtype=torch.float64,
+    ):
         super(desena2020, self).__init__()
 
         self.name = "desena2020"
@@ -39,12 +51,16 @@ class desena2020(nn.Module):
         self.target = set_target(lstn_pos, target)
         self.loss = loss
         self.loss_norm = 1.0 # No normalization needed for uncertainty as it is already between 0 and 1
-        
+        self.balance_interaural_cue_grads = balance_interaural_cue_grads
+
 
     def forward(self, bin_stim):
         # Expects bin_stim as (batch, n_listeners, 2, T), where 2 is the left and right ear and T is the number of time samples of each ear signal;
         # returns uncertainty per listener as (batch, n_listeners, 1). 
         interauralcues = estimate_interauralcues(bin_stim, self.fs, self.gtfb, self.tau_IACC)
+        if self.balance_interaural_cue_grads and torch.is_grad_enabled():
+            itd_b, ild_b = InterauralCueGradBalance.apply(interauralcues["itd"], interauralcues["ild"])
+            interauralcues = {**interauralcues, "itd": itd_b, "ild": ild_b}
 
         # Calculate Distance
         distance = itd_ild_template_distance(interauralcues, self.template)
