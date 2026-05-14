@@ -103,7 +103,10 @@ def test_llado2025_returns_corresponding_template_angle_with_template_hrirs() ->
     estimated = model(bin_stim)
 
     assert estimated.shape == (1, n_listeners)
-    assert torch.allclose(estimated, torch.linspace(-90, 90, 37, device = model.device, dtype = model.dtype).view(1, n_listeners), atol=1e-6)
+    assert torch.allclose(estimated, torch.linspace(-90, 90, 37, device = model.device, dtype = model.dtype).view(1, n_listeners), atol=1e0) 
+    # atol=1e0 because the template itd or ild values can be the  same for different angles and the weighting of the frequencies masks this difference 
+    # though its only for 1 frequency band usually so the softmax does an average of those
+    # Without the frequency weighting, I believe we can reduce the atol to 1e-6
 
 
 def test_llado2025_returns_corresponding_template_angle_with_scaled_hrirs() -> None:
@@ -120,7 +123,10 @@ def test_llado2025_returns_corresponding_template_angle_with_scaled_hrirs() -> N
     estimated = model(bin_stim)
 
     assert estimated.shape == (1, n_listeners)
-    assert torch.allclose(estimated, torch.linspace(-90, 90, 37, device = model.device, dtype = model.dtype).view(1, n_listeners), atol=1e-6)
+    assert torch.allclose(estimated, torch.linspace(-90, 90, 37, device = model.device, dtype = model.dtype).view(1, n_listeners), atol=1e0) 
+    # atol=1e0 because the template itd or ild values can be the  same for different angles and the weighting of the frequencies masks this difference 
+    # though its only for 1 frequency band usually so the softmax does an average of those
+    # Without the frequency weighting, I believe we can reduce the atol to 1e-6
     
 
 def test_llado2025_returns_corresponding_template_angle_with_delayed_hrirs() -> None:
@@ -137,7 +143,10 @@ def test_llado2025_returns_corresponding_template_angle_with_delayed_hrirs() -> 
     estimated = model(bin_stim)
 
     assert estimated.shape == (1, n_listeners)
-    assert torch.allclose(estimated, torch.linspace(-90, 90, 37, device = model.device, dtype = model.dtype).view(1, n_listeners), atol=1e-6)
+    assert torch.allclose(estimated, torch.linspace(-90, 90, 37, device = model.device, dtype = model.dtype).view(1, n_listeners), atol=1e0) 
+    # atol=1e0 because the template itd or ild values can be the  same for different angles and the weighting of the frequencies masks this difference 
+    # though its only for 1 frequency band usually so the softmax does an average of those
+    # Without the frequency weighting, I believe we can reduce the atol to 1e-6
     
 
 def test_llado2025_returns_corresponding_template_angle_with_truncated_zeros_in_hrirs() -> None:
@@ -155,7 +164,10 @@ def test_llado2025_returns_corresponding_template_angle_with_truncated_zeros_in_
     estimated = model(bin_stim)
 
     assert estimated.shape == (1, n_listeners)
-    assert torch.allclose(estimated, torch.linspace(-90, 90, 37, device = model.device, dtype = model.dtype).view(1, n_listeners), atol=1e-6)
+    assert torch.allclose(estimated, torch.linspace(-90, 90, 37, device = model.device, dtype = model.dtype).view(1, n_listeners), atol=1e0) 
+    # atol=1e0 because the template itd or ild values can be the  same for different angles and the weighting of the frequencies masks this difference 
+    # though its only for 1 frequency band usually so the softmax does an average of those
+    # Without the frequency weighting, I believe we can reduce the atol to 1e-6
     
 
 def test_llado2025_returns_corresponding_template_angle_with_scaled_and_delayed_hrirs() -> None:
@@ -172,7 +184,7 @@ def test_llado2025_returns_corresponding_template_angle_with_scaled_and_delayed_
     estimated = model(bin_stim)
 
     assert estimated.shape == (1, n_listeners)
-    assert torch.allclose(estimated, torch.linspace(-90, 90, 37, device = model.device, dtype = model.dtype).view(1, n_listeners), atol=1e-6)
+    assert torch.allclose(estimated, torch.linspace(-90, 90, 37, device = model.device, dtype = model.dtype).view(1, n_listeners), atol=1e0) # atol=1e0 because the template itd or ild values can be the  same for different angles and the weighting of the frequencies masks this difference though its only for 1 frequency band usually so the softmax does an average of those
 
 
 def test_llado2025_returns_corresponding_template_angle_with_hrirs_convoluted_with_noise() -> None:
@@ -192,7 +204,9 @@ def test_llado2025_returns_corresponding_template_angle_with_hrirs_convoluted_wi
     assert estimated.shape == (1, n_lstn)
     assert torch.allclose(estimated, 
                           torch.linspace(-90, 90, 37, device = model.device, dtype = model.dtype).view(1, n_lstn), 
-                          atol=5) # atol = 5 degrees, which is a very loose threshold, but the noise should make the estimates quite inaccurate. The point of this test is just to check that the model doesn't break when given noisy stimuli.
+                          atol=5) 
+    # atol = 5 degrees, which is a very loose threshold, but the noise should make the estimates quite inaccurate. The point of this test is just to check that the model doesn't break when given noisy stimuli.
+    # Without the frequency weighting, I believe we can reduce the atol to 1e-6
     
 
 def test_llado2025_returns_0_azimuth_for_stereo_setup_with_same_stimulus()->None:

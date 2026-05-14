@@ -25,11 +25,9 @@ def itd_ild_template_distance(target,template):
 
     target_itd_normalized = target_itd / (max_per_entry_itd + 1e-12)
     target_ild_normalized = target_ild / (max_per_entry_ild + 1e-8)
-
-    # Calculate Distance and Probability Distribution
-    p = 0.7
     
     # Calculate Distance Between Template and Target per Frequency Band
+    p = 0.7
     distance_itd = torch.pow(torch.abs(target_itd_normalized - template_itd_normalized) +1e-8, p)
     distance_ild = torch.pow(torch.abs(target_ild_normalized - template_ild_normalized) +1e-8, p)
 
