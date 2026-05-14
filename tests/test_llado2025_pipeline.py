@@ -11,6 +11,14 @@ from scripts.helpers.template_comparison import itd_ild_template_distance
 from scripts.perceptual_models.llado2025.llado2025 import llado2025
 from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagation
 
+
+@pytest.fixture(autouse=True)
+def _llado2025_tests_inference_mode() -> None:
+    # Forward uses retain_grad when grad is enabled; these tests evaluate with inputs that do not require grad.
+    with torch.inference_mode():
+        yield
+
+
 def make_model() -> llado2025:
     
     repo_root = Path(__file__).resolve().parent.parent
@@ -43,8 +51,8 @@ def estimate_localisation(target_value: float) -> torch.Tensor:
     model = make_model()
     template = make_template()
     target = {
-        "itd": torch.full((1, 1, 24), target_value, dtype=torch.float64),
-        "ild": torch.full((1, 1, 24), target_value, dtype=torch.float64),
+        "itd": torch.full((1, 1, 24), target_value, dtype=torch.float64, requires_grad=True),
+        "ild": torch.full((1, 1, 24), target_value, dtype=torch.float64, requires_grad=True),
     }
     model.template = template
 
@@ -83,7 +91,7 @@ def test_llado2025_output_shape() -> None:
     
     batch_size = 4
     n_listeners = 2
-    bin_stim = torch.randn(batch_size, n_listeners, 2, 64,dtype=torch.float64)
+    bin_stim = torch.randn(batch_size, n_listeners, 2, 64,dtype=torch.float64, requires_grad=True)
 
     estimated = model(bin_stim)
 
@@ -97,7 +105,7 @@ def test_llado2025_returns_corresponding_template_angle_with_template_hrirs() ->
 
     model = make_model()
     hrirs = get_hrirs_for_template(sofa_path=sofa_path, device=model.device, dtype=model.dtype).unsqueeze(0)
-    bin_stim = hrirs
+    bin_stim = hrirs.clone().requires_grad_(True)
     n_listeners = hrirs.shape[1]
 
     estimated = model(bin_stim)
@@ -117,7 +125,7 @@ def test_llado2025_returns_corresponding_template_angle_with_scaled_hrirs() -> N
 
     model = make_model()
     hrirs = get_hrirs_for_template(sofa_path=sofa_path, device=model.device, dtype=model.dtype).unsqueeze(0)
-    bin_stim = hrirs * 5  # Scale the HRIRs slightly, which should not change the estimated angles much.
+    bin_stim = hrirs.clone().requires_grad_(True) * 5  # Scale the HRIRs slightly, which should not change the estimated angles much.
     n_listeners = hrirs.shape[1]
 
     estimated = model(bin_stim)
@@ -137,7 +145,7 @@ def test_llado2025_returns_corresponding_template_angle_with_delayed_hrirs() -> 
 
     model = make_model()
     hrirs = get_hrirs_for_template(sofa_path=sofa_path, device=model.device, dtype=model.dtype).unsqueeze(0)
-    bin_stim = torch.roll(hrirs, shifts=42, dims=-1)  # Delay the HRIRs slightly, which should not change the estimated angles.
+    bin_stim = torch.roll(hrirs.clone().requires_grad_(True), shifts=42, dims=-1)  # Delay the HRIRs slightly, which should not change the estimated angles.
     n_listeners = hrirs.shape[1]
 
     estimated = model(bin_stim)
@@ -158,7 +166,7 @@ def test_llado2025_returns_corresponding_template_angle_with_truncated_zeros_in_
 
     model = make_model()
     hrirs = get_hrirs_for_template(sofa_path=sofa_path, device=model.device, dtype=model.dtype).unsqueeze(0)
-    bin_stim = hrirs[:,:,:,:-100]  # Truncate the last 100 samples, which are all zeros, which should not change the estimated angles.
+    bin_stim = hrirs.clone().requires_grad_(True)[:,:,:,:-100]  # Truncate the last 100 samples, which are all zeros, which should not change the estimated angles.
     n_listeners = hrirs.shape[1]
 
     estimated = model(bin_stim)
@@ -179,7 +187,7 @@ def test_llado2025_returns_corresponding_template_angle_with_scaled_and_delayed_
     model = make_model()
     hrirs = get_hrirs_for_template(sofa_path=sofa_path, device=model.device, dtype=model.dtype).unsqueeze(0)
     bin_stim = torch.roll(hrirs * 5, shifts=42, dims=-1)  # Scale and delay the HRIRs slightly, which should not change the estimated angles.
-    n_listeners = hrirs.shape[1]
+    n_listeners = hrirs.shape[1]    
 
     estimated = model(bin_stim)
 

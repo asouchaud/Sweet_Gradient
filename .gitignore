@@ -246,3 +246,5 @@ April-key
 
 play_stereo_sine_and_plot.py
 two_loudspeaker_directivity.py
+
+*.gif
