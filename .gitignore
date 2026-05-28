@@ -232,8 +232,6 @@ MMSP2026/
 
 scripts/plotting/tensoboard_updates.py
 
-test.py
-
 
 __pycache__/*
 *.pyc
