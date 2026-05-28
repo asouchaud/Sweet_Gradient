@@ -65,6 +65,23 @@ def calculate_source_angle_2D(vec1):
     return theta
 
 
+def gtfb_center_frequencies(gtfb, fs, n_fft):
+    """Peak-magnitude center frequency (Hz) for each GTFB channel."""
+    filters = gtfb.squeeze(1) if gtfb.dim() == 3 else gtfb
+    fft_freqs = torch.fft.rfftfreq(n_fft, d=1.0 / float(fs)).to(device=filters.device, dtype=filters.dtype)
+    magnitude = torch.abs(torch.fft.rfft(filters, n=n_fft, dim=-1))
+    return fft_freqs[torch.argmax(magnitude, dim=-1)]
+
+
+def erb_frequency_bin_weights(center_frequencies, fft_frequencies, eps=1e-12):
+    """Per-FFT-bin weights inversely proportional to the nearest GTFB center frequency."""
+    dist = torch.abs(fft_frequencies.unsqueeze(-1) - center_frequencies.unsqueeze(0))
+    band_idx = torch.argmin(dist, dim=-1)
+    band_weights = 1.0 / center_frequencies.clamp(min=eps)
+    bin_weights = band_weights[band_idx]
+    return bin_weights / bin_weights.sum()
+
+
 def compute_reference_bin(reference_stim, reference_hrirs, listener_indices):
     # Compute reference binaural signal (convolution of stimulus with HRIR)
 
