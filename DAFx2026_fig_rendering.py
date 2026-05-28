@@ -24,7 +24,9 @@ import matplotlib.colors as colors
 # Import project modules
 from scripts.optimisation.custom_modules import MultiSourceFIR
 from scripts.plotting.results_plot import plot_results
-from scripts.setup.setup import load_gtfb, load_hrirs, load_stim, set_seed
+from scripts.setup.setup import set_seed, build_eval_objects
+from scripts.datasets.stimulus_dataset import get_stim_loader
+from scripts.datasets.listener_dataset import get_listener_loader
 from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagation
 from scripts.perceptual_models.llado2025.llado2025 import llado2025
 from scripts.perceptual_models.desena2020.desena2020 import desena2020
@@ -45,8 +47,9 @@ def run_experiment(loss_dict_builder, run_label, plot_row_title=None):
         n_samples=64,
         target_angle=10.0,
         selected_stim="impulse",
+        stimulus_batch_size=1,
+        n_stimulus=1,
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"),
-        sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
         lr=0.1,
         seed=46,
         log=1,
@@ -80,23 +83,66 @@ def run_experiment(loss_dict_builder, run_label, plot_row_title=None):
         [env.speaker_distance * np.cos(base_angle_rad), -env.speaker_distance * np.sin(base_angle_rad)],
     ]
     env.n_sources = len(env.spk_pos)
+    env.lstn_pos = torch.tensor(env.lstn_pos, device=env.device, dtype=env.dtype)
+    env.spk_pos = torch.tensor(env.spk_pos, device=env.device, dtype=env.dtype)
 
     # Reset the seed so each run starts from the same point.
     set_seed(seed=env.seed)
 
 ## Load data
-    gtfb = load_gtfb(fs=env.fs, device=env.device, dtype=env.dtype)  # Load Gamma Tone Filter Bank
-    stim = load_stim(fs=env.fs, device=env.device, dtype=env.dtype, selected_stim=env.selected_stim)  # Load stimulus
-    hrirs = load_hrirs(dtype=env.dtype, device=env.device, sofa_path=env.sofa_path, idx_path=env.sofa_idx_path) # Load HRIRs using specific location from SOFA file
+    training_stimulus_data_loader, stimulus_dataset = get_stim_loader(
+        env.fs,
+        env.stimulus_batch_size,
+        env.n_stimulus,
+        stimulus_type=env.selected_stim,
+        device=env.device,
+        dtype=env.dtype,
+    )
+    training_listener_data_loader, _ = get_listener_loader(
+        env.lstn_pos, env.listener_batch_size, env.symmetric_listener_sampling
+    )
 
 ## Initialize model
     # Initialize sound propagation module
-    stereo_prop = BinauralFreeFieldPropagation(stim=stim, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, fs=env.fs, sofa_file_path=env.sofa_path) # Load stereo anechoic propagation module
+    stereo_prop = BinauralFreeFieldPropagation(
+        fs=env.fs,
+        lstn_pos=env.lstn_pos,
+        spk_pos=env.spk_pos,
+        sofa_file_path=env.sofa_path,
+        device=env.device,
+        dtype=env.dtype,
+    )
 
     # Initiate perceptual models
-    loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, hrirs=hrirs, fs=env.fs, gtfb=gtfb).to(device=env.device, dtype=env.dtype) # Llado et al. 2025 model
-    col_model = spectral_matching(loss = F.l1_loss, target = 0, stim=stim, hrirs=hrirs, target_pos=env.target_pos, fs=env.fs).to(device=env.device, dtype=env.dtype) # Spectral Matching model
-    unc_model = desena2020(loss = F.l1_loss, target = 0, hrirs=hrirs, fs=env.fs, gtfb=gtfb).to(device=env.device, dtype=env.dtype) # De Sena et al. 2020 model
+    loc_model = llado2025(
+        loss=F.mse_loss,
+        target_pos=env.target_pos,
+        fs=env.fs,
+        sofa_path=env.sofa_path,
+        lstn_pos=env.lstn_pos,
+        spk_pos=env.spk_pos,
+        device=env.device,
+        dtype=env.dtype,
+    )
+    col_model = spectral_matching(
+        loss=F.l1_loss,
+        target=0,
+        target_pos=env.target_pos,
+        fs=env.fs,
+        sofa_path=env.sofa_path,
+        lstn_pos=env.lstn_pos,
+        device=env.device,
+        dtype=env.dtype,
+    )
+    unc_model = desena2020(
+        loss=F.l1_loss,
+        target=0,
+        fs=env.fs,
+        sofa_path=env.sofa_path,
+        lstn_pos=env.lstn_pos,
+        device=env.device,
+        dtype=env.dtype,
+    )
     regularisation = second_moment_regularisation(n_samples=env.n_samples, device=env.device, dtype=env.dtype)
     loss_dict = loss_dict_builder(loc_model, col_model, unc_model, regularisation, env.device, env.dtype)
 
@@ -115,19 +161,21 @@ def run_experiment(loss_dict_builder, run_label, plot_row_title=None):
     nn_optimiser = torch.optim.Adam(nn_model.parameters(), lr=env.lr)
 
 ## Initliase saving folder and logger
-    saver_obj = saver(loss_dict, env.lstn_pos)
+    saver_obj = saver()
     logger = saver_obj if env.log else None
 
 ## Training loop
     # Train the neural network
-    trainer = Train(n_epoch=env.epochs,
-                    nn=nn_model,
-                    prop=stereo_prop,
-                    loss_dict=loss_dict,
-                    optimiser=nn_optimiser,
-                    logger=logger, 
-                    listener_batch_size=env.listener_batch_size,
-                    symmetric_listener_sampling=env.symmetric_listener_sampling) # Initialize training class
+    trainer = Train(
+        n_epoch=env.epochs,
+        stim_loader=training_stimulus_data_loader,
+        lstn_loader=training_listener_data_loader,
+        nn=nn_model,
+        prop=stereo_prop,
+        loss_dict=loss_dict,
+        optimiser=nn_optimiser,
+        logger=logger,
+    )
     time_train_start = time.time()
     trainer.train()
     env.time_train_seconds = time.time() - time_train_start
@@ -135,15 +183,23 @@ def run_experiment(loss_dict_builder, run_label, plot_row_title=None):
 
 ## Print and Plot results
     # Evaluate final neural network FIRs
-    eval_perceptual_dict = {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1.0, device=env.device, dtype=env.dtype),
-            "uncertainty": ListenerBasedLoss(model=unc_model, weight=1, device=env.device, dtype=env.dtype),
-            "colouration": ListenerBasedLoss(model=col_model, weight=1, device=env.device, dtype=env.dtype)
-        }
-    eval_lstn_pos = [[0.0 , 0.0], [0.0, 0.275], [0.0, -0.275]]
-    stereo_prop_eval = BinauralFreeFieldPropagation(stim=stim, lstn_pos=eval_lstn_pos, spk_pos=env.spk_pos, fs=env.fs, sofa_file_path=env.sofa_path, apply_distance_attenuation=True)
-    trainer.prop = stereo_prop_eval
-    est_filters, estimation_dict, bin_stim = trainer.evaluate(loss_dict=eval_perceptual_dict)
+    eval_lstn_pos = torch.tensor(
+        [[0.0, 0.0], [0.0, 0.275], [0.0, -0.275]],
+        device=env.device,
+        dtype=env.dtype,
+    )
+    eval_lstn_pos, eval_perceptual_dict, eval_stimulus_data_loader, eval_stimulus_dataset = build_eval_objects(
+        env,
+        eval_lstn_pos=eval_lstn_pos,
+        n_eval_stim=env.n_stimulus,
+    )
+    stereo_prop.apply_distance_attenuation = True
+    trainer.prop = stereo_prop
+    est_filters, estimation_dict, bin_stim = trainer.evaluate(
+        eval_lstn_pos=eval_lstn_pos,
+        eval_stimulus_data_loader=eval_stimulus_data_loader,
+        loss_dict=eval_perceptual_dict,
+    )
     # Normalise filters to prevent clipping 
     est_filters /= np.max(np.abs(est_filters)) / 0.9 # TODO: move this to a more appropriate place at the end of the training loop
 
@@ -157,20 +213,24 @@ def run_experiment(loss_dict_builder, run_label, plot_row_title=None):
         estimation_dict=estimation_dict,
         est_filters=est_filters,
         fs=env.fs,
-        lstn_pos=eval_lstn_pos,
-        spk_pos=env.spk_pos,
-        trainer=trainer,
         env=env,
+        loss_dict=loss_dict,
     )
+    artifacts_dir = saver_obj.run_dir / "artifacts"
+    stim_to_save = eval_stimulus_dataset.data.detach().cpu().numpy()
+    if stim_to_save.ndim == 3:
+        stim_to_save = stim_to_save[0, 0]
+    np.save(artifacts_dir / "stimulus.npy", stim_to_save)
     plots = plot_results(
         estimation_dict=estimation_dict,
         est_filters=est_filters,
-        bin_stim=bin_stim,
-        prop_model=stereo_prop_eval,
-        loss_dict=loss_dict,
+        bin_stim=np.expand_dims(bin_stim, axis=0),
+        lstn_pos=eval_lstn_pos,
+        spk_pos=env.spk_pos,
+        loss_dict=eval_perceptual_dict,
         target_pos=env.target_pos,
-        stim=stim,
         fs=env.fs,
+        stim=eval_stimulus_dataset.data,
         device=env.device,
         dtype=env.dtype,
         show=False,
@@ -183,7 +243,12 @@ def run_experiment(loss_dict_builder, run_label, plot_row_title=None):
 
     plt.close('all')
 
-    return (saver_obj.run_dir, eval_lstn_pos, env.spk_pos, env.plot_row_title)
+    return (
+        saver_obj.run_dir,
+        eval_lstn_pos.detach().cpu().numpy(),
+        env.spk_pos.detach().cpu().numpy(),
+        env.plot_row_title,
+    )
 
 def causal_conv1d(x, kernel):
     """
@@ -350,9 +415,18 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos, row_titles=None):
                 stimulus_path = os.path.join(folder_name, "artifacts", "stimulus.npy")
                 stimulus = np.load(stimulus_path)
 
-                prop = BinauralFreeFieldPropagation(torch.tensor(stimulus, dtype=torch.float32).view(1,1,-1), lstn_pos, spk_pos, str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"))
+                stim_torch = torch.tensor(stimulus, dtype=torch.float32).view(1, 1, -1)
+                sofa_path = str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa")
+                prop = BinauralFreeFieldPropagation(
+                    fs=48000,
+                    lstn_pos=lstn_pos,
+                    spk_pos=spk_pos,
+                    sofa_file_path=sofa_path,
+                    dtype=torch.float32,
+                )
                 filters_torch = torch.tensor(filters, dtype=torch.float32).unsqueeze(0)
-                bin_stim = prop(filters_torch).numpy()
+                listener_idx = torch.arange(len(lstn_pos))
+                bin_stim = prop(stim_torch, filters_torch, listener_idx).numpy()
 
                 n_fft = 4096
                 freq = np.fft.rfftfreq(n=n_fft,d=1/48000)
