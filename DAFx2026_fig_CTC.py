@@ -292,7 +292,7 @@ if __name__ == "__main__":
         target_angle = 45.0,
         target_distance = 100,
         epochs=500,
-        listener_batch_size=3,  # 5 mirrored pairs plus the centre listener
+        listener_batch_size=1,
         symmetric_listener_sampling=True,
         n_samples=256,
         selected_stim="impulse",
@@ -303,7 +303,7 @@ if __name__ == "__main__":
         log=1,
         fs=48000,
     )
-    env.target_pos=[env.target_distance, float(np.tan(np.deg2rad(env.target_angle)) * env.target_distance)],
+    env.target_pos = [env.target_distance, float(np.tan(np.deg2rad(env.target_angle)) * env.target_distance)]
     
     env.dtype = torch.float32
     env.device_str = "cuda" if torch.cuda.is_available() else "cpu"
@@ -314,8 +314,8 @@ if __name__ == "__main__":
 
     # Loudspkeaker and listener positions
     # env.lstn_pos = [[0.0, float(y)] for y in np.linspace(-0.5, 0.5, env.num_lstn_pos)] 
-    env.lstn_pos = [[0.0, float(i)] for i in np.arange(-0.06,0.07,0.03)] # Only the centre listener position is used for this experiment
-    # env.lstn_pos = [[0.0, 0.0]] # Only the centre listener position is used for this experiment
+    # env.lstn_pos = [[0.0, float(i)] for i in np.arange(-0.06,0.07,0.03)] # Only the centre listener position is used for this experiment
+    env.lstn_pos = [[0.0, 0.0]] # Only the centre listener position is used for this experiment
     base_angle_rad = np.deg2rad(30.0)
     env.speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
     env.spk_pos = [
@@ -339,11 +339,11 @@ if __name__ == "__main__":
 
 ## Initialize model
     # Initialize sound propagation module
-    stereo_prop = BinauralFreeFieldPropagation(fs=env.fs, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, sofa_file_path=env.sofa_path, device=env.device, dtype=env.dtype, apply_distance_attenuation=True) # Load stereo anechoic propagation module
+    stereo_prop = BinauralFreeFieldPropagation(fs=env.fs, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, sofa_file_path=env.sofa_path, device=env.device, dtype=env.dtype) # Load stereo anechoic propagation module
 
     # Initiate perceptual models
     loc_model = llado2025(loss = F.mse_loss, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, spk_pos=env.spk_pos, device=env.device, dtype=env.dtype) # Llado et al. 2025 model
-    col_model = spectral_matching(loss = F.l1_loss, target = 0, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, device=env.device, dtype=env.dtype) # Spectral Matching model
+    col_model = spectral_matching(loss = F.l1_loss, target = 0, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, erb_weighting=False, normalize_log_spectrum=False, device=env.device, dtype=env.dtype) # Spectral Matching model
     ipd_model = interaural_phase_difference_matching(loss = F.l1_loss, target = 0, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, device=env.device, dtype=env.dtype) # Inter-aural Phase Difference model
     unc_model = desena2020(loss = F.l1_loss, target = 0, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, device=env.device, dtype=env.dtype) # De Sena et al. 2020 model
     regularisation = second_moment_regularisation(n_samples=env.n_samples, device=env.device, dtype=env.dtype)
@@ -401,7 +401,7 @@ if __name__ == "__main__":
     # Evaluate final neural network FIRs
     eval_lstn_pos, eval_perceptual_dict, eval_stimulus_data_loader, eval_stimulus_dataset = build_eval_objects(
         env,
-        eval_lstn_pos=env.lstn_pos
+        eval_lstn_pos=torch.tensor([[0.0, 0.0], [0.0, 0.5], [0.0, -0.5]], device=env.device, dtype=env.dtype),
     )
     eval_perceptual_dict["ipd"] = ListenerBasedLoss(model=interaural_phase_difference_matching(loss = F.l1_loss, target = 0, target_pos=env.target_pos, fs=env.fs, sofa_path=env.sofa_path, lstn_pos=eval_lstn_pos, device=env.device, dtype=env.dtype), weight=1, device=env.device, dtype=env.dtype)
     est_filters, estimation_dict, bin_stim = trainer.evaluate(eval_lstn_pos=eval_lstn_pos, eval_stimulus_data_loader=eval_stimulus_data_loader, loss_dict=eval_perceptual_dict)
@@ -450,9 +450,9 @@ if __name__ == "__main__":
         n_sources=env.n_sources,
     ).to(device=env.device, dtype=env.dtype)
     with torch.no_grad():
-        for i, branch in enumerate(nn_model_col_only.branches):
+        for branch in nn_model_col_only.branches:
             branch.weight.fill_(0.0)
-            branch.weight[0, 0] = 1.0
+            branch.weight[centre_tap_idx, 0] = 1.0
 
     nn_optimiser_col_only = torch.optim.Adam(nn_model_col_only.parameters(), lr=env.lr)
 

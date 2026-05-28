@@ -7,14 +7,19 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchaudio.functional as TF
 
-from scripts.helpers.miscelaneous import pos2angle, sofa_find, get_IRs, set_target
-from scripts.helpers.dsp import causal_conv1d, compute_reference_bin
+from scripts.helpers.miscelaneous import pos2angle, sofa_find, get_IRs, set_target, load_gtfb
+from scripts.helpers.dsp import (
+    causal_conv1d,
+    compute_reference_bin,
+    erb_frequency_bin_weights,
+    gtfb_center_frequencies,
+)
 
 
 class spectral_matching(nn.Module):
     supports_listener_indices = True
 
-    def __init__(self, loss, target, target_pos, fs, sofa_path, lstn_pos, n_fft=4096, eps = 1e-8, device = 'cpu', dtype = torch.float64):
+    def __init__(self, loss, target, target_pos, fs, sofa_path, lstn_pos, n_fft=4096, eps = 1e-8, erb_weighting=True, normalize_log_spectrum=False, device = 'cpu', dtype = torch.float64):
         super(spectral_matching, self).__init__()
 
 
@@ -26,12 +31,23 @@ class spectral_matching(nn.Module):
 
         self.eps = eps
         self.n_fft = n_fft
+        self.erb_weighting = erb_weighting
+        self.normalize_log_spectrum = normalize_log_spectrum
         self.sofaile = sf.read_sofa(sofa_path)
 
         self.lstn_pos = lstn_pos
         self.target_pos = torch.as_tensor(target_pos, device=self.device, dtype=self.dtype).reshape(-1)
         if self.target_pos.numel() != 2:
             raise ValueError("target_pos must contain exactly two coordinates.")
+
+        if self.erb_weighting:
+            gtfb = load_gtfb(fs, device, dtype)
+            center_frequencies = gtfb_center_frequencies(gtfb, fs, n_fft)
+            fft_frequencies = torch.fft.rfftfreq(n_fft, d=1.0 / float(fs)).to(device=device, dtype=dtype)
+            freq_bin_weights = erb_frequency_bin_weights(center_frequencies, fft_frequencies)
+            self.register_buffer("freq_bin_weights", freq_bin_weights)
+        else:
+            self.register_buffer("freq_bin_weights", None)
 
         reference_stim, low_stim = self._set_references()
 
@@ -106,17 +122,21 @@ class spectral_matching(nn.Module):
         log_X = 20 * torch.log10(X_mag + self.eps)
         log_Y = 20 * torch.log10(Y_mag + self.eps)
 
-        # Normalise FFTs
-        # First find the max abs of the log max FFTs along the frequency dimension for both ears,
-        # then find it over the ears and normalise the listners compared to that
-        # norm_X = torch.max(torch.max(torch.abs(log_X), dim = -1, keepdim=True).values, dim = -2, keepdim=True).values # TODO: Is this an in-place operation and therefore destroys the computational graph
-        # norm_Y = torch.max(torch.max(torch.abs(log_Y), dim = -1, keepdim=True).values, dim = -2, keepdim=True).values
-        
-        # log_X = log_X / norm_X.clamp(min=self.eps)
-        # log_Y = log_Y / norm_Y.clamp(min=self.eps)
+        # Normalise FFTs by peak log magnitude per ear so LSD reflects spectral shape.
+        if self.normalize_log_spectrum:
+            norm_X = torch.max(torch.max(torch.abs(log_X), dim=-1, keepdim=True).values, dim=-2, keepdim=True).values
+            norm_Y = torch.max(torch.max(torch.abs(log_Y), dim=-1, keepdim=True).values, dim=-2, keepdim=True).values
+            log_X = log_X / norm_X.clamp(min=self.eps)
+            log_Y = log_Y / norm_Y.clamp(min=self.eps)
 
-        # LSD over frequency bins
-        lsd_freq = torch.sqrt(torch.mean((log_X - log_Y) ** 2, dim=-1))  # [a, b]
+        sq_err = (log_X - log_Y) ** 2
+        if self.erb_weighting:
+            weights = self.freq_bin_weights.view(1, 1, -1)
+            mean_sq = torch.sum(sq_err * weights, dim=-1)
+        else:
+            mean_sq = torch.mean(sq_err, dim=-1)
+
+        lsd_freq = torch.sqrt(mean_sq)  # [a, b]
 
         # Average across b
         lsd = lsd_freq.mean(dim=-1)  # [a]
