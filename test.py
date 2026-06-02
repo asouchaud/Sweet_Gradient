@@ -2950,144 +2950,144 @@ print("Standard deviation over random noise stimuli:", torch.std(save, dim=0))
 
 # ## ==================================== GRID SEARCH ICLD/ICTD EFFECT ON ILD/ITD ====================== ##
 
-# from pathlib import Path
+from pathlib import Path
 
-# import matplotlib.pyplot as plt
-# import numpy as np
-# import sofar as sf
-# import torch
-# from matplotlib import animation
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
+import numpy as np
+import sofar as sf
+import torch
+from matplotlib import animation
+import matplotlib.pyplot as plt
 
-# from scripts.helpers.peripheral_processing import estimate_interauralcues
-# from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagation
-# from scripts.setup.setup import load_gtfb
+from scripts.helpers.peripheral_processing import estimate_interauralcues
+from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagation
+from scripts.setup.setup import load_gtfb
 
-# device = 'cpu'
-# dtype = torch.float64
-# fs = 48000
+device = 'cpu'
+dtype = torch.float64
+fs = 48000
 
-# lstn_pos = torch.tensor([[0.0, 0.0]], device = device, dtype = dtype)
-# base_angle_rad = np.deg2rad(30.0)
-# speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
-# spk_pos = [
-#     [speaker_distance * np.cos(base_angle_rad), speaker_distance * np.sin(base_angle_rad)],
-#     [speaker_distance * np.cos(base_angle_rad), -speaker_distance * np.sin(base_angle_rad)],
-# ]
-# spk_pos = torch.tensor(spk_pos, device = device, dtype = dtype)
-# n_sources = len(spk_pos)
+lstn_pos = torch.tensor([[0.0, 0.0]], device = device, dtype = dtype)
+base_angle_rad = np.deg2rad(30.0)
+speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
+spk_pos = [
+    [speaker_distance * np.cos(base_angle_rad), speaker_distance * np.sin(base_angle_rad)],
+    [speaker_distance * np.cos(base_angle_rad), -speaker_distance * np.sin(base_angle_rad)],
+]
+spk_pos = torch.tensor(spk_pos, device = device, dtype = dtype)
+n_sources = len(spk_pos)
 
-# repo_root = Path(__file__).resolve().parent
-# sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
-# gtfb = load_gtfb(fs, device = device, dtype = dtype)
+repo_root = Path(__file__).resolve().parent
+sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
+gtfb = load_gtfb(fs, device = device, dtype = dtype)
 
-# stereo_prop = BinauralFreeFieldPropagation(fs=fs, lstn_pos=lstn_pos, spk_pos=spk_pos, sofa_file_path=sofa_path, device=device, dtype=dtype) 
+stereo_prop = BinauralFreeFieldPropagation(fs=fs, lstn_pos=lstn_pos, spk_pos=spk_pos, sofa_file_path=sofa_path, device=device, dtype=dtype) 
 
-# ICLD = torch.arange(-20,21,1, device = device, dtype = dtype)
-# ICTD = torch.arange(-1,1.1, 0.1, device = device, dtype = dtype)*0.001
+ICLD = torch.arange(-20,21,1, device = device, dtype = dtype)
+ICTD = torch.arange(-1,1.1, 0.1, device = device, dtype = dtype)*0.001
 
-# stim = torch.randn(480, device = device, dtype = dtype)
-# stim = torch.cat((torch.zeros(48, device= device, dtype = dtype), 
-#                 stim,
-#                 torch.zeros(48, device= device, dtype = dtype))).view(1,1,-1)
+stim = torch.randn(480, device = device, dtype = dtype)
+stim = torch.cat((torch.zeros(48, device= device, dtype = dtype), 
+                stim,
+                torch.zeros(48, device= device, dtype = dtype))).view(1,1,-1)
 
-# base_filter = torch.zeros(97, device = device, dtype = dtype).view(1,1,-1)
-# base_filter[0,0,48] = 1.0
+base_filter = torch.zeros(97, device = device, dtype = dtype).view(1,1,-1)
+base_filter[0,0,48] = 1.0
 
-# def apply_delay_freq(x, delay_seconds, fs_hz, n_fft=None):
-#     """
-#     Differentiable delay in frequency domain.
-#     x shape: (..., T), delay_samples: scalar tensor or shape (1,)
-#     """
-#     if n_fft is None:
-#         n_fft = x.shape[-1]
+def apply_delay_freq(x, delay_seconds, fs_hz, n_fft=None):
+    """
+    Differentiable delay in frequency domain.
+    x shape: (..., T), delay_samples: scalar tensor or shape (1,)
+    """
+    if n_fft is None:
+        n_fft = x.shape[-1]
 
-#     X = torch.fft.rfft(x, n=n_fft, dim=-1)
-#     freqs = torch.fft.rfftfreq(n_fft, d=1.0 / fs_hz).to(device=x.device, dtype=x.dtype)
+    X = torch.fft.rfft(x, n=n_fft, dim=-1)
+    freqs = torch.fft.rfftfreq(n_fft, d=1.0 / fs_hz).to(device=x.device, dtype=x.dtype)
 
-#     phase = -2.0 * torch.pi * freqs * delay_seconds
-#     H = torch.exp(1j * phase).reshape((1,) * (x.ndim - 1) + (-1,))
+    phase = -2.0 * torch.pi * freqs * delay_seconds
+    H = torch.exp(1j * phase).reshape((1,) * (x.ndim - 1) + (-1,))
 
-#     y = torch.fft.irfft(X * H, n=n_fft, dim=-1)
-#     return y[..., : x.shape[-1]]
+    y = torch.fft.irfft(X * H, n=n_fft, dim=-1)
+    return y[..., : x.shape[-1]]
 
-# saved_ild = torch.zeros(len(ICLD), len(ICTD), len(gtfb))
-# saved_itd = torch.zeros(len(ICLD), len(ICTD), len(gtfb))
+saved_ild = torch.zeros(len(ICLD), len(ICTD), len(gtfb))
+saved_itd = torch.zeros(len(ICLD), len(ICTD), len(gtfb))
 
-# for i in range(len(ICLD)):
-#     for j in range(len(ICTD)):
+for i in range(len(ICLD)):
+    for j in range(len(ICTD)):
 
-#         right_gain = torch.sqrt(1/(1+ 10**(ICLD[i]/10)))
-#         left_gain = right_gain*10**(ICLD[i]/20)
+        right_gain = torch.sqrt(1/(1+ 10**(ICLD[i]/10)))
+        left_gain = right_gain*10**(ICLD[i]/20)
 
-#         left_filter = left_gain * apply_delay_freq(base_filter, -ICTD[j], fs)
-#         right_filter = right_gain * base_filter
+        left_filter = left_gain * apply_delay_freq(base_filter, -ICTD[j], fs)
+        right_filter = right_gain * base_filter
 
-#         filters = torch.cat((left_filter, right_filter), dim = 1)
+        filters = torch.cat((left_filter, right_filter), dim = 1)
 
-#         bin_stim = stereo_prop(stim, filters, torch.tensor([0], device = device, dtype = torch.long))
+        bin_stim = stereo_prop(stim, filters, torch.tensor([0], device = device, dtype = torch.long))
 
-#         interauralcues = estimate_interauralcues(bin_stim, fs, gtfb)
+        interauralcues = estimate_interauralcues(bin_stim, fs, gtfb)
 
-#         saved_ild[i,j] = interauralcues['ild'][0,0]
-#         saved_itd[i,j] = interauralcues['itd'][0,0]
+        saved_ild[i,j] = interauralcues['ild'][0,0]
+        saved_itd[i,j] = interauralcues['itd'][0,0]
 
-# saved_ild = -saved_ild.detach().numpy()  # left − right: positive = louder left ear
-# saved_itd = saved_itd.detach().numpy() * 1e3  # convert to ms; positive = left leads
+saved_ild = -saved_ild.detach().numpy()  # left − right: positive = louder left ear
+saved_itd = saved_itd.detach().numpy() * 1e3  # convert to ms; positive = left leads
 
-# icld_vals = np.arange(-20, 21, 1)
-# ictd_vals_ms = np.arange(-1, 1.1, 0.1)
-# extent = [ictd_vals_ms[0], ictd_vals_ms[-1], icld_vals[0], icld_vals[-1]]
+icld_vals = np.arange(-20, 21, 1)
+ictd_vals_ms = np.arange(-1, 1.1, 0.1)
+extent = [ictd_vals_ms[0], ictd_vals_ms[-1], icld_vals[0], icld_vals[-1]]
 
-# n_bands = saved_ild.shape[2]
-# n_cols = 4
-# n_rows = int(np.ceil(n_bands / n_cols))
-
-
-# def plot_cue_grid(data, title, cbar_label, cmap="viridis"):
-#     fig, axes = plt.subplots(
-#         n_rows,
-#         n_cols,
-#         figsize=(n_cols * 3.4, n_rows * 2.8),
-#         sharex=True,
-#         sharey=True,
-#         constrained_layout=True,
-#     )
-#     axes = np.atleast_1d(axes).ravel()
-
-#     vmin, vmax = np.min(data), np.max(data)
-#     last_im = None
-
-#     for band_idx, ax in enumerate(axes):
-#         if band_idx >= n_bands:
-#             ax.set_visible(False)
-#             continue
-
-#         last_im = ax.imshow(
-#             data[:, :, band_idx],
-#             origin="lower",
-#             aspect="auto",
-#             extent=extent,
-#             vmin=vmin,
-#             vmax=vmax,
-#             cmap=cmap,
-#         )
-#         ax.set_title(f"Band {band_idx + 1}", fontsize=9)
-
-#     for ax in axes[:n_bands]:
-#         ax.label_outer()
-
-#     fig.supxlabel("Applied ICTD [ms] (+ earlier left spk.)")
-#     fig.supylabel("Applied ICLD [dB] (+ louder left spk.)")
-#     fig.colorbar(last_im, ax=axes[:n_bands], shrink=0.85, pad=0.02, label=cbar_label)
-#     fig.suptitle(title, fontsize=12)
-#     return fig
+n_bands = saved_ild.shape[2]
+n_cols = 4
+n_rows = int(np.ceil(n_bands / n_cols))
 
 
-# plot_cue_grid(saved_ild, "Estimated ILD across ICLD/ICTD grid", "Estimated ILD [dB] (left − right)")
-# plot_cue_grid(saved_itd, "Estimated ITD across ICLD/ICTD grid", "Estimated ITD [ms] (left leads +)", cmap="magma")
+def plot_cue_grid(data, title, cbar_label, cmap="viridis"):
+    fig, axes = plt.subplots(
+        n_rows,
+        n_cols,
+        figsize=(n_cols * 3.4, n_rows * 2.8),
+        sharex=True,
+        sharey=True,
+        constrained_layout=True,
+    )
+    axes = np.atleast_1d(axes).ravel()
 
-# plt.show()
+    vmin, vmax = np.min(data), np.max(data)
+    last_im = None
+
+    for band_idx, ax in enumerate(axes):
+        if band_idx >= n_bands:
+            ax.set_visible(False)
+            continue
+
+        last_im = ax.imshow(
+            data[:, :, band_idx],
+            origin="lower",
+            aspect="auto",
+            extent=extent,
+            vmin=vmin,
+            vmax=vmax,
+            cmap=cmap,
+        )
+        ax.set_title(f"Band {band_idx + 1}", fontsize=9)
+
+    for ax in axes[:n_bands]:
+        ax.label_outer()
+
+    fig.supxlabel("Applied ICTD [ms] (+ earlier left spk.)")
+    fig.supylabel("Applied ICLD [dB] (+ louder left spk.)")
+    fig.colorbar(last_im, ax=axes[:n_bands], shrink=0.85, pad=0.02, label=cbar_label)
+    fig.suptitle(title, fontsize=12)
+    return fig
+
+
+plot_cue_grid(saved_ild, "Estimated ILD across ICLD/ICTD grid", "Estimated ILD [dB] (left − right)")
+plot_cue_grid(saved_itd, "Estimated ITD across ICLD/ICTD grid", "Estimated ITD [ms] (left leads +)", cmap="magma")
+
+plt.show()
 
 
 ## ================= RANDOM PHASE LISTENING ================= ##

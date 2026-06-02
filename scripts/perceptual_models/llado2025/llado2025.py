@@ -66,7 +66,7 @@ class llado2025(nn.Module):
         if self.balance_interaural_cue_grads and torch.is_grad_enabled():
             itd_b, ild_b = InterauralCueGradBalance.apply(interauralcues["itd"], interauralcues["ild"])
             interauralcues = {**interauralcues, "itd": itd_b, "ild": ild_b}
-        if torch.is_grad_enabled():
+        if torch.is_grad_enabled() and interauralcues["itd"].requires_grad:
             interauralcues["itd"].retain_grad()
             interauralcues["ild"].retain_grad()
         self.latest_interauralcues = interauralcues
