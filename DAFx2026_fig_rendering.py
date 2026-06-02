@@ -36,6 +36,177 @@ from scripts.train.train import ListenerBasedLoss, SourceBasedLoss, Train
 from scripts.saving.save_results import saver
 
 
+def compute_optimisation_analysis(estimation_dict, eval_perceptual_dict, eval_lstn_pos, env):
+    """
+    Summarise post-optimisation perceptual metrics at the evaluation listeners.
+
+    Localisation errors are computed against the per-listener target azimuth from the
+    llado2025 model (not the nominal ``target_angle`` alone). Uncertainty and colouration
+    are reported relative to a target of zero.
+    """
+    centre_idx = 0
+    lstn_y = eval_lstn_pos.detach().cpu().numpy()[:, 1].tolist()
+
+    analysis = {
+        "run_label": getattr(env, "run_label", None),
+        "plot_row_title": getattr(env, "plot_row_title", None),
+        "target_angle_deg_nominal": float(env.target_angle),
+        "eval_listener_y_m": lstn_y,
+        "training_time_s": float(getattr(env, "time_train_seconds", np.nan)),
+        "notes": {
+            "localisation": "Signed error = estimated minus per-listener target azimuth [deg].",
+            "uncertainty": "De Sena et al. uncertainty metric; target is 0 (lower is better).",
+            "colouration": (
+                "Log spectral distance (LSD) in dB from spectral_matching; "
+                "normalised values divide by the model loss_norm used in training."
+            ),
+        },
+    }
+
+    if "localisation" in estimation_dict and "localisation" in eval_perceptual_dict:
+        target = np.asarray(
+            eval_perceptual_dict["localisation"].model.target.detach().cpu().numpy(),
+            dtype=float,
+        ).ravel()
+        estimated = np.asarray(estimation_dict["localisation"], dtype=float).ravel()
+        signed_err = estimated - target
+        abs_err = np.abs(signed_err)
+
+        analysis["localisation"] = {
+            "target_angle_deg": target.tolist(),
+            "estimated_angle_deg": estimated.tolist(),
+            "signed_error_deg": signed_err.tolist(),
+            "abs_error_deg": abs_err.tolist(),
+            "mae_deg": float(np.mean(abs_err)),
+            "rmse_deg": float(np.sqrt(np.mean(signed_err ** 2))),
+            "max_abs_error_deg": float(np.max(abs_err)),
+            "centre_listener": {
+                "y_m": float(lstn_y[centre_idx]),
+                "target_angle_deg": float(target[centre_idx]),
+                "estimated_angle_deg": float(estimated[centre_idx]),
+                "signed_error_deg": float(signed_err[centre_idx]),
+                "abs_error_deg": float(abs_err[centre_idx]),
+            },
+        }
+
+    for key, target_ref in (("uncertainty", 0.0), ("colouration", 0.0)):
+        if key not in estimation_dict:
+            continue
+        values = np.asarray(estimation_dict[key], dtype=float).ravel()
+        abs_err = np.abs(values - target_ref)
+        block = {
+            "per_listener": values.tolist(),
+            "mean": float(np.mean(values)),
+            "mae": float(np.mean(abs_err)),
+            "max": float(np.max(values)),
+            "centre_listener": {
+                "y_m": float(lstn_y[centre_idx]),
+                "value": float(values[centre_idx]),
+            },
+        }
+        if key in eval_perceptual_dict:
+            loss_norm = float(eval_perceptual_dict[key].model.loss_norm)
+            block["loss_norm"] = loss_norm
+            block["mean_loss_normalised"] = float(np.mean(values) / loss_norm)
+            block["centre_listener"]["loss_normalised"] = float(values[centre_idx] / loss_norm)
+        analysis[key] = block
+
+    return analysis
+
+
+def print_optimisation_analysis(analysis, run_label=None):
+    label = run_label or analysis.get("run_label") or analysis.get("plot_row_title") or "run"
+    print(f"\n================ Optimisation analysis ({label}) ================")
+    print(
+        f"Nominal target angle: {analysis['target_angle_deg_nominal']:.2f} deg  |  "
+        f"Training time: {analysis['training_time_s']:.2f} s"
+    )
+
+    loc = analysis.get("localisation")
+    if loc is not None:
+        print("Localisation (vs per-listener target):")
+        print(f"  Mean |error| (MAE) : {loc['mae_deg']:.3f} deg")
+        print(f"  RMSE               : {loc['rmse_deg']:.3f} deg")
+        print(f"  Max |error|        : {loc['max_abs_error_deg']:.3f} deg")
+        centre = loc["centre_listener"]
+        print(
+            f"  Centre listener    : est {centre['estimated_angle_deg']:.2f} deg, "
+            f"target {centre['target_angle_deg']:.2f} deg, "
+            f"|error| {centre['abs_error_deg']:.3f} deg"
+        )
+
+    unc = analysis.get("uncertainty")
+    if unc is not None:
+        print("Uncertainty (target = 0):")
+        print(f"  Mean               : {unc['mean']:.4f}")
+        print(f"  Mean |value| (MAE) : {unc['mae']:.4f}")
+        print(f"  Centre listener    : {unc['centre_listener']['value']:.4f}")
+
+    col = analysis.get("colouration")
+    if col is not None:
+        print("Colouration / LSD (target = 0, lower is better):")
+        print(f"  Mean LSD           : {col['mean']:.3f} dB")
+        print(f"  Mean |LSD| (MAE)   : {col['mae']:.3f} dB")
+        if "mean_loss_normalised" in col:
+            print(f"  Mean normalised    : {col['mean_loss_normalised']:.4f}")
+        print(f"  Centre listener    : {col['centre_listener']['value']:.3f} dB")
+
+    print("Per-listener breakdown (y [m] -> loc |error| [deg], uncertainty, LSD [dB]):")
+    n_listeners = len(analysis["eval_listener_y_m"])
+    for i in range(n_listeners):
+        y = analysis["eval_listener_y_m"][i]
+        parts = [f"  y={y:+.3f} m:"]
+        if loc is not None:
+            parts.append(f"|loc err|={loc['abs_error_deg'][i]:.3f} deg")
+        if unc is not None:
+            parts.append(f"unc={unc['per_listener'][i]:.4f}")
+        if col is not None:
+            parts.append(f"LSD={col['per_listener'][i]:.3f} dB")
+        print("  ".join(parts))
+    print("=" * 66)
+
+
+def print_cross_run_analysis(analyses):
+    """Print a compact table comparing key metrics across optimisation runs."""
+    if not analyses:
+        return
+
+    headers = [
+        "Run",
+        "|loc err| [deg]",
+        "RMSE loc [deg]",
+        "Uncertainty",
+        "LSD [dB]",
+        "Col. norm.",
+        "Train [s]",
+    ]
+    rows = []
+    for analysis in analyses:
+        label = analysis.get("plot_row_title") or analysis.get("run_label") or "?"
+        loc = analysis.get("localisation", {})
+        unc = analysis.get("uncertainty", {})
+        col = analysis.get("colouration", {})
+        rows.append([
+            label,
+            f"{loc.get('mae_deg', float('nan')):.3f}",
+            f"{loc.get('rmse_deg', float('nan')):.3f}",
+            f"{unc.get('mean', float('nan')):.4f}",
+            f"{col.get('mean', float('nan')):.3f}",
+            f"{col.get('mean_loss_normalised', float('nan')):.4f}",
+            f"{analysis.get('training_time_s', float('nan')):.1f}",
+        ])
+
+    col_widths = [max(len(headers[i]), max(len(row[i]) for row in rows)) for i in range(len(headers))]
+    fmt = "  ".join(f"{{:{w}s}}" for w in col_widths)
+
+    print(f"\n{'=' * 72}\nCross-run optimisation summary (mean over evaluation listeners)\n{'=' * 72}")
+    print(fmt.format(*headers))
+    print(fmt.format(*["-" * w for w in col_widths]))
+    for row in rows:
+        print(fmt.format(*row))
+    print("=" * 72)
+
+
 def run_experiment(loss_dict_builder, run_label, plot_row_title=None):
     repo_root = Path(__file__).resolve().parent
     d = 100
@@ -56,6 +227,7 @@ def run_experiment(loss_dict_builder, run_label, plot_row_title=None):
         fs=48000,
     )
     env.plot_row_title = plot_row_title if plot_row_title is not None else run_label
+    env.run_label = run_label
     env.target_pos=[d, float(np.tan(np.deg2rad(env.target_angle)) * d)],
     env.dtype = torch.float32
     # env.device_str = "cuda" if torch.cuda.is_available() else "cpu"
@@ -131,11 +303,12 @@ def run_experiment(loss_dict_builder, run_label, plot_row_title=None):
         fs=env.fs,
         sofa_path=env.sofa_path,
         lstn_pos=env.lstn_pos,
+        normalize_log_spectrum=True,
         device=env.device,
         dtype=env.dtype,
     )
     unc_model = desena2020(
-        loss=F.l1_loss,
+        loss=F.mse_loss,
         target=0,
         fs=env.fs,
         sofa_path=env.sofa_path,
@@ -203,11 +376,13 @@ def run_experiment(loss_dict_builder, run_label, plot_row_title=None):
     # Normalise filters to prevent clipping 
     est_filters /= np.max(np.abs(est_filters)) / 0.9 # TODO: move this to a more appropriate place at the end of the training loop
 
-    for key, value in estimation_dict.items():
-        arr = np.asarray(value, dtype=float).ravel()
-        ref = float(env.target_angle) if key == "localisation" else 0.0
-        mean_abs_err = float(np.mean(np.abs(arr - ref)))
-        print(f"[{run_label}] Estimated {key}: {value} (mean abs error: {mean_abs_err:.4f})")
+    analysis = compute_optimisation_analysis(
+        estimation_dict=estimation_dict,
+        eval_perceptual_dict=eval_perceptual_dict,
+        eval_lstn_pos=eval_lstn_pos,
+        env=env,
+    )
+    print_optimisation_analysis(analysis, run_label=run_label)
 
     saver_obj.save_results(
         estimation_dict=estimation_dict,
@@ -216,6 +391,8 @@ def run_experiment(loss_dict_builder, run_label, plot_row_title=None):
         env=env,
         loss_dict=loss_dict,
     )
+    with open(saver_obj.run_dir / "analysis.json", "w") as f:
+        json.dump(analysis, f, indent=4)
     artifacts_dir = saver_obj.run_dir / "artifacts"
     stim_to_save = eval_stimulus_dataset.data.detach().cpu().numpy()
     if stim_to_save.ndim == 3:
@@ -248,6 +425,7 @@ def run_experiment(loss_dict_builder, run_label, plot_row_title=None):
         eval_lstn_pos.detach().cpu().numpy(),
         env.spk_pos.detach().cpu().numpy(),
         env.plot_row_title,
+        analysis,
     )
 
 def causal_conv1d(x, kernel):
@@ -294,10 +472,51 @@ def sofa_find(source_angle, sofaile):
     return np.argmin(dists)
 
 
+def _left_ear_colouration_spectra_db(
+    stimulus,
+    filters,
+    lstn_pos,
+    spk_pos,
+    ref_hrir,
+    sofa_path,
+    fs=48000,
+    n_fft=4096,
+):
+    """Smoothed left-ear magnitude spectra [dB] for reference and evaluation listeners."""
+    stim_torch = torch.tensor(stimulus, dtype=torch.float32).view(1, 1, -1)
+    prop = BinauralFreeFieldPropagation(
+        fs=fs,
+        lstn_pos=lstn_pos,
+        spk_pos=spk_pos,
+        sofa_file_path=sofa_path,
+        dtype=torch.float32,
+    )
+    filters_torch = torch.tensor(filters, dtype=torch.float32).unsqueeze(0)
+    listener_idx = torch.arange(len(lstn_pos))
+    bin_stim = prop(stim_torch, filters_torch, listener_idx).numpy()
+
+    freq = np.fft.rfftfreq(n=n_fft, d=1 / fs)
+    bin_stim_fft = 20 * np.log10(
+        np.abs(np.fft.rfft(bin_stim, n=n_fft, axis=-1)) + 1e-12
+    ).squeeze()
+
+    ref_stim = causal_conv1d(stimulus, ref_hrir[0])
+    ref_fft = 20 * np.log10(np.abs(np.fft.rfft(ref_stim, n=n_fft)) + 1e-12)
+
+    ref_fft_s = smooth_third_octave(freq, ref_fft)
+    n_listeners = len(lstn_pos)
+    bin_fft_s = np.zeros((n_listeners, len(freq)), dtype=float)
+    for j in range(n_listeners):
+        bin_fft_s[j] = smooth_third_octave(freq, bin_stim_fft[j, 0, :])
+
+    return freq, ref_fft_s, bin_fft_s
+
+
 def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos, row_titles=None):
 
     repo_root = Path(__file__).resolve().parent
-    sofaile = sf.read_sofa(str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"))
+    sofa_path = str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa")
+    sofaile = sf.read_sofa(sofa_path)
     idx = sofa_find(0, sofaile)
     ref_hrir = sofaile.Data_IR[idx]
 
@@ -343,6 +562,30 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos, row_titles=None):
 
     sm = cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
+
+    freq_plot_start = 9
+    mag_db_values = []
+    for folder_name in run_folders:
+        filters_path = os.path.join(folder_name, "artifacts", "est_filters.npy")
+        stimulus_path = os.path.join(folder_name, "artifacts", "stimulus.npy")
+        filters = np.load(filters_path)
+        filters = filters * 0.9 / np.max(np.abs(filters))
+        stimulus = np.load(stimulus_path)
+        freq, ref_fft_s, bin_fft_s = _left_ear_colouration_spectra_db(
+            stimulus=stimulus,
+            filters=filters,
+            lstn_pos=lstn_pos,
+            spk_pos=spk_pos,
+            ref_hrir=ref_hrir,
+            sofa_path=sofa_path,
+        )
+        mag_db_values.append(ref_fft_s[freq_plot_start:])
+        for j in range(len(lstn_pos)):
+            mag_db_values.append(bin_fft_s[j, freq_plot_start:])
+    mag_db_all = np.concatenate(mag_db_values)
+    mag_db_all = mag_db_all[np.isfinite(mag_db_all)]
+    ymin_mag = float(np.min(mag_db_all))
+    ymax_mag = float(np.max(mag_db_all))
 
     fig = plt.figure(figsize=(10.5, 3.15 * n_rows + 1.1))
     top_gs, bottom_u, bottom_l = 0.90, 0.10, 0.38
@@ -415,36 +658,21 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos, row_titles=None):
                 stimulus_path = os.path.join(folder_name, "artifacts", "stimulus.npy")
                 stimulus = np.load(stimulus_path)
 
-                stim_torch = torch.tensor(stimulus, dtype=torch.float32).view(1, 1, -1)
-                sofa_path = str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa")
-                prop = BinauralFreeFieldPropagation(
-                    fs=48000,
+                freq, ref_fft_s, bin_fft_s = _left_ear_colouration_spectra_db(
+                    stimulus=stimulus,
+                    filters=filters,
                     lstn_pos=lstn_pos,
                     spk_pos=spk_pos,
-                    sofa_file_path=sofa_path,
-                    dtype=torch.float32,
+                    ref_hrir=ref_hrir,
+                    sofa_path=sofa_path,
                 )
-                filters_torch = torch.tensor(filters, dtype=torch.float32).unsqueeze(0)
-                listener_idx = torch.arange(len(lstn_pos))
-                bin_stim = prop(stim_torch, filters_torch, listener_idx).numpy()
 
-                n_fft = 4096
-                freq = np.fft.rfftfreq(n=n_fft,d=1/48000)
-                bin_stim_fft = 20*np.log10(np.abs(np.fft.rfft(bin_stim, n=n_fft, axis = -1))).squeeze()
-
-                ref_stim = causal_conv1d(stimulus, ref_hrir[0])
-                ref_fft = 20*np.log10(np.abs(np.fft.rfft(ref_stim, n=n_fft)))
-
-                ref_fft_s = smooth_third_octave(freq, ref_fft)
-                bin_fft_s = np.zeros_like(bin_stim_fft[:,0,:])
-                for j in range(3):
-                    bin_fft_s[j] = smooth_third_octave(freq, bin_stim_fft[j,0,:])
-
-                for j in range(3):
-                    ax.semilogx(freq[9:], bin_fft_s[j,9:], color=fig_colors[j], linewidth = est_mag_width)
-                ax.semilogx(freq[9:], ref_fft_s[9:], color="#000000", linewidth=ref_mag_width)
+                for j in range(len(lstn_pos)):
+                    ax.semilogx(freq[freq_plot_start:], bin_fft_s[j, freq_plot_start:], color=fig_colors[j], linewidth=est_mag_width)
+                ax.semilogx(freq[freq_plot_start:], ref_fft_s[freq_plot_start:], color="#000000", linewidth=ref_mag_width)
                 ax.grid()
                 ax.set_xlim(80, 20000)
+                ax.set_ylim(ymin_mag, ymax_mag)
                 ax.set_ylabel("Magnitude [dB]", fontsize = fontsize)
                 if not is_bottom_row:
                     ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
@@ -500,7 +728,7 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos, row_titles=None):
 if __name__ == "__main__":
     regularisation_weight = 1e-1
     regularisation_weight_incl_colouration = 1e-1
-    run_dir_loc_init_2_r_2, _, _, title_loc = run_experiment(
+    run_dir_loc_init_2_r_2, _, _, title_loc, analysis_loc = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
             "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight),
@@ -510,7 +738,7 @@ if __name__ == "__main__":
         plot_row_title="Localisation loss alone",
     )
 
-    run_dir_unc_init_2_r_2, _, _, title_unc = run_experiment(
+    run_dir_unc_init_2_r_2, _, _, title_unc, analysis_unc = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "uncertainty": ListenerBasedLoss(model=unc_model, weight=1e-2, device=device, dtype=dtype),
             "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight),
@@ -520,7 +748,7 @@ if __name__ == "__main__":
         plot_row_title="Uncertainty loss alone",
     )
 
-    run_dir_col_init_2_r_2, _, _, title_col = run_experiment(
+    run_dir_col_init_2_r_2, _, _, title_col, analysis_col = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "colouration": ListenerBasedLoss(model=col_model, weight=1e-0, device=device, dtype=dtype),
             "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight_incl_colouration),
@@ -530,7 +758,7 @@ if __name__ == "__main__":
         plot_row_title="Colouration loss alone",
     )
 
-    run_dir_loc_unc_col_init_2_r_2, lstn_pos, spk_pos, title_all = run_experiment(
+    run_dir_loc_unc_col_init_2_r_2, lstn_pos, spk_pos, title_all, analysis_all = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
             "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
             "uncertainty": ListenerBasedLoss(model=unc_model, weight=1e-2, device=device, dtype=dtype),
@@ -546,6 +774,8 @@ if __name__ == "__main__":
                run_dir_unc_init_2_r_2,
                run_dir_col_init_2_r_2,
                run_dir_loc_unc_col_init_2_r_2]
+
+    print_cross_run_analysis([analysis_loc, analysis_unc, analysis_col, analysis_all])
 
     DAFx2026_fig5_plots(folders, np.array(lstn_pos), np.array(spk_pos), row_titles=[title_loc, title_unc, title_col, title_all])
 
