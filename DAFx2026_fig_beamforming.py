@@ -43,11 +43,154 @@ def build_listener_position_weights(lstn_pos, y_pos_lo, y_pos_hi, y_neg_lo, y_ne
     return np.asarray(listener_weights, dtype=np.float32)
 
 
+def localisation_error_metrics(target_angles, loc_before, loc_after, listener_weights):
+    """
+    Per-listener localisation error (estimated minus target azimuth, in degrees) before and
+    after optimisation, reported both unweighted and weighted by the listener-position weights.
+    """
+    target = np.asarray(target_angles, dtype=float).ravel()
+    before = np.asarray(loc_before, dtype=float).ravel()
+    after = np.asarray(loc_after, dtype=float).ravel()
+    weights = np.asarray(listener_weights, dtype=float).ravel()
+
+    err_before = before - target
+    err_after = after - target
+    sum_w = float(np.sum(weights))
+
+    def _wmean(values):
+        return float(np.sum(weights * values) / sum_w) if sum_w > 0.0 else float(np.mean(values))
+
+    return {
+        "target_angle_deg": target.tolist(),
+        "loc_before_deg": before.tolist(),
+        "loc_after_deg": after.tolist(),
+        "mae_before_deg": float(np.mean(np.abs(err_before))),
+        "mae_after_deg": float(np.mean(np.abs(err_after))),
+        "rmse_before_deg": float(np.sqrt(np.mean(err_before ** 2))),
+        "rmse_after_deg": float(np.sqrt(np.mean(err_after ** 2))),
+        "weighted_mae_before_deg": _wmean(np.abs(err_before)),
+        "weighted_mae_after_deg": _wmean(np.abs(err_after)),
+        "weighted_rmse_before_deg": float(np.sqrt(_wmean(err_before ** 2))),
+        "weighted_rmse_after_deg": float(np.sqrt(_wmean(err_after ** 2))),
+    }
+
+
+def compute_group_directivity_db(
+    filters, spk_pos_np, group_indices, fs, freqs_eval_hz, radius, n_angles=360, c=343.0
+):
+    """
+    Frequency-averaged far-field directivity (in dB) of a loudspeaker group as a function of
+    observation angle around the group centroid. Mirrors ``plot_arrows_with_directivity`` with
+    ``directivity_mode='avg'`` so the returned curve matches the plotted blue curve.
+    """
+    group_indices = np.asarray(group_indices, dtype=int).reshape(-1)
+    h_group = np.atleast_2d(np.asarray(filters, dtype=float))[group_indices]
+    p_group = np.asarray(spk_pos_np, dtype=float)[group_indices]
+    group_mid = p_group.mean(axis=0)
+
+    theta = np.linspace(0.0, 2 * np.pi, n_angles, endpoint=False)
+    n_taps = h_group.shape[1]
+    n_fft = max(4096, int(2 ** np.ceil(np.log2(max(64, n_taps)))))
+    freqs = np.fft.rfftfreq(n_fft, d=1.0 / fs)
+    omega = 2 * np.pi * freqs
+    H_group = np.fft.rfft(h_group, n=n_fft, axis=1)
+    freq_bin_idx = [int(np.argmin(np.abs(freqs - f))) for f in freqs_eval_hz]
+
+    mag2 = np.zeros((len(freqs_eval_hz), n_angles))
+    for k, ang in enumerate(theta):
+        obs = group_mid + np.array([radius * np.cos(ang), radius * np.sin(ang)])
+        tau = np.linalg.norm(obs - p_group, axis=1) / c
+        phase = np.exp(-1j * np.outer(tau, omega))
+        H_sum = np.sum(H_group * phase, axis=0)
+        for fi, bi in enumerate(freq_bin_idx):
+            mag2[fi, k] = np.abs(H_sum[bi]) ** 2
+
+    dir_avg_db = 10.0 * np.log10(np.mean(mag2, axis=0) + 1e-12)
+    return theta, dir_avg_db, group_mid
+
+
+def _db_at_nearest_angle_deg(sample_angles_deg, levels_db, target_angle_deg):
+    sample_angles_deg = np.asarray(sample_angles_deg, dtype=np.float64).ravel()
+    levels_db = np.asarray(levels_db, dtype=np.float64).ravel()
+    target_wrapped = float(np.mod(target_angle_deg, 360.0))
+    samples_wrapped = np.mod(sample_angles_deg, 360.0)
+    separation_deg = np.abs((samples_wrapped - target_wrapped + 180.0) % 360.0 - 180.0)
+    return float(levels_db[int(np.argmin(separation_deg))])
+
+
+def directivity_match_metrics(theta, dir_avg_db, group_mid, overlay_curves, overlay_labels=None):
+    """
+    Compare the estimated group directivity against each Rodenas overlay curve after
+    normalisation. Both curves are aligned to 0 dB at the array steering direction (the wedge
+    mid-angle) exactly as in the figure, then the overlay is interpolated onto the estimated
+    angle grid and dB error statistics are computed over the overlapping angular range.
+    """
+    cy = float(group_mid[1])
+    if cy >= 0.0:
+        theta_wedge0 = np.pi
+        theta_wedge1 = np.pi + np.pi / 3.0
+    else:
+        theta_wedge0 = np.pi - np.pi / 3.0
+        theta_wedge1 = np.pi
+    mid_rad = 0.5 * (theta_wedge0 + theta_wedge1)
+    mid_angle_deg = float(np.rad2deg(mid_rad) % 360.0)
+
+    delta_theta = np.abs((theta - mid_rad + np.pi) % (2 * np.pi) - np.pi)
+    k_mid = int(np.argmin(delta_theta))
+    dir_est_aligned = dir_avg_db - dir_avg_db[k_mid]
+
+    theta_deg = np.rad2deg(theta)
+    wedge0_deg = float(np.rad2deg(theta_wedge0))
+    wedge1_deg = float(np.rad2deg(theta_wedge1))
+    theta_wrapped = np.mod(theta, 2 * np.pi)
+    mask = (theta_wrapped >= theta_wedge0) & (theta_wrapped <= theta_wedge1)
+    theta_sel_deg = np.mod(theta_deg[mask], 360.0)
+    est_sel = dir_est_aligned[mask]
+
+    overlay_curves = [np.asarray(curve, dtype=float) for curve in overlay_curves]
+    overlay_angle_offset_deg = 180.0 - float(np.min(np.mod(overlay_curves[0][:, 0], 360.0)))
+
+    metrics = []
+    for ci, curve in enumerate(overlay_curves):
+        label = overlay_labels[ci] if (overlay_labels and ci < len(overlay_labels)) else f"overlay_{ci}"
+
+        angles_deg_plot = np.mod(curve[:, 0] + overlay_angle_offset_deg, 360.0)
+        db_sel = np.flip(curve[:, 1])
+        if cy < 0.0:
+            angles_deg_plot = np.mod(360.0 - angles_deg_plot, 360.0)
+        db_at_mid = _db_at_nearest_angle_deg(angles_deg_plot, db_sel, mid_angle_deg)
+        db_aligned = db_sel - db_at_mid
+
+        order = np.argsort(angles_deg_plot)
+        ov_ang = angles_deg_plot[order]
+        ov_db = db_aligned[order]
+
+        lo = max(wedge0_deg, float(ov_ang.min()))
+        hi = min(wedge1_deg, float(ov_ang.max()))
+        in_range = (theta_sel_deg >= lo) & (theta_sel_deg <= hi)
+        if not np.any(in_range):
+            metrics.append({"label": label, "rmse_db": float("nan"), "mae_db": float("nan"),
+                            "max_abs_db": float("nan"), "n_points": 0, "angle_range_deg": [lo, hi]})
+            continue
+
+        ov_interp = np.interp(theta_sel_deg[in_range], ov_ang, ov_db)
+        diff = est_sel[in_range] - ov_interp
+        metrics.append({
+            "label": label,
+            "rmse_db": float(np.sqrt(np.mean(diff ** 2))),
+            "mae_db": float(np.mean(np.abs(diff))),
+            "max_abs_db": float(np.max(np.abs(diff))),
+            "n_points": int(np.sum(in_range)),
+            "angle_range_deg": [lo, hi],
+        })
+    return metrics
+
+
 if __name__ == "__main__":
     repo_root = Path(__file__).resolve().parent
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
         epochs=200,
-        n_samples=41,
+        n_samples=40,
         num_lstn_pos=51,
         listener_batch_size=51, 
         symmetric_listener_sampling=True,
@@ -78,7 +221,7 @@ if __name__ == "__main__":
     env.stimulus_batch_size = 1
     env.n_filter_taps = env.n_samples
 
-    d = 1
+    d = env.speaker_distance * np.cos(np.deg2rad(env.array_centre_angles_deg[0]))
     env.target_pos=torch.tensor([d, float(np.tan(np.deg2rad(0.0)) * d)], device=env.device, dtype=env.dtype)
     # env.target_pos=[10.5, 0.0]
     print(env.target_pos)
@@ -225,6 +368,13 @@ if __name__ == "__main__":
                     loss_dict=loss_dict,
                     optimiser=nn_optimiser,
                     logger=logger) # Initialize training class
+
+    # Build evaluation objects up-front so we can snapshot localisation before optimising.
+    eval_lstn_pos, eval_perceptual_dict, eval_stimulus_data_loader, eval_stimulus_dataset = build_eval_objects(env, eval_lstn_pos=env.lstn_pos)
+
+    # Snapshot pre-optimisation localisation using the initial (delta) FIRs.
+    _, initial_estimation_dict, _ = trainer.evaluate(eval_lstn_pos=eval_lstn_pos, eval_stimulus_data_loader=eval_stimulus_data_loader, loss_dict=eval_perceptual_dict)
+
     time_train_start = time.time()
     trainer.train()
     env.time_train_seconds = time.time() - time_train_start
@@ -232,7 +382,6 @@ if __name__ == "__main__":
 
 ## Print and Plot results
     # Evaluate final neural network FIRs
-    eval_lstn_pos, eval_perceptual_dict, eval_stimulus_data_loader, eval_stimulus_dataset = build_eval_objects(env, eval_lstn_pos=env.lstn_pos)
     est_filters, estimation_dict, bin_stim = trainer.evaluate(eval_lstn_pos=eval_lstn_pos, eval_stimulus_data_loader=eval_stimulus_data_loader, loss_dict=eval_perceptual_dict)
     # Normalise filters to prevent clipping 
     est_filters /= np.max(np.abs(est_filters)) / 0.9 # TODO: move this to a more appropriate place at the end of the training loop
@@ -279,6 +428,54 @@ if __name__ == "__main__":
     
     right_array_indices = tuple(range(env.speakers_per_array, 2 * env.speakers_per_array))
     left_array_indices = tuple(range(env.speakers_per_array))
+
+## Quantitative analysis of the results
+    import json
+
+    # Per-listener target azimuth used by the localisation model (degrees relative to +x axis).
+    target_angles_deg = eval_perceptual_dict["localisation"].model.target.detach().cpu().numpy()
+
+    loc_metrics = localisation_error_metrics(
+        target_angles=target_angles_deg,
+        loc_before=initial_estimation_dict["localisation"],
+        loc_after=estimation_dict["localisation"],
+        listener_weights=listener_weights,
+    )
+
+    # Directivity of the (right) optimised loudspeaker array vs. the Rodenas references.
+    dir_theta, dir_avg_db, dir_group_mid = compute_group_directivity_db(
+        filters=est_filters,
+        spk_pos_np=env.spk_pos.detach().cpu().numpy(),
+        group_indices=right_array_indices,
+        fs=env.fs,
+        freqs_eval_hz=env.directivity_freqs_hz,
+        radius=env.directivity_radius_m,
+        n_angles=360,
+    )
+    directivity_metrics = directivity_match_metrics(
+        theta=dir_theta,
+        dir_avg_db=dir_avg_db,
+        group_mid=dir_group_mid,
+        overlay_curves=[rodenas2003_fig12_opt, rodenas2003_fig12_1000Hz],
+        overlay_labels=["rodenas2003 (optimum)", "rodenas2003 (1000 Hz)"],
+    )
+
+    analysis = {"localisation": loc_metrics, "directivity_match": directivity_metrics}
+
+    print("\n================ Results analysis ================")
+    print("Localisation error vs target angle (degrees):")
+    print(f"  Unweighted MAE : {loc_metrics['mae_before_deg']:.2f} (before) -> {loc_metrics['mae_after_deg']:.2f} (after)")
+    print(f"  Unweighted RMSE: {loc_metrics['rmse_before_deg']:.2f} (before) -> {loc_metrics['rmse_after_deg']:.2f} (after)")
+    print(f"  Weighted   MAE : {loc_metrics['weighted_mae_before_deg']:.2f} (before) -> {loc_metrics['weighted_mae_after_deg']:.2f} (after)")
+    print(f"  Weighted   RMSE: {loc_metrics['weighted_rmse_before_deg']:.2f} (before) -> {loc_metrics['weighted_rmse_after_deg']:.2f} (after)")
+    print("Directivity match vs Rodenas (after normalisation, within steering wedge):")
+    for m in directivity_metrics:
+        print(f"  {m['label']}: RMSE {m['rmse_db']:.2f} dB, MAE {m['mae_db']:.2f} dB, max |err| {m['max_abs_db']:.2f} dB (n={m['n_points']})")
+    print("==================================================\n")
+
+    with open(saver_obj.run_dir / "analysis.json", "w") as f:
+        json.dump(analysis, f, indent=4)
+
     plots["directivity_plot"] = plot_pair_directivity_polar(
         est_filters=est_filters,
         spk_pos=env.spk_pos.detach().cpu().numpy(),
