@@ -206,6 +206,9 @@ cython_debug/
 #   you could uncomment the following to ignore the entire vscode folder
 # .vscode/
 
+# Cursor IDE (local project state; locked while editor is open)
+.cursor/
+
 # Ruff stuff:
 .ruff_cache/
 
@@ -246,3 +249,5 @@ play_stereo_sine_and_plot.py
 two_loudspeaker_directivity.py
 
 *.gif
+
+.cursorrules
