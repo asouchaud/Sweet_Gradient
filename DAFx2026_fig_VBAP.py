@@ -213,17 +213,18 @@ def VBAP_loc(vbap_icld):
     vbap_angle = torch.zeros(len(vbap_icld), device = device, dtype= dtype)
     vbap_icld = torch.tensor(vbap_icld, device=device, dtype=dtype)
     listener_idx = torch.arange(lstn_pos.shape[0], device=device)
-    for i in range(len(vbap_icld)):
+    with torch.inference_mode():
+        for i in range(len(vbap_icld)):
 
-        right_gains = torch.sqrt(1/(1+ 10**(vbap_icld[i]/10)))
-        left_gains = right_gains*10**(vbap_icld[i]/20)
+            right_gains = torch.sqrt(1/(1+ 10**(vbap_icld[i]/10)))
+            left_gains = right_gains*10**(vbap_icld[i]/20)
 
-        filts = torch.zeros(1,2,64,device=device, dtype=dtype) 
-        filts[0,0,0] = left_gains
-        filts[0,1,0] = right_gains
+            filts = torch.zeros(1,2,64,device=device, dtype=dtype) 
+            filts[0,0,0] = left_gains
+            filts[0,1,0] = right_gains
 
-        bin_stim = stereo_prop(reference_stim, filts, listener_idx)
-        vbap_angle[i] = loc_model(bin_stim).squeeze()
+            bin_stim = stereo_prop(reference_stim, filts, listener_idx)
+            vbap_angle[i] = loc_model(bin_stim).squeeze()
 
     return(vbap_angle.detach().cpu().numpy())
 
