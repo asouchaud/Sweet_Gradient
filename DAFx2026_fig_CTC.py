@@ -1,6 +1,5 @@
 # Enable MPS fallback for PyTorch on macOS
 import os
-import json
 import sofar as sf
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 
@@ -13,7 +12,6 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 import torch.nn.functional as F
-from scipy import stats as scipy_stats
 
 # Import Plotting libraries
 import matplotlib.pyplot as plt
@@ -484,6 +482,8 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
         return y
 
     fig_ipd = plt.figure(figsize=(9, 4))
+    # Display band 100 Hz–10 kHz; grey band = IPD loss band (200–7000 Hz).
+    f_plot_lo, f_plot_hi = 100.0, 10000.0
 
     axi1 = fig_ipd.add_subplot(1, 2, 1)
     axi1.axvspan(ipd_band[0], ipd_band[1], color="0.9", zorder=0)
@@ -492,7 +492,7 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
     li2, = axi1.semilogx(freqs_ipd, ipd_ctc_deg, linewidth=2.5)
     li5, = axi1.semilogx(freqs_ipd, ipd_ref_deg, linewidth=3, color="black", linestyle="--")
     axi1.grid()
-    axi1.set_xlim([100, 7000])
+    axi1.set_xlim([f_plot_lo, f_plot_hi])
     axi1.set_ylim([-185, 185])
     axi1.set_title("Interaural Phase Difference (wrapped)", fontsize=fontsize_ipd)
     axi1.set_xlabel("Frequency [Hz]", fontsize=fontsize_ipd)
@@ -505,7 +505,7 @@ def DAFx2026_fig7_plots(run_dir, run_dir_col_only, CTC_filts, trainer, col_model
     axi2.semilogx(freqs_ipd, _break_wraps(err_ctc_deg), linewidth=2.5)
     axi2.axhline(0.0, color="black", linestyle="--", linewidth=2)
     axi2.grid()
-    axi2.set_xlim([100, 7000])
+    axi2.set_xlim([f_plot_lo, f_plot_hi])
     axi2.set_ylim([-185, 185])
     axi2.set_title("IPD Error (vs Reference)", fontsize=fontsize_ipd)
     axi2.set_xlabel("Frequency [Hz]", fontsize=fontsize_ipd)
@@ -534,79 +534,51 @@ def init_delta_fir(nn_model, n_samples):
             branch.weight[centre_tap_idx, 0] = 1.0
 
 
-def _metric_at_centre(estimation_dict, key, centre_idx=0):
-    if key not in estimation_dict or estimation_dict[key] is None:
-        return np.nan
-    val = np.asarray(estimation_dict[key]).reshape(-1)
-    return float(val[centre_idx]) if val.size > centre_idx else float(np.mean(val))
+if __name__ == "__main__":
 
+    repo_root = Path(__file__).resolve().parent
 
-def filter_lsd_to_ctc_db(est_filters, ctc_filts, fs=48000, eps=1e-12):
-    """
-    Log spectral distance (dB) between estimated and CTC loudspeaker filters.
-
-    Matches the filter-domain LSD used in ``DAFx2026_fig7_plots`` (bandpassed
-    magnitude spectra, RMS-normalised per filter, mean over channels).
-    """
-    est = bandpass_fir(np.asarray(est_filters, dtype=float), fs=fs)
-    ctc = bandpass_fir(np.asarray(ctc_filts, dtype=float), fs=fs)
-    est = est / np.sqrt(np.mean(est**2))
-    ctc = ctc / np.sqrt(np.mean(ctc**2))
-    n = est.shape[-1]
-
-    est_mag_db = 20 * np.log10(np.abs(np.fft.rfft(est, n=n, axis=-1, norm="ortho")) + eps)
-    ctc_mag_db = 20 * np.log10(np.abs(np.fft.rfft(ctc, n=n, axis=-1, norm="ortho")) + eps)
-    lsd_per_channel = np.sqrt(np.mean((est_mag_db - ctc_mag_db) ** 2, axis=-1))
-    return float(lsd_per_channel.mean())
-
-
-def evaluate_fixed_filters(env, filters, eval_lstn_pos, eval_perceptual_dict, eval_stimulus_data_loader):
-    """Evaluate precomputed loudspeaker filters with the same metrics as trained FIRs."""
-    eval_prop = BinauralFreeFieldPropagation(
-        fs=env.fs,
-        lstn_pos=eval_lstn_pos,
-        spk_pos=env.spk_pos,
-        sofa_file_path=env.sofa_path,
-        device=env.device,
-        dtype=env.dtype,
+    env = SimpleNamespace(
+        target_angle=45.0,
+        target_distance=100,
+        epochs=2000,
+        listener_batch_size=1,
+        symmetric_listener_sampling=True,
+        n_samples=256,
+        selected_stim="impulse",
+        sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
+        sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
+        lr=0.0005,
+        seed=46,
+        log=1,
+        fs=48000,
     )
-    filters = np.asarray(filters, dtype=float)
-    filters = filters / (np.max(np.abs(filters)) / 0.9)
+    env.target_pos = [
+        env.target_distance,
+        float(np.tan(np.deg2rad(env.target_angle)) * env.target_distance),
+    ]
+    env.dtype = torch.float32
+    env.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {env.device}")
 
-    listener_idx = torch.arange(len(eval_lstn_pos), device=env.device)
-    estimation_dict = {key: [] for key in eval_perceptual_dict}
+    env.lstn_pos = [[0.0, 0.0]]
+    base_angle_rad = np.deg2rad(30.0)
+    env.speaker_distance = 2.0
+    env.spk_pos = [
+        [env.speaker_distance * np.cos(base_angle_rad), env.speaker_distance * np.sin(base_angle_rad)],
+        [env.speaker_distance * np.cos(base_angle_rad), -env.speaker_distance * np.sin(base_angle_rad)],
+    ]
+    env.n_sources = len(env.spk_pos)
+    env.col_weight = 1.0
+    env.ipd_weight = 1.0e-1
 
-    with torch.no_grad():
-        for stimulus in eval_stimulus_data_loader:
-            filts_t = torch.tensor(filters, device=env.device, dtype=env.dtype).unsqueeze(0)
-            bin_stim = eval_prop(stimulus, filts_t, listener_idx)
-            for key, loss_cfg in eval_perceptual_dict.items():
-                _, estimation = loss_cfg.compute_loss(
-                    bin_stim=bin_stim,
-                    spk_filters=filts_t,
-                    stim=stimulus,
-                    listener_indices=listener_idx,
-                )
-                if estimation is None:
-                    continue
-                estimation_dict[key].append(estimation.detach().cpu().numpy())
-
-    return {
-        key: np.mean(np.concatenate(vals, axis=0), axis=0)
-        for key, vals in estimation_dict.items()
-        if len(vals) > 0
-    }
-
-
-def run_single_seed(env, save_training_plots=True):
-    """Train col+IPD and col-only; evaluate; return metrics and run directories."""
-    env.seed = int(env.seed)
     set_seed(seed=env.seed)
-    print(f"\n{'=' * 60}\nSeed {env.seed}\n{'=' * 60}")
 
     training_stimulus_data_loader, _ = get_stim_loader(
         env.fs, 1, 1, stimulus_type=env.selected_stim, device=env.device, dtype=env.dtype
     )
+    env.lstn_pos = torch.tensor(env.lstn_pos, device=env.device, dtype=env.dtype)
+    env.spk_pos = torch.tensor(env.spk_pos, device=env.device, dtype=env.dtype)
     training_listener_data_loader, _ = get_listener_loader(
         env.lstn_pos, env.listener_batch_size, env.symmetric_listener_sampling
     )
@@ -623,7 +595,7 @@ def run_single_seed(env, save_training_plots=True):
     )
     ipd_model = interaural_phase_difference_matching(
         loss=F.l1_loss, target=0, target_pos=env.target_pos, fs=env.fs,
-        sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, device=env.device, dtype=env.dtype,
+        sofa_path=env.sofa_path, lstn_pos=env.lstn_pos, fmax = 1500, device=env.device, dtype=env.dtype,
     )
 
     loss_dict = {
@@ -646,10 +618,10 @@ def run_single_seed(env, save_training_plots=True):
         optimiser=nn_optimiser,
         logger=saver_obj if env.log else None,
     )
-    t0 = time.time()
+    time_train_start = time.time()
     trainer.train()
-    time_col_ipd = time.time() - t0
-    print(f"Time for col+IPD optimisation: {time_col_ipd:.2f} s")
+    env.time_train_seconds = time.time() - time_train_start
+    print(f"Time for col+IPD optimisation: {env.time_train_seconds:.2f} s")
 
     eval_lstn_pos, eval_perceptual_dict, eval_stimulus_data_loader, eval_stimulus_dataset = build_eval_objects(
         env,
@@ -670,24 +642,26 @@ def run_single_seed(env, save_training_plots=True):
     )
     est_filters /= np.max(np.abs(est_filters)) / 0.9
 
+    for key, value in estimation_dict.items():
+        print(f"Estimated {key}: {value}")
+
     saver_obj.save_results(estimation_dict=estimation_dict, est_filters=est_filters, fs=env.fs, env=env)
 
-    if save_training_plots:
-        plots = plot_results(
-            estimation_dict=estimation_dict,
-            est_filters=est_filters,
-            bin_stim=np.expand_dims(bin_stim, axis=0),
-            lstn_pos=eval_lstn_pos,
-            spk_pos=env.spk_pos,
-            loss_dict=eval_perceptual_dict,
-            target_pos=env.target_pos,
-            fs=env.fs,
-            stim=eval_stimulus_dataset.data,
-            device=env.device,
-            dtype=env.dtype,
-            show=False,
-        )
-        saver_obj.save_plots(plots)
+    plots = plot_results(
+        estimation_dict=estimation_dict,
+        est_filters=est_filters,
+        bin_stim=np.expand_dims(bin_stim, axis=0),
+        lstn_pos=eval_lstn_pos,
+        spk_pos=env.spk_pos,
+        loss_dict=eval_perceptual_dict,
+        target_pos=env.target_pos,
+        fs=env.fs,
+        stim=eval_stimulus_dataset.data,
+        device=env.device,
+        dtype=env.dtype,
+        show=False,
+    )
+    saver_obj.save_plots(plots)
     plt.close("all")
 
     set_seed(seed=env.seed)
@@ -696,6 +670,7 @@ def run_single_seed(env, save_training_plots=True):
     loss_dict_col_only = {
         "colouration": ListenerBasedLoss(model=col_model, weight=env.col_weight, device=env.device, dtype=env.dtype),
     }
+
     saver_obj_col_only = saver()
     trainer_col_only = Train(
         n_epoch=env.epochs,
@@ -707,10 +682,10 @@ def run_single_seed(env, save_training_plots=True):
         optimiser=torch.optim.Adam(nn_model_col_only.parameters(), lr=env.lr),
         logger=saver_obj_col_only if env.log else None,
     )
-    t0 = time.time()
+    time_train_start = time.time()
     trainer_col_only.train()
-    time_col_only = time.time() - t0
-    print(f"Time for colouration-only optimisation: {time_col_only:.2f} s")
+    env.time_train_seconds_col_only = time.time() - time_train_start
+    print(f"Time for colouration-only optimisation: {env.time_train_seconds_col_only:.2f} s")
 
     est_filters_col_only, estimation_dict_col_only, _ = trainer_col_only.evaluate(
         eval_lstn_pos=eval_lstn_pos,
@@ -730,368 +705,18 @@ def run_single_seed(env, save_training_plots=True):
     ctc_artifacts_dir.mkdir(parents=True, exist_ok=True)
     np.save(ctc_artifacts_dir / "true_ctc_filters.npy", CTC_filts)
 
-    estimation_dict_ctc = evaluate_fixed_filters(
-        env, CTC_filts, eval_lstn_pos, eval_perceptual_dict, eval_stimulus_data_loader,
+    fig7_plot, fig7_phase_plot, fig7_ipd_plot = DAFx2026_fig7_plots(
+        saver_obj.run_dir,
+        saver_obj_col_only.run_dir,
+        CTC_filts=CTC_filts,
+        trainer=trainer,
+        col_model=col_model,
+        ipd_model=eval_ipd_model,
     )
-
-    eval_col_model = eval_perceptual_dict["colouration"].model
-    colouration_loss_norm = float(eval_col_model.loss_norm)
-
-    filter_lsd_to_ctc_col_ipd = filter_lsd_to_ctc_db(est_filters, CTC_filts, fs=env.fs)
-    filter_lsd_to_ctc_col_only = filter_lsd_to_ctc_db(est_filters_col_only, CTC_filts, fs=env.fs)
-
-    return {
-        "seed": env.seed,
-        "run_dir": saver_obj.run_dir,
-        "run_dir_col_only": saver_obj_col_only.run_dir,
-        "estimation_dict": estimation_dict,
-        "estimation_dict_col_only": estimation_dict_col_only,
-        "estimation_dict_ctc": estimation_dict_ctc,
-        "trainer": trainer,
-        "col_model": col_model,
-        "eval_ipd_model": eval_ipd_model,
-        "colouration_loss_norm": colouration_loss_norm,
-        "filter_lsd_to_ctc_col_ipd": filter_lsd_to_ctc_col_ipd,
-        "filter_lsd_to_ctc_col_only": filter_lsd_to_ctc_col_only,
-        "CTC_filts": CTC_filts,
-        "time_col_ipd": time_col_ipd,
-        "time_col_only": time_col_only,
-    }
-
-
-def mean_ci_95(values, confidence=0.95):
-    """
-    Two-sided CI for the mean (Student-t), assuming independent runs.
-
-    With n=1 the interval collapses to the single value. Requires n>=2 for a
-    meaningful width; still well-defined for reporting when n_stat_seeds is small.
-    """
-    arr = np.asarray(values, dtype=float)
-    arr = arr[np.isfinite(arr)]
-    n = len(arr)
-    if n == 0:
-        return {"mean": np.nan, "ci_low": np.nan, "ci_high": np.nan, "ci_half_width": np.nan}
-    mean = float(np.mean(arr))
-    if n == 1:
-        return {"mean": mean, "ci_low": mean, "ci_high": mean, "ci_half_width": 0.0}
-    sem = float(np.std(arr, ddof=1) / np.sqrt(n))
-    t_crit = float(scipy_stats.t.ppf(0.5 + confidence / 2.0, df=n - 1))
-    half = t_crit * sem
-    return {"mean": mean, "ci_low": mean - half, "ci_high": mean + half, "ci_half_width": half}
-
-
-def _stats_block(values, confidence=0.95, unit=None, description=None):
-    arr = np.asarray(values, dtype=float)
-    arr = arr[np.isfinite(arr)]
-    if arr.size == 0:
-        return None
-    ci = mean_ci_95(arr, confidence=confidence)
-    block = {
-        "values": arr.tolist(),
-        "mean": ci["mean"],
-        "std": float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0,
-        "sem": float(np.std(arr, ddof=1) / np.sqrt(len(arr))) if len(arr) > 1 else 0.0,
-        "ci_low": ci["ci_low"],
-        "ci_high": ci["ci_high"],
-        "ci_half_width": ci["ci_half_width"],
-        "min": float(np.min(arr)),
-        "max": float(np.max(arr)),
-    }
-    if unit is not None:
-        block["unit"] = unit
-    if description is not None:
-        block["description"] = description
-    return block
-
-
-def summarize_across_seeds(seed_results, centre_idx=0, confidence=0.95):
-    """Aggregate centre-listener metrics across seeds (mean, std, sem, 95% CI)."""
-    stats = {
-        "n_seeds": len(seed_results),
-        "seeds": [r["seed"] for r in seed_results],
-        "centre_listener_idx": centre_idx,
-        "confidence_level": confidence,
-        "ci_note": (
-            "CI is a two-sided Student-t interval for the mean across seeds "
-            "(independent optimisation runs). Use n_stat_seeds >= 5 for stable CIs."
-        ),
-        "colouration_note": (
-            "colouration_lsd_db is log spectral distance (LSD) in dB from spectral_matching. "
-            "colouration_loss_normalised is LSD/loss_norm (the value used in the training loss)."
-        ),
-    }
-
-    for method_key, est_key in (("col_ipd", "estimation_dict"), ("col_only", "estimation_dict_col_only")):
-        lsd_values = []
-        norm_values = []
-        for r in seed_results:
-            lsd = _metric_at_centre(r[est_key], "colouration", centre_idx)
-            if not np.isfinite(lsd):
-                continue
-            lsd_values.append(lsd)
-            norm_values.append(lsd / r["colouration_loss_norm"])
-
-        block = _stats_block(
-            lsd_values,
-            confidence=confidence,
-            unit="dB",
-            description="Log spectral distance (LSD), centre listener",
-        )
-        if block is not None:
-            stats[f"{method_key}_colouration_lsd_db"] = block
-
-        block = _stats_block(
-            norm_values,
-            confidence=confidence,
-            unit="dimensionless",
-            description="Normalised colouration loss LSD/loss_norm",
-        )
-        if block is not None:
-            stats[f"{method_key}_colouration_loss_normalised"] = block
-
-        for metric in ("ipd", "localisation", "uncertainty"):
-            values = [_metric_at_centre(r[est_key], metric, centre_idx) for r in seed_results]
-            values = [v for v in values if np.isfinite(v)]
-            block = _stats_block(values, confidence=confidence)
-            if block is not None:
-                if metric == "ipd":
-                    block["unit"] = "rad"
-                    block["description"] = "Mean absolute wrapped IPD error"
-                stats[f"{method_key}_{metric}"] = block
-
-    # CTC filters are deterministic; metrics are still listed per seed for consistency.
-    ctc_lsd_values = []
-    ctc_norm_values = []
-    for r in seed_results:
-        lsd = _metric_at_centre(r["estimation_dict_ctc"], "colouration", centre_idx)
-        if not np.isfinite(lsd):
-            continue
-        ctc_lsd_values.append(lsd)
-        ctc_norm_values.append(lsd / r["colouration_loss_norm"])
-
-    block = _stats_block(
-        ctc_lsd_values,
-        confidence=confidence,
-        unit="dB",
-        description="Log spectral distance (LSD), centre listener, CTC filters",
-    )
-    if block is not None:
-        stats["ctc_colouration_lsd_db"] = block
-
-    block = _stats_block(
-        ctc_norm_values,
-        confidence=confidence,
-        unit="dimensionless",
-        description="Normalised colouration loss LSD/loss_norm, CTC filters",
-    )
-    if block is not None:
-        stats["ctc_colouration_loss_normalised"] = block
-
-    for metric in ("ipd", "localisation", "uncertainty"):
-        values = [_metric_at_centre(r["estimation_dict_ctc"], metric, centre_idx) for r in seed_results]
-        values = [v for v in values if np.isfinite(v)]
-        block = _stats_block(values, confidence=confidence)
-        if block is not None:
-            if metric == "ipd":
-                block["unit"] = "rad"
-                block["description"] = "Mean absolute wrapped IPD error, CTC filters"
-            stats[f"ctc_{metric}"] = block
-
-    for method_key, result_key in (
-        ("col_ipd", "filter_lsd_to_ctc_col_ipd"),
-        ("col_only", "filter_lsd_to_ctc_col_only"),
-    ):
-        values = [r[result_key] for r in seed_results if np.isfinite(r[result_key])]
-        block = _stats_block(
-            values,
-            confidence=confidence,
-            unit="dB",
-            description="LSD between loudspeaker filter magnitude spectra and CTC",
-        )
-        if block is not None:
-            stats[f"{method_key}_filter_lsd_to_ctc_db"] = block
-
-    return stats
-
-
-def print_statistical_summary(stats):
-    print(f"\n{'=' * 60}\nStatistical summary ({stats['n_seeds']} seeds, centre listener)\n{'=' * 60}")
-    for method, label in (("col_ipd", "Col. + IPD"), ("col_only", "Col. only")):
-        print(f"\n{label}:")
-        rows = [
-            ("colouration_lsd_db", "LSD [dB] (ear)"),
-            ("filter_lsd_to_ctc_db", "LSD [dB] (filters vs CTC)"),
-            ("colouration_loss_normalised", "Col. loss (norm.)"),
-            ("ipd", "IPD [rad]"),
-            ("localisation", "localisation"),
-            ("uncertainty", "uncertainty"),
-        ]
-        pct = int(100 * stats.get("confidence_level", 0.95))
-        for metric_key, metric_label in rows:
-            key = f"{method}_{metric_key}"
-            if key not in stats:
-                continue
-            s = stats[key]
-            print(
-                f"  {metric_label:22s}: {s['mean']:.4f}  "
-                f"[{pct}% CI {s['ci_low']:.4f}, {s['ci_high']:.4f}]  "
-                f"(std {s['std']:.4f}, n={len(s['values'])})"
-            )
-
-    print("\nCTC (analytic inversion, same filters every seed):")
-    for metric_key, metric_label in rows:
-        key = f"ctc_{metric_key}"
-        if key not in stats:
-            continue
-        s = stats[key]
-        print(
-            f"  {metric_label:22s}: {s['mean']:.4f}  "
-            f"[{pct}% CI {s['ci_low']:.4f}, {s['ci_high']:.4f}]  "
-            f"(std {s['std']:.4f}, n={len(s['values'])})"
-        )
-
-
-def _stats_methods_for_metric(stats, metric_key):
-    """Return (method_prefix, label, color) entries present in stats for this metric."""
-    specs = [
-        ("col_ipd", "Col. + IPD", "C0"),
-        ("col_only", "Col. only", "C1"),
-        ("ctc", "CTC", "C2"),
-    ]
-    return [(m, lab, col) for m, lab, col in specs if f"{m}_{metric_key}" in stats]
-
-
-def plot_statistical_summary(stats, out_dir):
-    """Bar charts: ear LSD, IPD, and filter LSD to CTC (95% CI over seeds)."""
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    plot_specs = [
-        ("colouration_lsd_db", "Log spectral distance (ear)", "LSD [dB]"),
-        ("ipd", "IPD error (ear)", "Mean |IPD error| [rad]"),
-        ("filter_lsd_to_ctc_db", "LSD to CTC filters", "LSD [dB]"),
-    ]
-    metrics_to_plot = [
-        spec for spec in plot_specs
-        if len(_stats_methods_for_metric(stats, spec[0])) >= 2
-    ]
-    if not metrics_to_plot:
-        return None
-
-    fig, axes = plt.subplots(1, len(metrics_to_plot), figsize=(4.5 * len(metrics_to_plot), 4))
-    if len(metrics_to_plot) == 1:
-        axes = [axes]
-
-    pct = int(100 * stats.get("confidence_level", 0.95))
-    for ax, (metric_key, title, ylabel) in zip(axes, metrics_to_plot):
-        methods = _stats_methods_for_metric(stats, metric_key)
-        labels = [lab for _, lab, _ in methods]
-        colors = [col for _, _, col in methods]
-        x = np.arange(len(labels))
-        means = [stats[f"{m}_{metric_key}"]["mean"] for m, _, _ in methods]
-        ci_hw = [stats[f"{m}_{metric_key}"]["ci_half_width"] for m, _, _ in methods]
-        ax.bar(x, means, 0.55, yerr=ci_hw, capsize=6, color=colors)
-        ax.set_xticks(x)
-        ax.set_xticklabels(labels, rotation=15, ha="right")
-        ax.set_ylabel(ylabel)
-        subtitle = f"n={stats['n_seeds']}, {pct}% CI"
-        if metric_key == "colouration_lsd_db":
-            subtitle = f"centre listener, {subtitle}"
-        ax.set_title(f"{title}\n({subtitle})")
-        ax.grid(axis="y", alpha=0.3)
-
-    fig.tight_layout()
-    fig.savefig(out_dir / "DAFx2026_fig7_statistics.pdf", format="pdf")
-    return fig
-
-
-if __name__ == "__main__":
-
-    repo_root = Path(__file__).resolve().parent
-
-    env = SimpleNamespace(
-        target_angle=45.0,
-        target_distance=100,
-        epochs=1500,
-        listener_batch_size=1,
-        symmetric_listener_sampling=True,
-        n_samples=256,
-        selected_stim="impulse",
-        sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"),
-        sofa_idx_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"),
-        lr=0.001,
-        seed=46,
-        log=1,
-        fs=48000,
-        # Set run_multi_seed_analysis=False for a single optimisation at env.seed only.
-        run_multi_seed_analysis=True,
-        n_stat_seeds=5,
-        seed_start=46,
-        save_training_plots=False,
-        plot_fig7_on_last_seed=True,
-    )
-    env.target_pos = [
-        env.target_distance,
-        float(np.tan(np.deg2rad(env.target_angle)) * env.target_distance),
-    ]
-    env.dtype = torch.float32
-    env.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {env.device}")
-
-    env.lstn_pos = [[0.0, 0.0]]
-    base_angle_rad = np.deg2rad(30.0)
-    env.speaker_distance = 2.0
-    env.spk_pos = [
-        [env.speaker_distance * np.cos(base_angle_rad), env.speaker_distance * np.sin(base_angle_rad)],
-        [env.speaker_distance * np.cos(base_angle_rad), -env.speaker_distance * np.sin(base_angle_rad)],
-    ]
-    env.n_sources = len(env.spk_pos)
-    env.lstn_pos = torch.tensor(env.lstn_pos, device=env.device, dtype=env.dtype)
-    env.spk_pos = torch.tensor(env.spk_pos, device=env.device, dtype=env.dtype)
-    env.col_weight = 1.0
-    env.ipd_weight = 1.0e-1
-
-    if env.run_multi_seed_analysis:
-        seeds = [env.seed_start + i for i in range(env.n_stat_seeds)]
-        print(f"Multi-seed analysis: {env.n_stat_seeds} runs (seeds {seeds[0]}–{seeds[-1]})")
-        seed_results = []
-        for seed in seeds:
-            env.seed = seed
-            seed_results.append(
-                run_single_seed(env, save_training_plots=env.save_training_plots)
-            )
-
-        stats = summarize_across_seeds(seed_results, centre_idx=0)
-        print_statistical_summary(stats)
-
-        last = seed_results[-1]
-        last_run_dir = Path(last["run_dir"])
-        plot_folder = last_run_dir / "plots"
-        plot_folder.mkdir(parents=True, exist_ok=True)
-
-        with open(last_run_dir / "seed_statistics.json", "w", encoding="utf-8") as f:
-            json.dump(stats, f, indent=2)
-        plot_statistical_summary(stats, plot_folder)
-        print(f"\nMulti-seed statistics saved in {last_run_dir}")
-    else:
-        print(f"Single-seed run (seed={env.seed}); skipping multi-seed statistics.")
-        last = run_single_seed(env, save_training_plots=env.save_training_plots)
-        last_run_dir = Path(last["run_dir"])
-        plot_folder = last_run_dir / "plots"
-        plot_folder.mkdir(parents=True, exist_ok=True)
-
-    if env.plot_fig7_on_last_seed:
-        CTC_bp = bandpass_fir(last["CTC_filts"], fs=env.fs)
-        fig7_plot, fig7_phase_plot, fig7_ipd_plot = DAFx2026_fig7_plots(
-            last["run_dir"],
-            last["run_dir_col_only"],
-            CTC_filts=CTC_bp,
-            trainer=last["trainer"],
-            col_model=last["col_model"],
-            ipd_model=last["eval_ipd_model"],
-        )
-        fig7_plot.savefig(plot_folder / "DAFx2026_fig7.pdf", format="pdf")
-        fig7_phase_plot.savefig(plot_folder / "DAFx2026_fig7_phase.pdf", format="pdf")
-        fig7_ipd_plot.savefig(plot_folder / "DAFx2026_fig7_ipd.pdf", format="pdf")
-        print(f"Fig.7 plots saved to {plot_folder}")
+    plot_folder = saver_obj.get_plot_folder()
+    fig7_plot.savefig(plot_folder / "DAFx2026_fig7.pdf", format="pdf")
+    fig7_phase_plot.savefig(plot_folder / "DAFx2026_fig7_phase.pdf", format="pdf")
+    fig7_ipd_plot.savefig(plot_folder / "DAFx2026_fig7_ipd.pdf", format="pdf")
+    print(f"Fig.7 plots saved to {plot_folder}")
 
 

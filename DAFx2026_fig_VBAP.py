@@ -42,7 +42,7 @@ def run_experiment(loss_dict_builder, run_label, target_angle):
     repo_root = Path(__file__).resolve().parent
     d = 60
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
-        epochs=200,
+        epochs=600,
         n_samples=21,
         target_pos=[d, float(np.tan(np.deg2rad(target_angle)) * d)],
         selected_stim="white_noise",
@@ -269,15 +269,16 @@ def DAFx2026_fig6_plots(run_folders, show=False):
     est_angle = np.zeros(len(run_folders))
     for i in range(len(run_folders)):
         json_file_path = os.path.join(run_folders[i], "results.json")
-        json_data = json.load(open(json_file_path))
+        with open(json_file_path) as f:
+            json_data = json.load(f)
+        # One value per eval listener; use centre listener [0, 0] (index 0).
+        est_angle[i] = float(np.asarray(json_data["localisation"], dtype=float).ravel()[0])
 
-        est_angle[i] = json_data['localisation']
-
-    # --- BOTTOM PLOT ---
+    # --- BOTTOM PLOT (include +/- 30 deg; energy ratio is infinite there) ---
     plt.subplot(1,2,2)
-    l3,= plt.plot(target_angles[1:-1], est_angle[1:-1], linewidth=3, label="Proposed Method")
-    l4,= plt.plot(target_angles[1:-1], vbap_angle[1:-1], linewidth=2, label="VBAP")
-    l5,= plt.plot(target_angles[1:-1], target_angles[1:-1], linestyle = "--", color = "black", linewidth=2, label = "Target")
+    l3,= plt.plot(target_angles, est_angle, linewidth=3, label="Proposed Method")
+    l4,= plt.plot(target_angles, vbap_angle, linewidth=2, label="VBAP")
+    l5,= plt.plot(target_angles, target_angles, linestyle = "--", color = "black", linewidth=2, label = "Target")
     plt.xlabel(r"Target Angle ($\theta^\circ$)", fontsize=18)
     plt.ylabel(r"Predicted Angle ($\hat{\theta}^\circ$)", fontsize=18)
     plt.xticks(fontsize=16)
@@ -339,8 +340,8 @@ if __name__ == "__main__":
         run_dir, run_lstn_pos, run_spk_pos = run_experiment(
             loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype, angle=angle: {
                 "localisation": ListenerBasedLoss(model=loc_model, weight=1e-0, device=device, dtype=dtype),
-                "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e-2),
-                "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e-2),
+                "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=1e1),
+                "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=1e1),
             },
             run_label=f"loc_{int(angle)}",
             target_angle=angle

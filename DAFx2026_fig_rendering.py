@@ -209,7 +209,7 @@ def print_cross_run_analysis(analyses):
 
 def run_experiment(loss_dict_builder, run_label, plot_row_title=None):
     repo_root = Path(__file__).resolve().parent
-    d = 100
+    d = 60
     env = SimpleNamespace( # Include here all variables that you want stored into config.json
         epochs=300,
         num_lstn_pos=30,
@@ -221,7 +221,7 @@ def run_experiment(loss_dict_builder, run_label, plot_row_title=None):
         stimulus_batch_size=1,
         n_stimulus=1,
         sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa"),
-        lr=0.1,
+        lr=0.01,
         seed=46,
         log=1,
         fs=48000,
@@ -293,6 +293,7 @@ def run_experiment(loss_dict_builder, run_label, plot_row_title=None):
         sofa_path=env.sofa_path,
         lstn_pos=env.lstn_pos,
         spk_pos=env.spk_pos,
+        balance_interaural_cue_grads=False,
         device=env.device,
         dtype=env.dtype,
     )
@@ -303,7 +304,6 @@ def run_experiment(loss_dict_builder, run_label, plot_row_title=None):
         fs=env.fs,
         sofa_path=env.sofa_path,
         lstn_pos=env.lstn_pos,
-        normalize_log_spectrum=True,
         device=env.device,
         dtype=env.dtype,
     )
@@ -366,7 +366,6 @@ def run_experiment(loss_dict_builder, run_label, plot_row_title=None):
         eval_lstn_pos=eval_lstn_pos,
         n_eval_stim=env.n_stimulus,
     )
-    stereo_prop.apply_distance_attenuation = True
     trainer.prop = stereo_prop
     est_filters, estimation_dict, bin_stim = trainer.evaluate(
         eval_lstn_pos=eval_lstn_pos,
@@ -472,17 +471,21 @@ def sofa_find(source_angle, sofaile):
     return np.argmin(dists)
 
 
-def _left_ear_colouration_spectra_db(
+def _ear_colouration_spectra_db(
     stimulus,
     filters,
     lstn_pos,
     spk_pos,
     ref_hrir,
     sofa_path,
+    ear_idx=0,
     fs=48000,
     n_fft=4096,
 ):
-    """Smoothed left-ear magnitude spectra [dB] for reference and evaluation listeners."""
+    """Smoothed magnitude spectra [dB] for reference and evaluation listeners (ear_idx: 0=left, 1=right)."""
+    if ear_idx not in (0, 1):
+        raise ValueError("ear_idx must be 0 (left) or 1 (right)")
+
     stim_torch = torch.tensor(stimulus, dtype=torch.float32).view(1, 1, -1)
     prop = BinauralFreeFieldPropagation(
         fs=fs,
@@ -494,25 +497,35 @@ def _left_ear_colouration_spectra_db(
     filters_torch = torch.tensor(filters, dtype=torch.float32).unsqueeze(0)
     listener_idx = torch.arange(len(lstn_pos))
     bin_stim = prop(stim_torch, filters_torch, listener_idx).numpy()
+    if bin_stim.ndim == 4:
+        bin_stim = bin_stim[0]
 
     freq = np.fft.rfftfreq(n=n_fft, d=1 / fs)
     bin_stim_fft = 20 * np.log10(
         np.abs(np.fft.rfft(bin_stim, n=n_fft, axis=-1)) + 1e-12
-    ).squeeze()
+    )
 
-    ref_stim = causal_conv1d(stimulus, ref_hrir[0])
+    ref_stim = causal_conv1d(stimulus, ref_hrir[ear_idx])
     ref_fft = 20 * np.log10(np.abs(np.fft.rfft(ref_stim, n=n_fft)) + 1e-12)
 
     ref_fft_s = smooth_third_octave(freq, ref_fft)
     n_listeners = len(lstn_pos)
     bin_fft_s = np.zeros((n_listeners, len(freq)), dtype=float)
     for j in range(n_listeners):
-        bin_fft_s[j] = smooth_third_octave(freq, bin_stim_fft[j, 0, :])
+        bin_fft_s[j] = smooth_third_octave(freq, bin_stim_fft[j, ear_idx, :])
 
     return freq, ref_fft_s, bin_fft_s
 
 
-def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos, row_titles=None):
+def DAFx2026_fig5_plots(
+    run_folders,
+    lstn_pos,
+    spk_pos,
+    row_titles=None,
+    ear_idx=0,
+    output_pdf="DAFx2026_fig5.pdf",
+    show=True,
+):
 
     repo_root = Path(__file__).resolve().parent
     sofa_path = str(repo_root / "data" / "impulses" / "SOFA" / "D1_48K_24bit_256tap_FIR_SOFA.sofa")
@@ -571,13 +584,14 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos, row_titles=None):
         filters = np.load(filters_path)
         filters = filters * 0.9 / np.max(np.abs(filters))
         stimulus = np.load(stimulus_path)
-        freq, ref_fft_s, bin_fft_s = _left_ear_colouration_spectra_db(
+        freq, ref_fft_s, bin_fft_s = _ear_colouration_spectra_db(
             stimulus=stimulus,
             filters=filters,
             lstn_pos=lstn_pos,
             spk_pos=spk_pos,
             ref_hrir=ref_hrir,
             sofa_path=sofa_path,
+            ear_idx=ear_idx,
         )
         mag_db_values.append(ref_fft_s[freq_plot_start:])
         for j in range(len(lstn_pos)):
@@ -658,13 +672,14 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos, row_titles=None):
                 stimulus_path = os.path.join(folder_name, "artifacts", "stimulus.npy")
                 stimulus = np.load(stimulus_path)
 
-                freq, ref_fft_s, bin_fft_s = _left_ear_colouration_spectra_db(
+                freq, ref_fft_s, bin_fft_s = _ear_colouration_spectra_db(
                     stimulus=stimulus,
                     filters=filters,
                     lstn_pos=lstn_pos,
                     spk_pos=spk_pos,
                     ref_hrir=ref_hrir,
                     sofa_path=sofa_path,
+                    ear_idx=ear_idx,
                 )
 
                 for j in range(len(lstn_pos)):
@@ -720,17 +735,63 @@ def DAFx2026_fig5_plots(run_folders, lstn_pos, spk_pos, row_titles=None):
     cbar = fig.colorbar(sm, cax=cbar_ax, orientation="horizontal")
     cbar.ax.tick_params(labelsize=fontsize)
     cbar.ax.set_xlabel("LSD [dB] (lower the better)", fontsize=fontsize, labelpad=5)
-    plt.savefig("DAFx2026_fig5.pdf", format="pdf", bbox_inches="tight", pad_inches=0.38)
-    plt.show()
+    repo_root = Path(__file__).resolve().parent
+    out_path = repo_root / output_pdf if not os.path.isabs(output_pdf) else Path(output_pdf)
+    plt.savefig(out_path, format="pdf", bbox_inches="tight", pad_inches=0.38)
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+    return out_path
+
+
+def regenerate_fig5_from_latest_runs(
+    results_dir=None,
+    ear_idx=0,
+    output_pdf=None,
+    show=False,
+):
+    """Rebuild a fig. 5 PDF from the four most recent rendering result folders."""
+    if output_pdf is None:
+        output_pdf = "DAFx2026_fig5_left_ear.pdf" if ear_idx == 0 else "DAFx2026_fig5_right_ear.pdf"
+
+    repo_root = Path(__file__).resolve().parent
+    results_dir = Path(results_dir) if results_dir is not None else repo_root / "results"
+    run_dirs = sorted(
+        results_dir.glob("DAFx2026_fig_rendering_*"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if len(run_dirs) < 4:
+        raise FileNotFoundError(f"Need at least 4 result folders in {results_dir}")
+
+    folders = list(reversed(run_dirs[:4]))
+    cfg0 = json.loads((folders[0] / "config.json").read_text(encoding="utf-8"))
+    spk_pos = np.asarray(cfg0["main"]["spk_pos"], dtype=float)
+    lstn_pos = np.array([[0.0, 0.0], [0.0, 0.275], [0.0, -0.275]], dtype=float)
+    row_titles = []
+    for folder in folders:
+        cfg = json.loads((folder / "config.json").read_text(encoding="utf-8"))
+        row_titles.append(cfg.get("main", {}).get("plot_row_title", cfg.get("run_name", folder.name)))
+
+    return DAFx2026_fig5_plots(
+        folders,
+        lstn_pos,
+        spk_pos,
+        row_titles=row_titles,
+        ear_idx=ear_idx,
+        output_pdf=output_pdf,
+        show=show,
+    )
 
     
 
 if __name__ == "__main__":
-    regularisation_weight = 1e-1
-    regularisation_weight_incl_colouration = 1e-1
+    regularisation_weight = 1e-0
+    regularisation_weight_incl_colouration = 1e-0
     run_dir_loc_init_2_r_2, _, _, title_loc, analysis_loc = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
+            "localisation": ListenerBasedLoss(model=loc_model, weight=1e2, device=device, dtype=dtype),
             "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight),
             "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=regularisation_weight),
         },
@@ -740,7 +801,7 @@ if __name__ == "__main__":
 
     run_dir_unc_init_2_r_2, _, _, title_unc, analysis_unc = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "uncertainty": ListenerBasedLoss(model=unc_model, weight=1e-2, device=device, dtype=dtype),
+            "uncertainty": ListenerBasedLoss(model=unc_model, weight=1e-1, device=device, dtype=dtype),
             "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight),
             "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=regularisation_weight),
         },
@@ -750,7 +811,7 @@ if __name__ == "__main__":
 
     run_dir_col_init_2_r_2, _, _, title_col, analysis_col = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "colouration": ListenerBasedLoss(model=col_model, weight=1e-0, device=device, dtype=dtype),
+            "colouration": ListenerBasedLoss(model=col_model, weight=1e-2, device=device, dtype=dtype),
             "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight_incl_colouration),
             "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=regularisation_weight_incl_colouration),
         },
@@ -760,9 +821,9 @@ if __name__ == "__main__":
 
     run_dir_loc_unc_col_init_2_r_2, lstn_pos, spk_pos, title_all, analysis_all = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e1, device=device, dtype=dtype),
+            "localisation": ListenerBasedLoss(model=loc_model, weight=2e2, device=device, dtype=dtype),
             "uncertainty": ListenerBasedLoss(model=unc_model, weight=1e-2, device=device, dtype=dtype),
-            "colouration": ListenerBasedLoss(model=col_model, weight=1e-0, device=device, dtype=dtype),
+            "colouration": ListenerBasedLoss(model=col_model, weight=5e-2, device=device, dtype=dtype),
             "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight_incl_colouration),
             "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=regularisation_weight_incl_colouration),
         },
@@ -777,7 +838,11 @@ if __name__ == "__main__":
 
     print_cross_run_analysis([analysis_loc, analysis_unc, analysis_col, analysis_all])
 
-    DAFx2026_fig5_plots(folders, np.array(lstn_pos), np.array(spk_pos), row_titles=[title_loc, title_unc, title_col, title_all])
+    row_titles = [title_loc, title_unc, title_col, title_all]
+    lstn_pos_arr = np.array(lstn_pos)
+    spk_pos_arr = np.array(spk_pos)
+    DAFx2026_fig5_plots(folders, lstn_pos_arr, spk_pos_arr, row_titles=row_titles, ear_idx=0, output_pdf="DAFx2026_fig5_left_ear.pdf")
+    DAFx2026_fig5_plots(folders, lstn_pos_arr, spk_pos_arr, row_titles=row_titles, ear_idx=1, output_pdf="DAFx2026_fig5_right_ear.pdf", show=False)
 
 
 
