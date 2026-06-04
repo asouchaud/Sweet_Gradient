@@ -129,7 +129,8 @@ class spectral_matching(nn.Module):
         sq_err = (log_X - log_Y) ** 2
         if self.erb_weighting:
             weights = self.freq_bin_weights.view(1, 1, -1)
-            mean_sq = torch.sum(sq_err * weights, dim=-1)
+            m = sq_err.shape[-1]
+            mean_sq = torch.sum(sq_err * weights, dim=-1) / m
         else:
             mean_sq = torch.mean(sq_err, dim=-1)
 

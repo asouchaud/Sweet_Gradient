@@ -74,10 +74,15 @@ def gtfb_center_frequencies(gtfb, fs, n_fft):
 
 
 def erb_frequency_bin_weights(fft_frequencies, eps=1e-12):
-    """Per-FFT-bin ERB weights: (1/ERB) / max(1/ERB) with ERB = 0.108 * freq + 24.7."""
+    """Per-FFT-bin ERB weights with sum(weights) == M (number of bins).
+
+    Relative shape is (1/ERB) / max(1/ERB); ERB = 0.108 * freq + 24.7.
+    """
     erb = 0.108 * fft_frequencies + 24.7
     inv_erb = 1.0 / erb.clamp(min=eps)
-    return inv_erb / inv_erb.max()
+    w = inv_erb / inv_erb.max()
+    m = w.numel()
+    return w * (m / w.sum())
 
 
 def compute_reference_bin(reference_stim, reference_hrirs, listener_indices):
