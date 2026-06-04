@@ -3019,8 +3019,8 @@
 #         right_gain = torch.sqrt(1/(1+ 10**(ICLD[i]/10)))
 #         left_gain = right_gain*10**(ICLD[i]/20)
 
-#         left_filter = left_gain * apply_delay_freq(base_filter, ICTD[j], fs)
-#         right_filter = right_gain * base_filter
+#         left_filter = left_gain * base_filter
+#         right_filter = right_gain * apply_delay_freq(base_filter, ICTD[j], fs)
 
 #         filters = torch.cat((left_filter, right_filter), dim = 1)
 
@@ -3076,7 +3076,7 @@
 #     for ax in axes[:n_bands]:
 #         ax.label_outer()
 
-#     fig.supxlabel("Applied ICTD [ms] (+ delay left spk.)")
+#     fig.supxlabel("Applied ICTD [ms] (+ left leads)")
 #     fig.supylabel("Applied ICLD [dB] (+ louder left spk.)")
 #     fig.colorbar(last_im, ax=axes[:n_bands], shrink=0.85, pad=0.02, label=cbar_label)
 #     fig.suptitle(title, fontsize=12)
@@ -3187,11 +3187,11 @@ icld_zero_idx = int(np.argmin(np.abs(icld_vals)))
 
 
 def build_panning_filters(icld_db, ictd_s):
-    """ictd_s [s]: positive ICTD delays the left loudspeaker (exp(-j2πf·ictd_s))."""
+    """icld_db: + = louder left spk.; ictd_s [s]: + = left leads (delay on right spk.)."""
     right_gain = torch.sqrt(1 / (1 + 10 ** (icld_db / 10)))
     left_gain = right_gain * 10 ** (icld_db / 20)
-    left_filter = left_gain * apply_delay_freq(base_filter, ictd_s, fs)
-    right_filter = right_gain * base_filter
+    left_filter = left_gain * base_filter
+    right_filter = right_gain * apply_delay_freq(base_filter, ictd_s, fs)
     return torch.cat((left_filter, right_filter), dim=1)
 
 
@@ -3279,7 +3279,7 @@ plot_distance_band_grid(
 plot_distance_band_grid(
     dist_combined_ictd,
     ictd_vals_ms,
-    "Applied ICTD [ms] (+ delay left spk.)",
+    "Applied ICTD [ms] (+ left leads)",
     "Template distance (combined) — ICTD sweep, ICLD = 0",
     "distance['combined']",
 )
@@ -3294,7 +3294,7 @@ plot_distance_band_grid(
 plot_distance_band_grid(
     dist_itd_ictd,
     ictd_vals_ms,
-    "Applied ICTD [ms] (+ delay left spk.)",
+    "Applied ICTD [ms] (+ left leads)",
     "Template distance (ITD) — ICTD sweep, ICLD = 0",
     "distance['itd']",
     cmap="viridis",
@@ -3310,7 +3310,7 @@ plot_distance_band_grid(
 plot_distance_band_grid(
     dist_ild_ictd,
     ictd_vals_ms,
-    "Applied ICTD [ms] (+ delay left spk.)",
+    "Applied ICTD [ms] (+ left leads)",
     "Template distance (ILD) — ICTD sweep, ICLD = 0",
     "distance['ild']",
     cmap="plasma",
