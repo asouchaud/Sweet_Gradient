@@ -3031,7 +3031,7 @@
 #         saved_ild[i,j] = interauralcues['ild'][0,0]
 #         saved_itd[i,j] = interauralcues['itd'][0,0]
 
-# saved_ild = -saved_ild.detach().numpy()  # left − right: positive = louder left ear
+# saved_ild = saved_ild.detach().numpy()  # positive = louder left ear (estimate_interauralcues)
 # saved_itd = saved_itd.detach().numpy() * 1e3  # convert to ms; positive = left leads
 
 # icld_vals = np.arange(-20, 21, 1)

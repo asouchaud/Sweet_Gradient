@@ -10,7 +10,11 @@ from scripts.helpers.dsp import causal_conv1d
 
 
 def estimate_interauralcues(bin_stim,fs,gtfb, tau_IACC=0.01):
-    
+    """Estimate band-wise ITD [s] and ILD [dB] from binaural stimuli.
+
+    Sign convention: positive ITD/ILD means the left ear leads (earlier or louder);
+    negative means the right ear leads.
+    """
     # bin_stim.shape = (batch_size, n_listners, left/right ear, signal_len)
     # gtfb.shape = (n_banks, 1, n_filter_taps) (1 for F.conv1d)
 
@@ -76,10 +80,10 @@ def estimate_interauralcues(bin_stim,fs,gtfb, tau_IACC=0.01):
     iaccFuncts = iaccFuncts.view(batch_size, N_lstn_pos, N_banks, -1)
 
     # ITD/ILD Estimation
-    itd = torch.sum(torch.mul(softmax_st(iaccFuncts, dim=-1, tau=tau_IACC), lagValues), dim=-1) # Softmax straight-through estimator
+    itd = -torch.sum(torch.mul(softmax_st(iaccFuncts, dim=-1, tau=tau_IACC), lagValues), dim=-1) # Softmax straight-through estimator; + = left leads
     # itd = torch.sum(torch.mul(torch.softmax(iaccFuncts/tau_IACC, dim=-1), lagValues), dim=-1) # Basic Softmax
-    ild = (20 * torch.log10(torch.sqrt(torch.sum(gtfbout_right ** 2, dim=-1) + 1e-12)) - 
-           20 * torch.log10(torch.sqrt(torch.sum(gtfbout_left ** 2, dim=-1) + 1e-12)))
+    ild = (20 * torch.log10(torch.sqrt(torch.sum(gtfbout_left ** 2, dim=-1) + 1e-12)) -
+           20 * torch.log10(torch.sqrt(torch.sum(gtfbout_right ** 2, dim=-1) + 1e-12)))
     
     # Format for desena2020_distance_torch
     itd = itd.reshape(batch_size, N_lstn_pos, N_banks)

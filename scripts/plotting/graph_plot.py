@@ -467,12 +467,12 @@ def plot_bin_cues(bin_stim, fs, gtfb, show = True):
                 bbox=dict(boxstyle='round,pad=0.20', facecolor='white', alpha=0.75, edgecolor='none'),
             )
             if i % cols == 0:
-                ax.set_ylabel('ILD [dB]')
+                ax.set_ylabel('ILD [dB] (+ left louder)')
                 ax.tick_params(axis='y', which='both', left=True, labelleft=True)
             else:
                 ax.tick_params(axis='y', which='both', left=False, labelleft=False)
             if i // cols == rows-1:
-                ax.set_xlabel('ITD [ms]')
+                ax.set_xlabel('ITD [ms] (+ left leads)')
                 ax.tick_params(axis='x', which='both', bottom=True, labelbottom=True)
             else:
                 ax.tick_params(axis='x', which='both', bottom=False, labelbottom=False)

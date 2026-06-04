@@ -1,5 +1,6 @@
 import torch
 
+# Target/template ITD and ILD use the left-leads-positive convention from estimate_interauralcues.
 USED_BAND_SLICE = slice(None)
 
 def itd_ild_template_distance(target,template):
