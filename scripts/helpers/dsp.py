@@ -73,13 +73,11 @@ def gtfb_center_frequencies(gtfb, fs, n_fft):
     return fft_freqs[torch.argmax(magnitude, dim=-1)]
 
 
-def erb_frequency_bin_weights(center_frequencies, fft_frequencies, eps=1e-12):
-    """Per-FFT-bin weights inversely proportional to the nearest GTFB center frequency."""
-    dist = torch.abs(fft_frequencies.unsqueeze(-1) - center_frequencies.unsqueeze(0))
-    band_idx = torch.argmin(dist, dim=-1)
-    band_weights = 1.0 / center_frequencies.clamp(min=eps)
-    bin_weights = band_weights[band_idx]
-    return bin_weights / bin_weights.sum()
+def erb_frequency_bin_weights(fft_frequencies, eps=1e-12):
+    """Per-FFT-bin ERB weights: (1/ERB) / max(1/ERB) with ERB = 0.108 * freq + 24.7."""
+    erb = 0.108 * fft_frequencies + 24.7
+    inv_erb = 1.0 / erb.clamp(min=eps)
+    return inv_erb / inv_erb.max()
 
 
 def compute_reference_bin(reference_stim, reference_hrirs, listener_indices):

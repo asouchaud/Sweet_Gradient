@@ -7,12 +7,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchaudio.functional as TF
 
-from scripts.helpers.miscelaneous import pos2angle, sofa_find, get_IRs, set_target, load_gtfb
+from scripts.helpers.miscelaneous import pos2angle, sofa_find, get_IRs, set_target
 from scripts.helpers.dsp import (
     causal_conv1d,
     compute_reference_bin,
     erb_frequency_bin_weights,
-    gtfb_center_frequencies,
 )
 
 
@@ -41,10 +40,8 @@ class spectral_matching(nn.Module):
             raise ValueError("target_pos must contain exactly two coordinates.")
 
         if self.erb_weighting:
-            gtfb = load_gtfb(fs, device, dtype)
-            center_frequencies = gtfb_center_frequencies(gtfb, fs, n_fft)
             fft_frequencies = torch.fft.rfftfreq(n_fft, d=1.0 / float(fs)).to(device=device, dtype=dtype)
-            freq_bin_weights = erb_frequency_bin_weights(center_frequencies, fft_frequencies)
+            freq_bin_weights = erb_frequency_bin_weights(fft_frequencies)
             self.register_buffer("freq_bin_weights", freq_bin_weights)
         else:
             self.register_buffer("freq_bin_weights", None)
