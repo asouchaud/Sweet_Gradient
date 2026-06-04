@@ -144,70 +144,69 @@
 
 ## ============================= VARIANCE OF LOCALISATION MODEL TEST ============================== ##
 
-import torch
-from pathlib import Path
-from scripts.setup.setup import load_hrirs
-from scripts.setup.setup import load_gtfb
-from scripts.perceptual_models.llado2025.llado2025 import llado2025
-from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagation
+# import torch
+# from pathlib import Path
+# from scripts.setup.setup import load_hrirs
+# from scripts.setup.setup import load_gtfb
+# from scripts.perceptual_models.llado2025.llado2025 import llado2025
+# from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagation
 
 
-fs = 48000
-dtype = torch.float64
-device = 'cpu'
+# fs = 48000
+# dtype = torch.float64
+# device = 'cpu'
 
-# Loudspkeaker and listener positions
-lstn_pos = torch.tensor([[0.0, 0.0]], device=device, dtype=dtype)
-spk_pos = torch.tensor([[1,1]], device=device, dtype=dtype)
+# # Loudspkeaker and listener positions
+# lstn_pos = torch.tensor([[0.0, 0.0]], device=device, dtype=dtype)
+# spk_pos = torch.tensor([[1,1]], device=device, dtype=dtype)
 
-repo_root = Path(__file__).resolve().parent
-default_sofa_path = repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"
+# repo_root = Path(__file__).resolve().parent
+# default_sofa_path = repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"
 
-prop = BinauralFreeFieldPropagation(fs=fs, 
-                                    lstn_pos=lstn_pos, 
-                                    spk_pos=spk_pos, 
-                                    sofa_file_path=default_sofa_path, 
-                                    device=device, 
-                                    dtype=dtype
-                                    )
+# prop = BinauralFreeFieldPropagation(fs=fs, 
+#                                     lstn_pos=lstn_pos, 
+#                                     spk_pos=spk_pos, 
+#                                     sofa_file_path=default_sofa_path, 
+#                                     device=device, 
+#                                     dtype=dtype
+#                                     )
 
-loc_model = llado2025(loss=torch.nn.MSELoss(), 
-                        target_pos=torch.tensor([0.0]), 
-                        fs=fs,
-                        sofa_path=default_sofa_path,
-                        lstn_pos=lstn_pos,
-                        spk_pos=spk_pos,
-                        device=device, 
-                        dtype=dtype
-                        )
+# loc_model = llado2025(loss=torch.nn.MSELoss(), 
+#                         target_pos=torch.tensor([0.0]), 
+#                         fs=fs,
+#                         sofa_path=default_sofa_path,
+#                         lstn_pos=lstn_pos,
+#                         spk_pos=spk_pos,
+#                         device=device, 
+#                         dtype=dtype
+#                         )
 
-n_iter = 30
+# n_iter = 30
 
-save = torch.zeros(n_iter, device=device, dtype=dtype)
+# save = torch.zeros(n_iter, device=device, dtype=dtype)
 
-# stim = torch.randn(n_iter, 1, int(0.01*fs), device=device, dtype=dtype)
+# stim = torch.randn(n_iter, 1, int(0.5*fs), device=device, dtype=dtype)
 
-# stim = torch.randn(n_iter, 1, int(0.01*fs), device=device, dtype=dtype)
-# stim = torch.cat([stim, 2*stim], dim=1)
+# # stim = torch.randn(n_iter, 1, int(0.01*fs), device=device, dtype=dtype)
+# # stim = torch.cat([stim, 2*stim], dim=1)
 
-stim = torch.zeros(n_iter, 1, int(0.01*fs), device=device, dtype=dtype)
-stim[:,0,0] = 1
+# # stim = torch.zeros(n_iter, 1, int(0.01*fs), device=device, dtype=dtype)
+# # stim[:,0,0] = 1
 
-filters = torch.zeros(1, 1, 256, device=device, dtype=dtype)
-filters[0,0,0] = 1
+# filters = torch.zeros(1, 1, 256, device=device, dtype=dtype)
+# filters[0,0,0] = 1
 
 
-for i in range(n_iter):
+# for i in range(n_iter):
 
-    bin_stim = prop(stim[i:i+1,:,:], filters)
-    perc_loc = loc_model(bin_stim)
+#     bin_stim = prop(stim[i:i+1,:,:], filters)
+#     perc_loc = loc_model(bin_stim)
 
-    save[i] = perc_loc.squeeze()
+#     save[i] = perc_loc.squeeze()
 
-print("Localisation values:", save)
-print("Mean over random noise stimuli:", torch.mean(save, dim=0))
-print("Standard deviation over random noise stimuli:", torch.std(save, dim=0))
-
+# print("Localisation values:", save)
+# print("Mean over random noise stimuli:", torch.mean(save, dim=0))
+# print("Standard deviation over random noise stimuli:", torch.std(save, dim=0))
 
 ## =================================== MATLAB BINAURAL STIMULUS LOCALISATION COMPARISON TEST =================================== ##
 
@@ -454,7 +453,7 @@ print("Standard deviation over random noise stimuli:", torch.std(save, dim=0))
 #          distance * np.cos(theta),
 #          0
 #     ])
-    
+
 #     right_spk = np.array([
 #          distance * np.sin(theta),
 #          distance * np.cos(theta),
@@ -2950,101 +2949,286 @@ print("Standard deviation over random noise stimuli:", torch.std(save, dim=0))
 
 # ## ==================================== GRID SEARCH ICLD/ICTD EFFECT ON ILD/ITD ====================== ##
 
+# from pathlib import Path
+
+# import matplotlib.pyplot as plt
+# import numpy as np
+# import sofar as sf
+# import torch
+# from matplotlib import animation
+# import matplotlib.pyplot as plt
+
+# from scripts.helpers.peripheral_processing import estimate_interauralcues
+# from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagation
+# from scripts.setup.setup import load_gtfb
+
+# device = 'cpu'
+# dtype = torch.float64
+# fs = 48000
+
+# lstn_pos = torch.tensor([[0.0, 0.0]], device = device, dtype = dtype)
+# base_angle_rad = np.deg2rad(30.0)
+# speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
+# spk_pos = [
+#     [speaker_distance * np.cos(base_angle_rad), speaker_distance * np.sin(base_angle_rad)],
+#     [speaker_distance * np.cos(base_angle_rad), -speaker_distance * np.sin(base_angle_rad)],
+# ]
+# spk_pos = torch.tensor(spk_pos, device = device, dtype = dtype)
+# n_sources = len(spk_pos)
+
+# repo_root = Path(__file__).resolve().parent
+# sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
+# gtfb = load_gtfb(fs, device = device, dtype = dtype)
+
+# stereo_prop = BinauralFreeFieldPropagation(fs=fs, lstn_pos=lstn_pos, spk_pos=spk_pos, sofa_file_path=sofa_path, device=device, dtype=dtype) 
+
+# ICLD = torch.arange(-20,21,1, device = device, dtype = dtype)
+# ICTD = torch.arange(-1,1.1, 0.1, device = device, dtype = dtype)*0.001
+
+# stim = torch.randn(fs, device = device, dtype = dtype)
+# stim = torch.cat((torch.zeros(48, device= device, dtype = dtype), 
+#                 stim,
+#                 torch.zeros(48, device= device, dtype = dtype))).view(1,1,-1)
+
+# base_filter = torch.zeros(97, device = device, dtype = dtype).view(1,1,-1)
+# base_filter[0,0,48] = 1.0
+
+# def apply_delay_freq(x, delay_seconds, fs_hz, n_fft=None):
+#     """
+#     Differentiable delay in frequency domain.
+#     x shape: (..., T), delay_samples: scalar tensor or shape (1,)
+#     """
+#     if n_fft is None:
+#         n_fft = x.shape[-1]
+
+#     X = torch.fft.rfft(x, n=n_fft, dim=-1)
+#     freqs = torch.fft.rfftfreq(n_fft, d=1.0 / fs_hz).to(device=x.device, dtype=x.dtype)
+
+#     phase = -2.0 * torch.pi * freqs * delay_seconds
+#     H = torch.exp(1j * phase).reshape((1,) * (x.ndim - 1) + (-1,))
+
+#     y = torch.fft.irfft(X * H, n=n_fft, dim=-1)
+#     return y[..., : x.shape[-1]]
+
+# saved_ild = torch.zeros(len(ICLD), len(ICTD), len(gtfb))
+# saved_itd = torch.zeros(len(ICLD), len(ICTD), len(gtfb))
+
+# for i in range(len(ICLD)):
+#     for j in range(len(ICTD)):
+
+#         right_gain = torch.sqrt(1/(1+ 10**(ICLD[i]/10)))
+#         left_gain = right_gain*10**(ICLD[i]/20)
+
+#         left_filter = left_gain * apply_delay_freq(base_filter, ICTD[j], fs)
+#         right_filter = right_gain * base_filter
+
+#         filters = torch.cat((left_filter, right_filter), dim = 1)
+
+#         bin_stim = stereo_prop(stim, filters, torch.tensor([0], device = device, dtype = torch.long))
+
+#         interauralcues = estimate_interauralcues(bin_stim, fs, gtfb)
+
+#         saved_ild[i,j] = interauralcues['ild'][0,0]
+#         saved_itd[i,j] = interauralcues['itd'][0,0]
+
+# saved_ild = -saved_ild.detach().numpy()  # left − right: positive = louder left ear
+# saved_itd = saved_itd.detach().numpy() * 1e3  # convert to ms; positive = left leads
+
+# icld_vals = np.arange(-20, 21, 1)
+# ictd_vals_ms = np.arange(-1, 1.1, 0.1)
+# extent = [ictd_vals_ms[0], ictd_vals_ms[-1], icld_vals[0], icld_vals[-1]]
+
+# n_bands = saved_ild.shape[2]
+# n_cols = 4
+# n_rows = int(np.ceil(n_bands / n_cols))
+
+
+# def plot_cue_grid(data, title, cbar_label, cmap="viridis"):
+#     fig, axes = plt.subplots(
+#         n_rows,
+#         n_cols,
+#         figsize=(n_cols * 3.4, n_rows * 2.8),
+#         sharex=True,
+#         sharey=True,
+#         constrained_layout=True,
+#     )
+#     axes = np.atleast_1d(axes).ravel()
+
+#     vmin, vmax = np.min(data), np.max(data)
+#     last_im = None
+
+#     for band_idx, ax in enumerate(axes):
+#         if band_idx >= n_bands:
+#             ax.set_visible(False)
+#             continue
+
+#         last_im = ax.imshow(
+#             data[:, :, band_idx],
+#             origin="lower",
+#             aspect="auto",
+#             extent=extent,
+#             vmin=vmin,
+#             vmax=vmax,
+#             cmap=cmap,
+#         )
+#         ax.set_title(f"Band {band_idx + 1}", fontsize=9)
+
+#     for ax in axes[:n_bands]:
+#         ax.label_outer()
+
+#     fig.supxlabel("Applied ICTD [ms] (+ delay left spk.)")
+#     fig.supylabel("Applied ICLD [dB] (+ louder left spk.)")
+#     fig.colorbar(last_im, ax=axes[:n_bands], shrink=0.85, pad=0.02, label=cbar_label)
+#     fig.suptitle(title, fontsize=12)
+#     return fig
+
+
+# plot_cue_grid(saved_ild, "Estimated ILD across ICLD/ICTD grid", "Estimated ILD [dB] (left − right)")
+# plot_cue_grid(saved_itd, "Estimated ITD across ICLD/ICTD grid", "Estimated ITD [ms] (left leads +)", cmap="magma")
+
+# plt.show()
+
+
+## ================= TEMPLATE DISTANCE vs ICLD / ICTD (per band) ================= ##
+
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import sofar as sf
 import torch
-from matplotlib import animation
-import matplotlib.pyplot as plt
 
 from scripts.helpers.peripheral_processing import estimate_interauralcues
+from scripts.helpers.template_comparison import itd_ild_template_distance
 from scripts.propagation.free_field_propagation import BinauralFreeFieldPropagation
-from scripts.setup.setup import load_gtfb
+from scripts.setup.setup import load_gtfb, load_hrirs, load_template
 
-device = 'cpu'
+device = "cpu"
 dtype = torch.float64
-fs = 48000
-
-lstn_pos = torch.tensor([[0.0, 0.0]], device = device, dtype = dtype)
-base_angle_rad = np.deg2rad(30.0)
-speaker_distance = 2.0  # Distance from each loudspeaker to the reference-system center (0, 0)
-spk_pos = [
-    [speaker_distance * np.cos(base_angle_rad), speaker_distance * np.sin(base_angle_rad)],
-    [speaker_distance * np.cos(base_angle_rad), -speaker_distance * np.sin(base_angle_rad)],
-]
-spk_pos = torch.tensor(spk_pos, device = device, dtype = dtype)
-n_sources = len(spk_pos)
+fs = 48_000
+TAU_IACC = 1e-2
 
 repo_root = Path(__file__).resolve().parent
-sofa_path=str(repo_root / "data" / "impulses" / "SOFA" / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa")
-gtfb = load_gtfb(fs, device = device, dtype = dtype)
+sofa_path = str(
+    repo_root
+    / "data"
+    / "impulses"
+    / "SOFA"
+    / "SYMMETRIC_D1_48K_24bit_256tap_FIR_SOFA.sofa"
+)
+sofa_idx_path = repo_root / "data" / "impulses" / "SOFA" / "D1_48k_hrirs_idx.csv"
 
-stereo_prop = BinauralFreeFieldPropagation(fs=fs, lstn_pos=lstn_pos, spk_pos=spk_pos, sofa_file_path=sofa_path, device=device, dtype=dtype) 
+lstn_pos = torch.tensor([[0.0, 0.0]], device=device, dtype=dtype)
+base_angle_rad = np.deg2rad(30.0)
+speaker_distance = 2.0
+spk_pos = torch.tensor(
+    [
+        [
+            speaker_distance * np.cos(base_angle_rad),
+            speaker_distance * np.sin(base_angle_rad),
+        ],
+        [
+            speaker_distance * np.cos(base_angle_rad),
+            -speaker_distance * np.sin(base_angle_rad),
+        ],
+    ],
+    device=device,
+    dtype=dtype,
+)
 
-ICLD = torch.arange(-20,21,1, device = device, dtype = dtype)
-ICTD = torch.arange(-1,1.1, 0.1, device = device, dtype = dtype)*0.001
+gtfb = load_gtfb(fs, device=device, dtype=dtype)
+hrirs = load_hrirs(dtype, device, sofa_path=sofa_path, idx_path=sofa_idx_path)
+template = load_template(hrirs, gtfb, fs, device, dtype)
+template_az_deg = template["azimuths"].squeeze(-1).detach().cpu().numpy()
+n_azimuths = len(template_az_deg)
+n_bands = 24
 
-stim = torch.randn(480, device = device, dtype = dtype)
-stim = torch.cat((torch.zeros(48, device= device, dtype = dtype), 
-                stim,
-                torch.zeros(48, device= device, dtype = dtype))).view(1,1,-1)
+stereo_prop = BinauralFreeFieldPropagation(
+    fs=fs,
+    lstn_pos=lstn_pos,
+    spk_pos=spk_pos,
+    sofa_file_path=sofa_path,
+    device=device,
+    dtype=dtype,
+)
 
-base_filter = torch.zeros(97, device = device, dtype = dtype).view(1,1,-1)
-base_filter[0,0,48] = 1.0
+ICLD = torch.arange(-20, 21, 1, device=device, dtype=dtype)
+ICTD = torch.arange(-1, 1.1, 0.1, device=device, dtype=dtype) * 0.001
+
+base_filter = torch.zeros(97, device=device, dtype=dtype).view(1, 1, -1)
+base_filter[0, 0, 48] = 1.0
+
 
 def apply_delay_freq(x, delay_seconds, fs_hz, n_fft=None):
-    """
-    Differentiable delay in frequency domain.
-    x shape: (..., T), delay_samples: scalar tensor or shape (1,)
-    """
     if n_fft is None:
         n_fft = x.shape[-1]
-
     X = torch.fft.rfft(x, n=n_fft, dim=-1)
     freqs = torch.fft.rfftfreq(n_fft, d=1.0 / fs_hz).to(device=x.device, dtype=x.dtype)
-
     phase = -2.0 * torch.pi * freqs * delay_seconds
     H = torch.exp(1j * phase).reshape((1,) * (x.ndim - 1) + (-1,))
-
     y = torch.fft.irfft(X * H, n=n_fft, dim=-1)
     return y[..., : x.shape[-1]]
 
-saved_ild = torch.zeros(len(ICLD), len(ICTD), len(gtfb))
-saved_itd = torch.zeros(len(ICLD), len(ICTD), len(gtfb))
 
-for i in range(len(ICLD)):
-    for j in range(len(ICTD)):
+torch.manual_seed(0)
+stim = torch.randn(int(0.1*fs), device=device, dtype=dtype)
+stim = torch.cat(
+    (
+        torch.zeros(48, device=device, dtype=dtype),
+        stim,
+        torch.zeros(48, device=device, dtype=dtype),
+    )
+).view(1, 1, -1)
 
-        right_gain = torch.sqrt(1/(1+ 10**(ICLD[i]/10)))
-        left_gain = right_gain*10**(ICLD[i]/20)
-
-        left_filter = left_gain * apply_delay_freq(base_filter, -ICTD[j], fs)
-        right_filter = right_gain * base_filter
-
-        filters = torch.cat((left_filter, right_filter), dim = 1)
-
-        bin_stim = stereo_prop(stim, filters, torch.tensor([0], device = device, dtype = torch.long))
-
-        interauralcues = estimate_interauralcues(bin_stim, fs, gtfb)
-
-        saved_ild[i,j] = interauralcues['ild'][0,0]
-        saved_itd[i,j] = interauralcues['itd'][0,0]
-
-saved_ild = -saved_ild.detach().numpy()  # left − right: positive = louder left ear
-saved_itd = saved_itd.detach().numpy() * 1e3  # convert to ms; positive = left leads
-
+listener_idx = torch.tensor([0], device=device, dtype=torch.long)
 icld_vals = np.arange(-20, 21, 1)
 ictd_vals_ms = np.arange(-1, 1.1, 0.1)
-extent = [ictd_vals_ms[0], ictd_vals_ms[-1], icld_vals[0], icld_vals[-1]]
+ictd_zero_idx = int(np.argmin(np.abs(ictd_vals_ms)))
+icld_zero_idx = int(np.argmin(np.abs(icld_vals)))
 
-n_bands = saved_ild.shape[2]
+
+def build_panning_filters(icld_db, ictd_s):
+    """ictd_s [s]: positive ICTD delays the left loudspeaker (exp(-j2πf·ictd_s))."""
+    right_gain = torch.sqrt(1 / (1 + 10 ** (icld_db / 10)))
+    left_gain = right_gain * 10 ** (icld_db / 20)
+    left_filter = left_gain * apply_delay_freq(base_filter, ictd_s, fs)
+    right_filter = right_gain * base_filter
+    return torch.cat((left_filter, right_filter), dim=1)
+
+
+def render_and_template_distance(icld_db, ictd_s):
+    filters = build_panning_filters(icld_db, ictd_s)
+    bin_stim = stereo_prop(stim, filters, listener_idx)
+    cues = estimate_interauralcues(bin_stim, fs, gtfb, tau_IACC=TAU_IACC)
+    return itd_ild_template_distance(cues, template)
+
+
+dist_combined_icld = np.zeros((len(ICLD), n_azimuths, n_bands))
+dist_itd_icld = np.zeros_like(dist_combined_icld)
+dist_ild_icld = np.zeros_like(dist_combined_icld)
+
+for i in range(len(ICLD)):
+    distance = render_and_template_distance(ICLD[i], ICTD[ictd_zero_idx])
+    dist_combined_icld[i] = distance["combined"][0, 0].detach().cpu().numpy()
+    dist_itd_icld[i] = distance["itd"][0, 0].detach().cpu().numpy()
+    dist_ild_icld[i] = distance["ild"][0, 0].detach().cpu().numpy()
+
+dist_combined_ictd = np.zeros((len(ICTD), n_azimuths, n_bands))
+dist_itd_ictd = np.zeros_like(dist_combined_ictd)
+dist_ild_ictd = np.zeros_like(dist_combined_ictd)
+
+for j in range(len(ICTD)):
+    distance = render_and_template_distance(ICLD[icld_zero_idx], ICTD[j])
+    dist_combined_ictd[j] = distance["combined"][0, 0].detach().cpu().numpy()
+    dist_itd_ictd[j] = distance["itd"][0, 0].detach().cpu().numpy()
+    dist_ild_ictd[j] = distance["ild"][0, 0].detach().cpu().numpy()
+
 n_cols = 4
 n_rows = int(np.ceil(n_bands / n_cols))
 
 
-def plot_cue_grid(data, title, cbar_label, cmap="viridis"):
+def plot_distance_band_grid(data_2d_sweep, x_vals, x_label, metric_title, cbar_label, cmap="magma_r"):
+    """data_2d_sweep: (n_x, n_azimuths, n_bands) -> heatmap x=panning, y=template azimuth."""
+    extent = [x_vals[0], x_vals[-1], template_az_deg[0], template_az_deg[-1]]
     fig, axes = plt.subplots(
         n_rows,
         n_cols,
@@ -3055,7 +3239,7 @@ def plot_cue_grid(data, title, cbar_label, cmap="viridis"):
     )
     axes = np.atleast_1d(axes).ravel()
 
-    vmin, vmax = np.min(data), np.max(data)
+    vmin, vmax = np.min(data_2d_sweep), np.max(data_2d_sweep)
     last_im = None
 
     for band_idx, ax in enumerate(axes):
@@ -3064,7 +3248,7 @@ def plot_cue_grid(data, title, cbar_label, cmap="viridis"):
             continue
 
         last_im = ax.imshow(
-            data[:, :, band_idx],
+            data_2d_sweep[:, :, band_idx].T,
             origin="lower",
             aspect="auto",
             extent=extent,
@@ -3072,20 +3256,65 @@ def plot_cue_grid(data, title, cbar_label, cmap="viridis"):
             vmax=vmax,
             cmap=cmap,
         )
+        ax.axhline(0.0, color="cyan", linestyle="--", linewidth=0.8, alpha=0.7)
         ax.set_title(f"Band {band_idx + 1}", fontsize=9)
 
     for ax in axes[:n_bands]:
         ax.label_outer()
 
-    fig.supxlabel("Applied ICTD [ms] (+ earlier left spk.)")
-    fig.supylabel("Applied ICLD [dB] (+ louder left spk.)")
+    fig.supxlabel(x_label)
+    fig.supylabel("Template azimuth [deg]")
     fig.colorbar(last_im, ax=axes[:n_bands], shrink=0.85, pad=0.02, label=cbar_label)
-    fig.suptitle(title, fontsize=12)
+    fig.suptitle(metric_title, fontsize=12)
     return fig
 
 
-plot_cue_grid(saved_ild, "Estimated ILD across ICLD/ICTD grid", "Estimated ILD [dB] (left − right)")
-plot_cue_grid(saved_itd, "Estimated ITD across ICLD/ICTD grid", "Estimated ITD [ms] (left leads +)", cmap="magma")
+plot_distance_band_grid(
+    dist_combined_icld,
+    icld_vals,
+    "Applied ICLD [dB] (+ louder left spk.)",
+    "Template distance (combined) — ICLD sweep, ICTD = 0",
+    "distance['combined']",
+)
+plot_distance_band_grid(
+    dist_combined_ictd,
+    ictd_vals_ms,
+    "Applied ICTD [ms] (+ delay left spk.)",
+    "Template distance (combined) — ICTD sweep, ICLD = 0",
+    "distance['combined']",
+)
+plot_distance_band_grid(
+    dist_itd_icld,
+    icld_vals,
+    "Applied ICLD [dB] (+ louder left spk.)",
+    "Template distance (ITD) — ICLD sweep, ICTD = 0",
+    "distance['itd']",
+    cmap="viridis",
+)
+plot_distance_band_grid(
+    dist_itd_ictd,
+    ictd_vals_ms,
+    "Applied ICTD [ms] (+ delay left spk.)",
+    "Template distance (ITD) — ICTD sweep, ICLD = 0",
+    "distance['itd']",
+    cmap="viridis",
+)
+plot_distance_band_grid(
+    dist_ild_icld,
+    icld_vals,
+    "Applied ICLD [dB] (+ louder left spk.)",
+    "Template distance (ILD) — ICLD sweep, ICTD = 0",
+    "distance['ild']",
+    cmap="plasma",
+)
+plot_distance_band_grid(
+    dist_ild_ictd,
+    ictd_vals_ms,
+    "Applied ICTD [ms] (+ delay left spk.)",
+    "Template distance (ILD) — ICTD sweep, ICLD = 0",
+    "distance['ild']",
+    cmap="plasma",
+)
 
 plt.show()
 
@@ -3263,3 +3492,39 @@ plt.show()
 
 # sd.stop()
 # pygame.quit()
+
+
+## ============================= SECOND-MOMENT REGULARISATION loss_norm vs N TAPS ============================== ##
+# loss_norm is set in second_moment_regularisation.__init__ from one random filter draw
+# (see scripts/optimisation/regularisation.py). Inspect how it scales with filter length.
+
+# import torch
+# from scripts.optimisation.regularisation import second_moment_regularisation
+
+# dtype = torch.float64
+# device = "cpu"
+# tap_counts = [1, 2, 4, 8, 16, 32, 64, 128, 256]
+# seed = 0
+
+# print(f"{'n_taps':>8}  {'loss_norm':>14}  {'raw_loss(rand)':>16}  {'norm_loss(rand)':>16}")
+# for n_taps in tap_counts:
+#     torch.manual_seed(seed)
+#     reg = second_moment_regularisation(n_samples=n_taps, device=device, dtype=dtype)
+#     torch.manual_seed(seed)
+#     rand_filter = torch.randn(1, 1, n_taps, device=device, dtype=dtype)
+#     raw_loss = reg.compute_loss(rand_filter)
+#     norm_loss = raw_loss / reg.loss_norm
+#     print(
+#         f"{n_taps:8d}  {float(reg.loss_norm):14.6e}  "
+#         f"{float(raw_loss):16.6e}  {float(norm_loss):16.6e}"
+#     )
+
+# # Same seed as __init__: raw_loss should match loss_norm for that tap count.
+# print("\nSanity check (init draw == loss_norm when seed matches):")
+# for n_taps in tap_counts:
+#     torch.manual_seed(seed)
+#     reg = second_moment_regularisation(n_samples=n_taps, device=device, dtype=dtype)
+#     torch.manual_seed(seed)
+#     init_draw_loss = reg.compute_loss(torch.randn(1, 1, n_taps, device=device, dtype=dtype))
+#     print(f"  n_taps={n_taps:3d}: loss_norm={float(reg.loss_norm):.6e}, init_draw={float(init_draw_loss):.6e}")
+
