@@ -276,6 +276,8 @@ class Train:
             }
             ##################################################################
 
+            n_listeners_total = len(self.lstn_loader.dataset)
+
             for stimulus in self.stim_loader:
                 for listener_idx, listener_pos in self.lstn_loader:
                     # Initialize batch loss for listener mini-batch
@@ -294,7 +296,11 @@ class Train:
                     for key, loss_cfg in self.loss_dict.items():
                         # Compute loss and model estimation for the current batch and listener subset
                         loss, estimation = loss_cfg.compute_loss(bin_stim=bin_stim, spk_filters=spk_filters, stim=stimulus, listener_indices=listener_idx)
-                        weighted_loss = loss * loss_cfg.weight
+                        batch_scale = loss_cfg.batch_scale(
+                            listener_indices=listener_idx,
+                            n_listeners=n_listeners_total,
+                        )
+                        weighted_loss = loss * loss_cfg.weight * batch_scale
                         
                         # Accumulate weighted loss for backpropagation
                         batch_full_loss += weighted_loss
