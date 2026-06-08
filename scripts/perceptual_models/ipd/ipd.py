@@ -5,7 +5,8 @@ import sofar as sf
 from scripts.helpers.miscelaneous import set_target
 
 from scripts.helpers.miscelaneous import pos2angle, sofa_find, get_IRs
-from scripts.helpers.dsp import causal_conv1d, compute_reference_bin
+from scripts.helpers.dsp import compute_reference_bin, erb_frequency_bin_weights
+
 
 class interaural_phase_difference_matching(nn.Module):
     """
@@ -15,14 +16,32 @@ class interaural_phase_difference_matching(nn.Module):
         bin_stim: (batch, n_listeners, 2, T)
 
     Output:
-        (batch * n_listeners,)  IPD error (mean absolute wrapped phase error).
+        (batch * n_listeners,)  IPD error (mean absolute or squared wrapped phase error).
 
     Notes:
         - This module computes a *difference to reference*, so the natural target is 0.
-        - Use with ListenerBasedLoss by setting target=0 and loss=F.l1_loss or F.mse_loss.
+        - Use with ListenerBasedLoss by setting target=0 and loss=F.l1_loss (MAE) or F.mse_loss (MSE).
+        - Set ``use_mse=True`` for MSE or ``use_mse=False`` (default) for MAE.
+        - Optional ``erb_weighting`` applies the same per-bin ERB weights as spectral_matching.
     """
 
-    def __init__(self, loss, target, target_pos, fs, sofa_path, lstn_pos, n_fft=4096, fmin=200.0, fmax=7000.0, eps=1e-12, device = 'cpu', dtype = torch.float64):
+    def __init__(
+        self,
+        loss,
+        target,
+        target_pos,
+        fs,
+        sofa_path,
+        lstn_pos,
+        n_fft=4096,
+        fmin=50.0,
+        fmax=15000.0,
+        eps=1e-12,
+        erb_weighting=False,
+        use_mse=False,
+        device="cpu",
+        dtype=torch.float64,
+    ):
         super().__init__()
 
         self.name = "ipd_matching"
@@ -40,12 +59,30 @@ class interaural_phase_difference_matching(nn.Module):
         self.fmin = float(fmin)
         self.fmax = float(fmax)
         self.eps = float(eps)
+        self.erb_weighting = erb_weighting
+        self.use_mse = use_mse
+
+        fft_frequencies = torch.fft.rfftfreq(self.n_fft, d=1.0 / float(fs)).to(device=device, dtype=dtype)
+        freq_bin_mask = (fft_frequencies >= self.fmin) & (fft_frequencies <= self.fmax)
+        if not freq_bin_mask.any():
+            raise ValueError(
+                f"No FFT bins in [{self.fmin}, {self.fmax}] Hz for fs={fs} and n_fft={self.n_fft}."
+            )
+        self.register_buffer("freq_bin_mask", freq_bin_mask)
+
+        if self.erb_weighting:
+            freq_bin_weights = erb_frequency_bin_weights(fft_frequencies[freq_bin_mask])
+            self.register_buffer("freq_bin_weights", freq_bin_weights)
+        else:
+            self.register_buffer("freq_bin_weights", None)
 
         self.target = set_target(self.lstn_pos, target) # target is a scalar for IPD matching, so we pass None for lstn_pos
         self._set_references()
         self.loss = loss
         pi_ = torch.as_tensor(torch.pi, device=self.device, dtype=self.dtype)
-        self.loss_norm = self.loss(pi_, torch.zeros_like(pi_)) # The maximum possible loss for normalization is pi for L1 loss and pi^2 for MSE loss
+        zero_ = torch.zeros_like(pi_)
+        self.loss_norm = self.loss(pi_, zero_) if not self.use_mse else (pi_ ** 2)
+        # Maximum possible loss for normalization: pi (MAE) or pi^2 (MSE).
 
 
     def forward(self, bin_stim, reference_stim, listener_indices):
@@ -71,14 +108,15 @@ class interaural_phase_difference_matching(nn.Module):
         ipd_ref = self._wrap_to_pi(torch.angle(ref_f[:, :, 0, :]) - torch.angle(ref_f[:, :, 1, :]))
 
         ipd_err = self._wrap_to_pi(ipd_bin - ipd_ref)
+        ipd_err = ipd_err[..., self.freq_bin_mask]
+        bin_err = ipd_err ** 2 if self.use_mse else torch.abs(ipd_err)
 
-        freqs = torch.fft.rfftfreq(self.n_fft, d=1.0 / float(self.fs)).to(device=ipd_err.device)
-        mask = (freqs >= self.fmin) & (freqs <= self.fmax)
-        if mask.any():
-            ipd_err = ipd_err[:, :, mask]
+        if self.erb_weighting:
+            weights = self.freq_bin_weights.view(1, 1, -1)
+            m = bin_err.shape[-1]
+            return torch.sum(bin_err * weights, dim=-1) / m
 
-        # Mean absolute wrapped phase error per signal.
-        return torch.mean(torch.abs(ipd_err), dim=-1)
+        return torch.mean(bin_err, dim=-1)
     
 
     def _set_references(self):
