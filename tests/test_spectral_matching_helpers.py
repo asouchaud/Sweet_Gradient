@@ -108,6 +108,7 @@ def test_erb_weighting_disabled_matches_uniform() -> None:
     lsd = model._log_spectral_distortion(x, y)
     sq_err = (20 * torch.log10(torch.abs(torch.fft.rfft(x, n=8, dim=-1)) + model.eps)
               - 20 * torch.log10(torch.abs(torch.fft.rfft(y, n=8, dim=-1)) + model.eps)) ** 2
+    sq_err = sq_err[..., model.freq_bin_mask]
     expected = torch.sqrt(torch.mean(sq_err, dim=-1)).mean(dim=-1)
 
     assert torch.allclose(lsd, expected, atol=1e-6)
@@ -134,3 +135,14 @@ def test_erb_weighting_changes_high_frequency_dominance() -> None:
     ratio_off = lsd_off_high / lsd_off_low
 
     assert ratio_on < ratio_off
+
+
+def test_frequency_band_limits_exclude_out_of_band_errors() -> None:
+    model = make_model(n_fft=4096)
+    fs = 48000
+    n_samples = 4096
+
+    x = 0.1 * _tone_signal(1000.0, fs, n_samples).view(1, 1, -1).expand(1, 2, -1)
+    y = x + 0.5 * _tone_signal(20000.0, fs, n_samples).view(1, 1, -1).expand(1, 2, -1)
+
+    assert model._log_spectral_distortion(x, y).item() == pytest.approx(0.0, abs=1e-4)
