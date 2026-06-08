@@ -18,7 +18,7 @@ from scripts.helpers.dsp import (
 class spectral_matching(nn.Module):
     supports_listener_indices = True
 
-    def __init__(self, loss, target, target_pos, fs, sofa_path, lstn_pos, n_fft=4096, eps = 1e-8, erb_weighting=True, normalize_log_spectrum=False, device = 'cpu', dtype = torch.float64):
+    def __init__(self, loss, target, target_pos, fs, sofa_path, lstn_pos, n_fft=4096, fmin=50.0, fmax=15000.0, eps = 1e-8, erb_weighting=True, normalize_log_spectrum=False, device = 'cpu', dtype = torch.float64):
         super(spectral_matching, self).__init__()
 
 
@@ -29,7 +29,9 @@ class spectral_matching(nn.Module):
         self.dtype = dtype 
 
         self.eps = eps
-        self.n_fft = n_fft
+        self.n_fft = int(n_fft)
+        self.fmin = float(fmin)
+        self.fmax = float(fmax)
         self.erb_weighting = erb_weighting
         self.normalize_log_spectrum = normalize_log_spectrum
         self.sofaile = sf.read_sofa(sofa_path)
@@ -39,9 +41,16 @@ class spectral_matching(nn.Module):
         if self.target_pos.numel() != 2:
             raise ValueError("target_pos must contain exactly two coordinates.")
 
+        fft_frequencies = torch.fft.rfftfreq(self.n_fft, d=1.0 / float(fs)).to(device=device, dtype=dtype)
+        freq_bin_mask = (fft_frequencies >= self.fmin) & (fft_frequencies <= self.fmax)
+        if not freq_bin_mask.any():
+            raise ValueError(
+                f"No FFT bins in [{self.fmin}, {self.fmax}] Hz for fs={fs} and n_fft={self.n_fft}."
+            )
+        self.register_buffer("freq_bin_mask", freq_bin_mask)
+
         if self.erb_weighting:
-            fft_frequencies = torch.fft.rfftfreq(n_fft, d=1.0 / float(fs)).to(device=device, dtype=dtype)
-            freq_bin_weights = erb_frequency_bin_weights(fft_frequencies)
+            freq_bin_weights = erb_frequency_bin_weights(fft_frequencies[freq_bin_mask])
             self.register_buffer("freq_bin_weights", freq_bin_weights)
         else:
             self.register_buffer("freq_bin_weights", None)
@@ -127,6 +136,8 @@ class spectral_matching(nn.Module):
             log_Y = log_Y / norm_Y.clamp(min=self.eps)
 
         sq_err = (log_X - log_Y) ** 2
+        sq_err = sq_err[..., self.freq_bin_mask]
+
         if self.erb_weighting:
             weights = self.freq_bin_weights.view(1, 1, -1)
             m = sq_err.shape[-1]
