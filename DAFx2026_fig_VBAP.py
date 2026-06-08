@@ -274,6 +274,12 @@ def DAFx2026_fig6_plots(run_folders, show=False):
         # One value per eval listener; use centre listener [0, 0] (index 0).
         est_angle[i] = float(np.asarray(json_data["localisation"], dtype=float).ravel()[0])
 
+    vbap_mae = float(np.mean(np.abs(vbap_angle - target_angles)))
+    est_mae = float(np.mean(np.abs(est_angle - target_angles)))
+    print(f"Localisation MAE vs target angle:")
+    print(f"  VBAP:             {vbap_mae:.2f} deg")
+    print(f"  Estimated filters: {est_mae:.2f} deg")
+
     # --- BOTTOM PLOT (include +/- 30 deg; energy ratio is infinite there) ---
     plt.subplot(1,2,2)
     l3,= plt.plot(target_angles, est_angle, linewidth=3, label="Proposed Method")

@@ -791,7 +791,7 @@ if __name__ == "__main__":
     regularisation_weight_incl_colouration = 1e-0
     run_dir_loc_init_2_r_2, _, _, title_loc, analysis_loc = run_experiment(
         loss_dict_builder=lambda loc_model, col_model, unc_model, regularisation, device, dtype: {
-            "localisation": ListenerBasedLoss(model=loc_model, weight=1e2, device=device, dtype=dtype),
+            "localisation": ListenerBasedLoss(model=loc_model, weight=1e3, device=device, dtype=dtype),
             "regularisation_source_0": SourceBasedLoss(regulariser=regularisation, source_idx=0, weight=regularisation_weight),
             "regularisation_source_1": SourceBasedLoss(regulariser=regularisation, source_idx=1, weight=regularisation_weight),
         },
