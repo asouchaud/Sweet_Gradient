@@ -138,11 +138,16 @@ def test_erb_weighting_changes_high_frequency_dominance() -> None:
 
 
 def test_frequency_band_limits_exclude_out_of_band_errors() -> None:
+    # The band limit drops FFT bins outside [fmin, fmax]. The added tone has to sit on a bin
+    # centre above fmax; an off-bin tone leaks into the passband through the rectangular window.
     model = make_model(n_fft=4096)
     fs = 48000
     n_samples = 4096
+    bin_hz = fs / n_samples
+    f_out = round(20000.0 / bin_hz) * bin_hz
 
     x = 0.1 * _tone_signal(1000.0, fs, n_samples).view(1, 1, -1).expand(1, 2, -1)
-    y = x + 0.5 * _tone_signal(20000.0, fs, n_samples).view(1, 1, -1).expand(1, 2, -1)
+    y = x + 0.5 * _tone_signal(f_out, fs, n_samples).view(1, 1, -1).expand(1, 2, -1)
 
+    assert f_out > model.fmax
     assert model._log_spectral_distortion(x, y).item() == pytest.approx(0.0, abs=1e-4)

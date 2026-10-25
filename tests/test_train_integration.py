@@ -7,38 +7,52 @@ pytest.importorskip("torch.utils.tensorboard")
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from scripts.train.train import ListenerBasedLoss, Train
-from scripts.optimisation.custom_modules import MultiSourceFIR
 
-class IdentityPropagation(nn.Module):
-    def forward(self, spk_filters: torch.Tensor) -> torch.Tensor:
-        # This stand-in propagation module returns the filters unchanged so the integration test can
-        # exercise the Train class without needing SOFA files, stimuli, or external acoustics data.
-        return spk_filters
+from scripts.datasets.listener_dataset import get_listener_loader
+from scripts.datasets.stimulus_dataset import get_stim_loader
+from scripts.optimisation.custom_modules import MultiSourceFIR
+from scripts.train.train import ListenerBasedLoss, Train
+
+
+class FilterPairPropagation(nn.Module):
+    def forward(self, stim: torch.Tensor, spk_filters: torch.Tensor, listener_indices) -> torch.Tensor:
+        # Train calls prop(stimulus, spk_filters, listener_indices). This stand-in places the two
+        # source filters on the two ears for every selected listener, so the loop can run without
+        # SOFA files or free-field acoustics.
+        n_listeners = len(listener_indices)
+        return spk_filters.unsqueeze(1).repeat(1, n_listeners, 1, 1)
 
 
 class DifferenceModel(nn.Module):
     def __init__(self, target: float) -> None:
         super().__init__()
-        self.target = target
+        self.target = torch.tensor([target], dtype=torch.float32)
         self.loss = F.mse_loss
         self.loss_norm = 1.0
-        self.lstn_pos_conf = None
+        self.ref_flag = 0
 
     def forward(self, bin_stim: torch.Tensor) -> torch.Tensor:
-        # The "perceptual" estimate here is simply mean(left) - mean(right), chosen because it is
-        # differentiable and easy to interpret by hand.
-        left = bin_stim[:, 0:1, :].mean(dim=-1)
-        right = bin_stim[:, 1:2, :].mean(dim=-1)
+        # bin_stim is (batch, n_listeners, 2, time). The estimate is mean(left) - mean(right).
+        left = bin_stim[:, :, 0, :].mean(dim=-1)
+        right = bin_stim[:, :, 1, :].mean(dim=-1)
         return left - right
 
 
+def _difference_estimate(nn_model, prop, perceptual_model, stim_loader, lstn_loader) -> float:
+    device = nn_model[0].weight.device
+    dtype = nn_model[0].weight.dtype
+    stimulus = next(iter(stim_loader))
+    listener_idx, _listener_pos = next(iter(lstn_loader))
+    with torch.no_grad():
+        spk_filters = nn_model(torch.ones(1, 1, device=device, dtype=dtype))
+        bin_stim = prop(stimulus, spk_filters, listener_idx)
+        return float(perceptual_model(bin_stim).reshape(-1)[0])
+
+
 def test_train_moves_estimate_towards_target() -> None:
-    # This is a lightweight integration test for the actual Train loop:
-    # - the project NN is used unchanged,
-    # - the optimiser is the real project optimiser,
-    # - the Train class performs real forward/backward updates.
-    # We start from init=3, which creates all-zero filters, so the initial estimate is exactly 0.
+    # Lightweight integration test for the Train loop: the project FIR and Adam optimiser run real
+    # forward/backward updates over the stimulus and listener loaders. Propagation and the
+    # perceptual model are stand-ins with the current call signature.
     nn_model = MultiSourceFIR(
         n_samples=8,
         n_sources=2,
@@ -50,16 +64,20 @@ def test_train_moves_estimate_towards_target() -> None:
             branch.weight[0, 0] = 1.0
 
     optimiser = torch.optim.Adam(nn_model.parameters(), lr=0.05)
-
-    localisation_model = DifferenceModel(target=1.0)
+    stim_loader, _stimulus_dataset = get_stim_loader(8000, 1, 1, stimulus_type="impulse", shuffle=False, device="cpu", dtype=torch.float32)
+    lstn_loader, _listener_dataset = get_listener_loader(torch.tensor([[0.0, 0.0]], dtype=torch.float32), 1, False)
+    prop = FilterPairPropagation()
+    difference_model = DifferenceModel(target=1.0)
 
     trainer = Train(
         n_epoch=80,
+        stim_loader=stim_loader,
+        lstn_loader=lstn_loader,
         nn=nn_model,
-        prop=IdentityPropagation(),
+        prop=prop,
         loss_dict={
-            "localisation": ListenerBasedLoss(
-                model=localisation_model,
+            "difference": ListenerBasedLoss(
+                model=difference_model,
                 weight=1.0,
                 device=torch.device("cpu"),
                 dtype=torch.float32,
@@ -67,23 +85,17 @@ def test_train_moves_estimate_towards_target() -> None:
         },
         optimiser=optimiser,
         logger=None,
-        scheduler=None,
     )
 
-    _, initial_estimates, _initial_bin_stim = trainer.evaluate()
+    initial_estimate = _difference_estimate(nn_model, prop, difference_model, stim_loader, lstn_loader)
     trainer.train()
-    _, final_estimates, _final_bin_stim = trainer.evaluate()
+    final_estimate = _difference_estimate(nn_model, prop, difference_model, stim_loader, lstn_loader)
 
-    initial_error = abs(float(initial_estimates["localisation"]) - 1.0)
-    final_error = abs(float(final_estimates["localisation"]) - 1.0)
+    initial_error = abs(initial_estimate - 1.0)
+    final_error = abs(final_estimate - 1.0)
 
-    # Because the initial filters are all zero and the model computes mean(left) - mean(right),
-    # the initial estimate is 0, so the initial error relative to target 1.0 is exactly 1.0.
-    # We do not hard-code that number here; instead we check the more important behavioural claim:
-    # training should reduce the error.
+    # Both source filters start as the same unit impulse, so mean(left) - mean(right) is 0 and the
+    # error against target 1 is 1. Training should reduce that error, and 80 Adam steps at lr=0.05
+    # should finish within 0.15 of the target.
     assert initial_error > final_error
-
-    # With this simple objective and 80 Adam steps at lr=0.05, the final estimate should end up
-    # close to the target. The tolerance of 0.15 is chosen as a robust behavioural bound rather
-    # than an exact value, since optimisation trajectories can vary slightly across environments.
     assert 0.15 > final_error

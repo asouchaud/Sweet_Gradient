@@ -41,7 +41,7 @@ class FixedEstimationModel(nn.Module):
         self.ref_flag = 1
         self.seen_listener_indices = None
 
-    def forward(self, bin_stim: torch.Tensor, listener_indices=None) -> torch.Tensor:
+    def forward(self, bin_stim: torch.Tensor, reference_stim=None, listener_indices=None) -> torch.Tensor:
         self.seen_listener_indices = listener_indices
         return torch.tensor([[20.0, 30.0]], dtype=bin_stim.dtype, device=bin_stim.device)
 
