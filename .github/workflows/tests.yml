@@ -8,8 +8,6 @@ on:
 
 jobs:
   test:
-    # Reference outputs were recorded on Windows. The macOS ARM runner
-    # follows a different training trajectory, so the regression check fails there.
     runs-on: windows-latest 
 
     steps:
