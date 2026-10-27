@@ -6,7 +6,6 @@ import pytest
 from pathlib import Path
 import torch
 
-from playground.ICLD_ICTD.scripts import propagation
 from scripts.helpers.miscelaneous import sofa_find
 
 pytest.importorskip("sofar")

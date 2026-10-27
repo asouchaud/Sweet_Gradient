@@ -1,32 +1,40 @@
-# Sweet_Gradient
+# Sweet Gradient
 
 ![Tests](https://github.com/asouchaud/Sweet_Gradient/actions/workflows/tests.yml/badge.svg?branch=main)
 
-Sweet Gradient provides a framework for optimisation of multichannel using perceptual loss functions, such as models for localisation, uncertainty, and colouration.
+Code to reproduce the DAFx 2026 figures. Each figure script runs the optimisation and writes plots under `results/`.
 
 ## Installation
 
-Make sure you have Python@3.12 installed (on Mac, run `brew install Python@3.12`).
-Then create a virtual environment and install requirements:
+Python 3.12 is required.
 
 ```bash
-python3.12 -m venv env
-source env/bin/activate
+python -m venv env
+source env/bin/activate  # Windows: env\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Run 
-The next step is to run tests to check everything is running smoothly and then start running a simulation (see contents of main.py for more information):
+## Generate the figures
+
+```bash
+python DAFx2026_fig_rendering.py
+python plot_fig5_from_results.py
+python DAFx2026_fig_VBAP.py
+python DAFx2026_fig_CTC.py
+python DAFx2026_fig_beamforming.py
+```
+
+`plot_fig5_from_results.py` rebuilds the left- and right-ear figure 5 PDFs from the four most recent rendering runs.
+
+## Tests
 
 ```bash
 python run_tests.py
-python main.py
 ```
 
-## Project layout
+## Layout
 
--   `main.py` runs optimisation and saves results
--   `scripts/` contains propagation, perceptual models, optimisation,
-    plotting, and saving code
--   `tests/` contains unit and integration tests
--   `data/` contains SOFA files, filter banks, and example stimuli
+- `DAFx2026_fig_*.py` are the figure entry points
+- `scripts/` contains propagation, perceptual models, optimisation, plotting, and saving
+- `data/` contains the HRIRs, gammatone filter bank, and comparison curves used by those scripts
+- `tests/` contains unit and integration tests
