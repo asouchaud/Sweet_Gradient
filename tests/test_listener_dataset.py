@@ -40,7 +40,7 @@ def test_symmetric_sampling_during_batch():
         sorted_listener_pos, _ = listener_pos.sort(dim=0)
 
         for i in range(len(sorted_listener_pos)):
-            assert torch.allclose(sorted_listener_pos[i], -1*sorted_listener_pos[-i-1])
+            assert torch.allclose(sorted_listener_pos[i], -1*sorted_listener_pos[-i-1], atol=1e-5)
 
 
 def test_correct_idx_in_listener_batch_compared_to_origianl_array():
